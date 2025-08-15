@@ -14,6 +14,7 @@ import 'screens/home_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
+import 'services/simple_notification_service.dart';
 import 'widgets/smooth_scroll_behavior.dart';
 
 void main() async {
@@ -29,6 +30,9 @@ void main() async {
   
   // Initialize notifications
   await NotificationService.initialize();
+  
+  // Also initialize simple service for testing
+  await SimpleNotificationService.initialize();
   
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(

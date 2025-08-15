@@ -85,15 +85,23 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       await _repository.saveSession(newSession);
 
       // Schedule notifications
+      print('🔔 DEBUG: Starting notification scheduling in _onStartNewSession');
       await _notificationService.scheduleDailyMotivation();
       for (final challenge in event.challenges) {
+        print('🔔 DEBUG: Checking challenge: ${challenge.title}');
+        print('🔔 DEBUG: isReminderEnabled: ${challenge.isReminderEnabled}');
+        print('🔔 DEBUG: reminderTime: ${challenge.reminderTime}');
         if (challenge.isReminderEnabled && challenge.reminderTime != null) {
+          print('🔔 DEBUG: Scheduling reminder for: ${challenge.title}');
           await _notificationService.scheduleTaskReminder(
             challenge,
             challenge.reminderTime!,
           );
+        } else {
+          print('🔔 DEBUG: Skipping reminder for: ${challenge.title}');
         }
       }
+      print('🔔 DEBUG: Completed notification scheduling in _onStartNewSession');
 
       // Reload data
       add(LoadChallengeData());
@@ -241,20 +249,48 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      print('🔔 BLOC DEBUG: _onUpdateChallenge called');
+      print('🔔 BLOC DEBUG: event.challenge.id = ${event.challenge.id}');
+      print('🔔 BLOC DEBUG: event.challenge.title = ${event.challenge.title}');
+      print('🔔 BLOC DEBUG: event.challenge.isReminderEnabled = ${event.challenge.isReminderEnabled}');
+      print('🔔 BLOC DEBUG: event.challenge.reminderTime = ${event.challenge.reminderTime}');
+      
       final activeSession = _repository.getActiveSession();
-      if (activeSession == null) return;
+      if (activeSession == null) {
+        print('🔔 BLOC DEBUG: No active session found - returning');
+        return;
+      }
 
+      print('🔔 BLOC DEBUG: Active session found, updating challenges...');
+      
       // Update challenge in session
       final updatedChallenges = activeSession.challenges.map((challenge) {
         if (challenge.id == event.challenge.id) {
+          print('🔔 BLOC DEBUG: Found matching challenge, updating...');
           return event.challenge;
         }
         return challenge;
       }).toList();
 
+      print('🔔 BLOC DEBUG: Saving updated session...');
       final updatedSession = activeSession.copyWith(challenges: updatedChallenges);
       await _repository.saveSession(updatedSession);
 
+      print('🔔 BLOC DEBUG: Session saved, scheduling notification...');
+      
+      // Schedule notification if reminder is enabled
+      if (event.challenge.isReminderEnabled && event.challenge.reminderTime != null) {
+        print('🔔 BLOC DEBUG: Scheduling notification for ${event.challenge.title}');
+        await _notificationService.scheduleTaskReminder(
+          event.challenge,
+          event.challenge.reminderTime!,
+        );
+      } else {
+        print('🔔 BLOC DEBUG: Cancelling notification for ${event.challenge.title}');
+        await _notificationService.cancelTaskReminder(event.challenge.id);
+      }
+
+      print('🔔 BLOC DEBUG: Emitting updated state...');
       // Emit updated state
       final currentProgress = _repository.getProgressForSession(activeSession.startDate);
       final allSessions = _repository.getAllSessions();
@@ -296,12 +332,20 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         (c) => c.id == event.challengeId,
       );
 
+      print('🔔 DEBUG: Updating reminder for challenge: ${updatedChallenge.title}');
+      print('🔔 DEBUG: event.isEnabled: ${event.isEnabled}');
+      print('🔔 DEBUG: event.reminderTime: ${event.reminderTime}');
+      print('🔔 DEBUG: updatedChallenge.isReminderEnabled: ${updatedChallenge.isReminderEnabled}');
+      print('🔔 DEBUG: updatedChallenge.reminderTime: ${updatedChallenge.reminderTime}');
+
       if (event.isEnabled && event.reminderTime != null) {
+        print('🔔 DEBUG: Scheduling new reminder');
         await _notificationService.scheduleTaskReminder(
           updatedChallenge,
           event.reminderTime!,
         );
       } else {
+        print('🔔 DEBUG: Cancelling reminder');
         await _notificationService.cancelTaskReminder(event.challengeId);
       }
 

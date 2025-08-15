@@ -14,6 +14,7 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/smooth_scroll_behavior.dart';
 import '../widgets/daily_journal_widget.dart';
+import '../services/notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -39,6 +40,50 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: CustomAppBar(
         title: '75 Hard Challenge',
         actions: [
+          // Test notification button (temporary for debugging)
+          IconButton(
+            icon: const Icon(Icons.notifications_active, color: Colors.orange),
+            onPressed: () async {
+              print('🔔 DEBUG: Test notification button pressed');
+              final notificationService = NotificationService();
+              
+              // Show dialog with test options
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Test Notifications'),
+                  content: const Text('Choose a test type:'),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await notificationService.sendTestNotification();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Immediate test notification sent')),
+                        );
+                      },
+                      child: const Text('Immediate'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await notificationService.scheduleTestNotification();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
+                        );
+                      },
+                      child: const Text('10 Seconds'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: 'Test Notifications',
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
@@ -283,10 +328,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       },
                       onReminderUpdate: (updatedChallenge) {
+                        print('🔔 CALLBACK DEBUG: onReminderUpdate called');
+                        print('🔔 CALLBACK DEBUG: updatedChallenge.id = ${updatedChallenge.id}');
+                        print('🔔 CALLBACK DEBUG: updatedChallenge.title = ${updatedChallenge.title}');
+                        print('🔔 CALLBACK DEBUG: updatedChallenge.isReminderEnabled = ${updatedChallenge.isReminderEnabled}');
+                        print('🔔 CALLBACK DEBUG: updatedChallenge.reminderTime = ${updatedChallenge.reminderTime}');
+                        print('🔔 CALLBACK DEBUG: Dispatching UpdateChallenge event...');
+                        
                         // Update the challenge with new reminder settings
                         context.read<ChallengeBloc>().add(
                           UpdateChallenge(updatedChallenge),
                         );
+                        
+                        print('🔔 CALLBACK DEBUG: UpdateChallenge event dispatched');
                       },
                     ),
                   ),

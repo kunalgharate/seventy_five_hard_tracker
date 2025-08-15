@@ -100,10 +100,36 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     
     // State variables for the modal
     bool tempReminderEnabled = widget.challenge.isReminderEnabled;
+    
+    // Initialize reminder type and time from saved data
     String tempReminderType = 'once'; // Default type
-    String tempReminderTime = widget.challenge.reminderTime ?? '09:00';
+    String tempReminderTime = '09:00'; // Default time
     int tempIntervalMinutes = 120; // Default 2 hours
-    List<String> tempCustomTimes = widget.challenge.reminderTime != null 
+    List<String> tempCustomTimes = ['09:00', '18:00']; // Default times
+    
+    if (widget.challenge.reminderTime != null) {
+      final reminderData = widget.challenge.reminderTime!;
+      tempReminderTime = _getDisplayTime(reminderData);
+      
+      // Detect reminder type from saved data
+      if (reminderData.startsWith('once:')) {
+        tempReminderType = 'once';
+      } else if (reminderData.startsWith('multiple:')) {
+        tempReminderType = 'multiple';
+        tempCustomTimes = reminderData.substring(9).split(',');
+      } else if (reminderData.startsWith('hourly:')) {
+        tempReminderType = 'hourly';
+      } else if (reminderData.startsWith('interval:')) {
+        tempReminderType = 'interval';
+        final parts = reminderData.substring(9).split(':');
+        tempIntervalMinutes = int.parse(parts[0]);
+      } else if (reminderData.startsWith('custom:')) {
+        tempReminderType = 'custom';
+        tempCustomTimes = reminderData.substring(7).split(',');
+      }
+    }
+    
+    List<String> tempCustomTimesBackup = widget.challenge.reminderTime != null 
         ? [widget.challenge.reminderTime!] 
         : ['09:00'];
     
@@ -371,7 +397,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                               // Update the challenge
                               final updatedChallenge = widget.challenge.copyWith(
                                 isReminderEnabled: tempReminderEnabled,
-                                reminderTime: finalReminderTime,
+                                reminderTime: tempReminderEnabled ? reminderData : null, // ✅ Save full reminderData format
                               );
                               
                               widget.onReminderUpdate!(updatedChallenge);
@@ -921,6 +947,28 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     );
   }
 
+  // Helper method to extract display time from reminder data
+  String _getDisplayTime(String reminderData) {
+    // Handle different reminder formats
+    if (reminderData.startsWith('once:')) {
+      return reminderData.substring(5); // Extract time after "once:"
+    } else if (reminderData.startsWith('multiple:')) {
+      final times = reminderData.substring(9).split(',');
+      return times.first; // Show first time
+    } else if (reminderData.startsWith('hourly:')) {
+      return reminderData.substring(7); // Extract start time after "hourly:"
+    } else if (reminderData.startsWith('interval:')) {
+      final parts = reminderData.substring(9).split(':');
+      return '${parts[1]}:${parts[2]}'; // Extract start time
+    } else if (reminderData.startsWith('custom:')) {
+      final times = reminderData.substring(7).split(',');
+      return times.first; // Show first time
+    } else {
+      // Fallback for simple time format
+      return reminderData;
+    }
+  }
+
   Widget _buildCard() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), // Reduced vertical margin
@@ -1003,11 +1051,13 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        DateFormat('h:mm a').format(
-                          DateTime(2024, 1, 1, 
-                            int.parse(widget.challenge.reminderTime!.split(':')[0]), 
-                            int.parse(widget.challenge.reminderTime!.split(':')[1])),
-                        ),
+                        () {
+                          final displayTime = _getDisplayTime(widget.challenge.reminderTime!);
+                          final timeParts = displayTime.split(':');
+                          final hour = int.parse(timeParts[0]);
+                          final minute = int.parse(timeParts[1]);
+                          return DateFormat('h:mm a').format(DateTime(2024, 1, 1, hour, minute));
+                        }(),
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           color: Colors.orange[800],

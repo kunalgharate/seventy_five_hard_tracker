@@ -44,8 +44,8 @@ dependencies:
   hive_flutter: ^1.1.0
   
   # Notifications
-  flutter_local_notifications: ^17.2.2
-  timezone: ^0.9.4
+  flutter_local_notifications: ^19.4.0
+  timezone: ^0.10.0
   
   # HTTP for motivational quotes API
   http: ^1.2.2
@@ -109,6 +109,7 @@ flutter:
     - assets/icons/
     - assets/animations/
     - assets/challenge_icons/
+    - assets/sounds/
 
 # Flutter Launcher Icons configuration
 flutter_launcher_icons:

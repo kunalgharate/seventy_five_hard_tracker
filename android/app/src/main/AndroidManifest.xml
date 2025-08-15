@@ -17,6 +17,13 @@
     
     <!-- Vibration for notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- Full-screen intent notifications -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    
+    <!-- Bypass Do Not Disturb mode -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
 
     <application
         android:label="75 Hard Challenge"
@@ -34,7 +41,9 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true">
             
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
@@ -59,7 +68,11 @@
             </intent-filter>
         </activity>
         
-        <!-- Notification receiver for boot completed -->
+        <!-- Notification receivers -->
+        <receiver 
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+            
         <receiver 
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">
@@ -70,11 +83,17 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
-        
-        <!-- Notification receiver -->
+
+        <!-- Action broadcast receiver for notification actions -->
         <receiver 
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
             android:exported="false" />
+
+        <!-- Foreground service for notifications -->
+        <service
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
+            android:exported="false"
+            android:stopWithTask="false" />
         
         <!-- File provider for image sharing -->
         <provider
