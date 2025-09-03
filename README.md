@@ -2,6 +2,8 @@
 
 A Flutter app to help users track their 75 Hard personal challenge with custom daily tasks, progress tracking, and motivational features.
 
+#Play Store link : https://play.google.com/store/apps/details?id=com.seventyfive.hard.challenge&hl=en-US&ah=kv1OY6af0PDN2jAVgNwd8HGqf3Y
+
 ## Features
 
 ### 🎯 Core Features
