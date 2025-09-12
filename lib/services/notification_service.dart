@@ -441,6 +441,13 @@ class NotificationService {
       _scheduledNotificationCount = (_scheduledNotificationCount - 1).clamp(0, _maxNotifications);
     }
   }
+
+  Future<void> cancelAllNotifications() async {
+    print('🔔 DEBUG: Cancelling all notifications');
+    await _notifications.cancelAll();
+    _scheduledNotificationCount = 0;
+    print('🔔 DEBUG: All notifications cancelled');
+  }
   
   bool _canScheduleMoreNotifications() {
     return _scheduledNotificationCount < _maxNotifications;

@@ -10,6 +10,7 @@ import 'challenge_state.dart';
 class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   final DatabaseRepository _repository;
   final NotificationService _notificationService;
+  Timer? _midnightTimer;
 
   // Getter for repository access
   DatabaseRepository get repository => _repository;
@@ -28,6 +29,36 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<ResetChallenge>(_onResetChallenge);
     on<CompleteChallenge>(_onCompleteChallenge);
     on<UpdateChallengeReminder>(_onUpdateChallengeReminder);
+    
+    _startMidnightTimer();
+  }
+
+  @override
+  Future<void> close() {
+    _midnightTimer?.cancel();
+    return super.close();
+  }
+
+  void _startMidnightTimer() {
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final timeUntilMidnight = tomorrow.difference(now);
+    
+    print('🕛 DEBUG: Starting midnight timer - ${timeUntilMidnight.inMinutes} minutes until midnight');
+    
+    _midnightTimer = Timer(timeUntilMidnight, () {
+      print('🕛 DEBUG: Midnight reached - checking for missed days');
+      _performMidnightCheck();
+      _startMidnightTimer(); // Restart timer for next day
+    });
+  }
+
+  void _performMidnightCheck() {
+    final activeSession = _repository.getActiveSession();
+    if (activeSession != null) {
+      print('🕛 DEBUG: Active session found - checking for missed days');
+      _checkForMissedDays(activeSession);
+    }
   }
 
   Future<void> _onLoadChallengeData(
@@ -59,6 +90,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      // Cancel all existing notifications first
+      await _notificationService.cancelAllNotifications();
+      print('🔔 DEBUG: All notifications cancelled before starting new session');
+
       // End any active session
       final activeSession = _repository.getActiveSession();
       if (activeSession != null) {
@@ -186,6 +221,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
 
+      // Cancel all notifications immediately
+      await _notificationService.cancelAllNotifications();
+      print('🔔 DEBUG: All notifications cancelled during reset');
+
       // Update session as failed
       final failedSession = activeSession.copyWith(
         isActive: false,
@@ -223,6 +262,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     try {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
+
+      // Cancel all notifications since challenge is completed
+      await _notificationService.cancelAllNotifications();
+      print('🔔 DEBUG: All notifications cancelled on challenge completion');
 
       final completedSession = activeSession.copyWith(
         isActive: false,
@@ -357,12 +400,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
   Future<void> _checkForMissedDays(ChallengeSession session) async {
     final now = DateTime.now();
-    final daysSinceStart = now.difference(session.startDate).inDays;
+    final today = DateTime(now.year, now.month, now.day);
+    final startDate = DateTime(session.startDate.year, session.startDate.month, session.startDate.day);
     
-    // Check if we've missed any days
+    final daysSinceStart = today.difference(startDate).inDays;
+    
+    print('🕛 DEBUG: Checking missed days - Days since start: $daysSinceStart');
+    
+    // Check each day from start until yesterday (not including today)
     for (int i = 0; i < daysSinceStart; i++) {
-      final checkDate = session.startDate.add(Duration(days: i));
+      final checkDate = startDate.add(Duration(days: i));
       final progress = _repository.getDailyProgress(checkDate);
+      
+      print('🕛 DEBUG: Checking day ${i + 1} (${checkDate.toString().split(' ')[0]}) - Completed: ${progress?.isCompleted ?? false}');
       
       if (progress == null || !progress.isCompleted) {
         // Found a missed day - reset the challenge
@@ -371,6 +421,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             .map((challenge) => challenge.title)
             .toList();
         
+        print('🕛 DEBUG: Found missed day ${i + 1} - Resetting challenge');
         add(ResetChallenge(
           reason: 'Missed day ${i + 1}',
           failedChallenges: failedChallenges,
@@ -382,12 +433,13 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     // Check if challenge is completed (75 days)
     if (daysSinceStart >= 75) {
       final allDaysCompleted = List.generate(75, (index) {
-        final date = session.startDate.add(Duration(days: index));
+        final date = startDate.add(Duration(days: index));
         final progress = _repository.getDailyProgress(date);
         return progress?.isCompleted ?? false;
       }).every((completed) => completed);
 
       if (allDaysCompleted) {
+        print('🕛 DEBUG: All 75 days completed - Completing challenge');
         add(CompleteChallenge());
       }
     }
