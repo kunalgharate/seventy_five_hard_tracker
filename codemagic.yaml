@@ -13,20 +13,32 @@ workflows:
       cancel_previous_builds: true
     
     environment:
-      android_signing:
-        - keystore_reference
       groups:
         - google_play
       vars:
         PACKAGE_NAME: "com.seventyfive.hard.challenge"
+        CM_KEYSTORE_PATH: /tmp/keystore.jks
       flutter: stable
       xcode: latest
       cocoapods: default
     
     scripts:
+      - name: Set up keystore
+        script: |
+          echo $CM_KEYSTORE | base64 --decode > $CM_KEYSTORE_PATH
+      
       - name: Set up local.properties
         script: |
           echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+      
+      - name: Set up key.properties
+        script: |
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
       
       - name: Get Flutter packages
         script: |
