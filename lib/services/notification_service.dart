@@ -49,6 +49,21 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
+    // Create notification channel with custom sound
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'daily_motivation',
+      'Daily Motivation',
+      description: 'Daily motivational messages for 75 Hard Challenge',
+      importance: Importance.max,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound('tune'),
+      enableVibration: true,
+    );
+    
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+    
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
