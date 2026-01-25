@@ -14,7 +14,7 @@ workflows:
     
     environment:
       groups:
-        - google_play
+        - Google
       vars:
         PACKAGE_NAME: "com.seventyfive.hard.challenge"
         CM_KEYSTORE_PATH: /tmp/keystore.jks
