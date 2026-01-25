@@ -49,6 +49,24 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
+    // Create notification channel with tune.wav as default sound
+    final androidPlugin = _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidPlugin != null) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'daily_motivation',
+        'Daily Motivation',
+        description: 'Daily motivational messages for 75 Hard Challenge',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
+      
+      await androidPlugin.createNotificationChannel(channel);
+    }
+    
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
@@ -178,6 +196,7 @@ class NotificationService {
             channelDescription: 'Daily motivational messages for 75 Hard Challenge',
             importance: Importance.max,
             priority: Priority.max,
+            sound: RawResourceAndroidNotificationSound('tune'),
             playSound: true,
             enableVibration: true,
           ),
