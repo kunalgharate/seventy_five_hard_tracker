@@ -49,12 +49,13 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
-    // Create new notification channel with tune.wav (v2)
+    // Create notification channels with tune.wav
     final androidPlugin = _notifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidPlugin != null) {
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      // Daily motivation channel
+      const dailyChannel = AndroidNotificationChannel(
         'daily_motivation_v2',
         'Daily Motivation',
         description: 'Daily motivational messages for 75 Hard Challenge',
@@ -64,7 +65,19 @@ class NotificationService {
         enableVibration: true,
       );
       
-      await androidPlugin.createNotificationChannel(channel);
+      // Task reminders channel
+      const taskChannel = AndroidNotificationChannel(
+        'task_reminders_v2',
+        'Task Reminders',
+        description: 'Reminders for individual challenge tasks',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
+      
+      await androidPlugin.createNotificationChannel(dailyChannel);
+      await androidPlugin.createNotificationChannel(taskChannel);
     }
     
     await _notifications.initialize(
@@ -305,11 +318,14 @@ class NotificationService {
           scheduledTime,
           const NotificationDetails(
             android: AndroidNotificationDetails(
-              'task_reminders',
+              'task_reminders_v2',
               'Task Reminders',
               channelDescription: 'Reminders for individual challenge tasks',
-              importance: Importance.high,
-              priority: Priority.high,
+              importance: Importance.max,
+              priority: Priority.max,
+              sound: RawResourceAndroidNotificationSound('tune'),
+              playSound: true,
+              enableVibration: true,
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
