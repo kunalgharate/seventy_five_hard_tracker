@@ -26,6 +26,8 @@ workflows:
       - name: Set up keystore
         script: |
           echo "$CM_KEYSTORE" | base64 --decode > $CM_KEYSTORE_PATH
+          echo "Verifying keystore SHA1:"
+          keytool -list -v -keystore $CM_KEYSTORE_PATH -alias $CM_KEY_ALIAS -storepass $CM_KEYSTORE_PASSWORD | grep SHA1
       
       - name: Set up local.properties
         script: |
