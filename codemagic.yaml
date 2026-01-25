@@ -25,7 +25,7 @@ workflows:
     scripts:
       - name: Set up keystore
         script: |
-          echo $CM_KEYSTORE | base64 --decode > $CM_KEYSTORE_PATH
+          echo "$CM_KEYSTORE" | base64 --decode > $CM_KEYSTORE_PATH
       
       - name: Set up local.properties
         script: |
