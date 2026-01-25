@@ -49,28 +49,6 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
-    // Delete old notification channel and recreate with custom sound
-    final androidPlugin = _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    
-    if (androidPlugin != null) {
-      // Delete old channel
-      await androidPlugin.deleteNotificationChannel('daily_motivation');
-      
-      // Create new channel with custom sound
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'daily_motivation',
-        'Daily Motivation',
-        description: 'Daily motivational messages for 75 Hard Challenge',
-        importance: Importance.max,
-        playSound: true,
-        sound: RawResourceAndroidNotificationSound('tune'),
-        enableVibration: true,
-      );
-      
-      await androidPlugin.createNotificationChannel(channel);
-    }
-    
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
@@ -200,7 +178,6 @@ class NotificationService {
             channelDescription: 'Daily motivational messages for 75 Hard Challenge',
             importance: Importance.max,
             priority: Priority.max,
-            sound: RawResourceAndroidNotificationSound('tune'),
             playSound: true,
             enableVibration: true,
           ),
