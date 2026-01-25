@@ -49,11 +49,15 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
-    // Create notification channel with tune.wav as default sound
+    // Force recreate notification channel with tune.wav
     final androidPlugin = _notifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidPlugin != null) {
+      // Delete existing channel first
+      await androidPlugin.deleteNotificationChannel('daily_motivation');
+      
+      // Create new channel with tune.wav
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'daily_motivation',
         'Daily Motivation',
