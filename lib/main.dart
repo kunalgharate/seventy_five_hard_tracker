@@ -199,16 +199,6 @@ class MyApp extends StatelessWidget {
         ),
       ),
       
-      // Card Theme
-      cardTheme: CardTheme(
-        elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        color: Colors.white,
-      ),
-      
       // Elevated Button Theme
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
