@@ -31,6 +31,9 @@ void main() async {
   // Initialize notifications
   await NotificationService.initialize();
   
+  // Reschedule daily motivation with new sound for existing users
+  await NotificationService().scheduleDailyMotivation();
+  
   // Also initialize simple service for testing
   await SimpleNotificationService.initialize();
   
