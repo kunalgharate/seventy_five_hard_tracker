@@ -75,9 +75,21 @@ class NotificationService {
         sound: RawResourceAndroidNotificationSound('tune'),
         enableVibration: true,
       );
+
+      // Pending tasks channel
+      const pendingChannel = AndroidNotificationChannel(
+        'pending_tasks',
+        'Pending Tasks',
+        description: 'Reminder for incomplete daily tasks',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
       
       await androidPlugin.createNotificationChannel(dailyChannel);
       await androidPlugin.createNotificationChannel(taskChannel);
+      await androidPlugin.createNotificationChannel(pendingChannel);
     }
     
     await _notifications.initialize(

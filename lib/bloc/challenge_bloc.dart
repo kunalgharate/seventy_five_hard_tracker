@@ -4,15 +4,16 @@ import '../models/challenge_session.dart';
 import '../models/daily_progress.dart';
 import '../repositories/database_repository.dart';
 import '../services/notification_service.dart';
+import '../services/analytics_service.dart';
 import 'challenge_event.dart';
 import 'challenge_state.dart';
 
 class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   final DatabaseRepository _repository;
   final NotificationService _notificationService;
+  final AnalyticsService _analytics = AnalyticsService();
   Timer? _midnightTimer;
 
-  // Getter for repository access
   DatabaseRepository get repository => _repository;
 
   ChallengeBloc({
@@ -25,6 +26,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<StartNewSession>(_onStartNewSession);
     on<UpdateDailyProgress>(_onUpdateDailyProgress);
     on<AddJournalNote>(_onAddJournalNote);
+    on<AddTaskNote>(_onAddTaskNote);
     on<UpdateChallenge>(_onUpdateChallenge);
     on<ResetChallenge>(_onResetChallenge);
     on<CompleteChallenge>(_onCompleteChallenge);
@@ -90,11 +92,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      // Cancel all existing notifications first
       await _notificationService.cancelAllNotifications();
-      print('🔔 DEBUG: All notifications cancelled before starting new session');
 
-      // End any active session
       final activeSession = _repository.getActiveSession();
       if (activeSession != null) {
         final endedSession = activeSession.copyWith(
@@ -104,10 +103,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         await _repository.updateSession(endedSession);
       }
 
-      // Clear all existing daily progress data to prevent stale completion status
       await _repository.clearAllDailyProgress();
 
-      // Create new session
       final newSession = ChallengeSession(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         challenges: event.challenges,
@@ -118,29 +115,24 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       );
 
       await _repository.saveSession(newSession);
+      await _analytics.logSessionStart(event.challenges.length);
+      await _analytics.logChallengeSelection(
+        event.challenges.map((c) => c.title).toList(),
+      );
 
-      // Schedule notifications
-      print('🔔 DEBUG: Starting notification scheduling in _onStartNewSession');
       await _notificationService.scheduleDailyMotivation();
       for (final challenge in event.challenges) {
-        print('🔔 DEBUG: Checking challenge: ${challenge.title}');
-        print('🔔 DEBUG: isReminderEnabled: ${challenge.isReminderEnabled}');
-        print('🔔 DEBUG: reminderTime: ${challenge.reminderTime}');
         if (challenge.isReminderEnabled && challenge.reminderTime != null) {
-          print('🔔 DEBUG: Scheduling reminder for: ${challenge.title}');
           await _notificationService.scheduleTaskReminder(
             challenge,
             challenge.reminderTime!,
           );
-        } else {
-          print('🔔 DEBUG: Skipping reminder for: ${challenge.title}');
         }
       }
-      print('🔔 DEBUG: Completed notification scheduling in _onStartNewSession');
 
-      // Reload data
       add(LoadChallengeData());
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to start new session: $e'));
     }
   }
@@ -153,7 +145,6 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
 
-      // Get existing progress or create new
       var dailyProgress = _repository.getDailyProgress(event.date);
       if (dailyProgress == null) {
         final challengeCompletions = <String, bool>{};
@@ -167,18 +158,12 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         );
       }
 
-      // Update specific challenge completion
-      final updatedCompletions = Map<String, bool>.from(dailyProgress.challengeCompletions);
+      final updatedCompletions =
+          Map<String, bool>.from(dailyProgress.challengeCompletions);
       updatedCompletions[event.challengeId] = event.isCompleted;
 
-      // Check if all challenges are completed
-      final allCompleted = updatedCompletions.values.every((completed) => completed);
-      
-      // Debug logging
-      print('🔧 DEBUG: Updating daily progress for ${event.date}');
-      print('🔧 DEBUG: Challenge ${event.challengeId} set to ${event.isCompleted}');
-      print('🔧 DEBUG: All completions: $updatedCompletions');
-      print('🔧 DEBUG: All completed: $allCompleted');
+      final allCompleted =
+          updatedCompletions.values.every((completed) => completed);
 
       final updatedProgress = dailyProgress.copyWith(
         challengeCompletions: updatedCompletions,
@@ -187,12 +172,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       await _repository.saveDailyProgress(updatedProgress);
 
-      // Check for missed days and auto-reset
-      await _checkForMissedDays(activeSession);
+      if (event.isCompleted) {
+        final challenge = activeSession.challenges
+            .firstWhere((c) => c.id == event.challengeId);
+        await _analytics.logTaskComplete(
+          challenge.title,
+          activeSession.currentDay,
+        );
+      }
 
-      // Reload data
+      await _checkForMissedDays(activeSession);
       add(LoadChallengeData());
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to update daily progress: $e'));
     }
   }
@@ -208,8 +200,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         await _repository.saveDailyProgress(updatedProgress);
         add(LoadChallengeData());
       }
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to add journal note: $e'));
+    }
+  }
+
+  Future<void> _onAddTaskNote(
+    AddTaskNote event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      var dailyProgress = _repository.getDailyProgress(event.date);
+      if (dailyProgress != null) {
+        final updatedNotes = Map<String, String>.from(
+          dailyProgress.taskNotes ?? {},
+        );
+        updatedNotes[event.challengeId] = event.note;
+        final updatedProgress = dailyProgress.copyWith(taskNotes: updatedNotes);
+        await _repository.saveDailyProgress(updatedProgress);
+        add(LoadChallengeData());
+      }
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
+      emit(ChallengeError('Failed to add task note: $e'));
     }
   }
 
@@ -221,11 +235,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
 
-      // Cancel all notifications immediately
       await _notificationService.cancelAllNotifications();
-      print('🔔 DEBUG: All notifications cancelled during reset');
 
-      // Update session as failed
       final failedSession = activeSession.copyWith(
         isActive: false,
         endDate: DateTime.now(),
@@ -234,8 +245,11 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       );
 
       await _repository.updateSession(failedSession);
+      await _analytics.logSessionReset(
+        activeSession.currentDay,
+        event.reason,
+      );
 
-      // Show failure notification
       await _notificationService.showFailureNotification(
         activeSession.currentDay,
         event.failedChallenges,
@@ -247,10 +261,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         daysFailed: activeSession.currentDay,
       ));
 
-      // Reload data after a short delay
       await Future.delayed(const Duration(seconds: 2));
       add(LoadChallengeData());
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to reset challenge: $e'));
     }
   }
@@ -263,9 +277,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
 
-      // Cancel all notifications since challenge is completed
       await _notificationService.cancelAllNotifications();
-      print('🔔 DEBUG: All notifications cancelled on challenge completion');
 
       final completedSession = activeSession.copyWith(
         isActive: false,
@@ -275,14 +287,15 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       );
 
       await _repository.updateSession(completedSession);
+      await _analytics.logSessionComplete(75);
       await _notificationService.showCompletionNotification();
 
       emit(ChallengeCompleted(completedSession));
 
-      // Reload data after showing completion
       await Future.delayed(const Duration(seconds: 3));
       add(LoadChallengeData());
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to complete challenge: $e'));
     }
   }
@@ -356,7 +369,6 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = _repository.getActiveSession();
       if (activeSession == null) return;
 
-      // Update challenge in session
       final updatedChallenges = activeSession.challenges.map((challenge) {
         if (challenge.id == event.challengeId) {
           return challenge.copyWith(
@@ -367,33 +379,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         return challenge;
       }).toList();
 
-      final updatedSession = activeSession.copyWith(challenges: updatedChallenges);
+      final updatedSession =
+          activeSession.copyWith(challenges: updatedChallenges);
       await _repository.updateSession(updatedSession);
 
-      // Update notification
       final updatedChallenge = updatedChallenges.firstWhere(
         (c) => c.id == event.challengeId,
       );
 
-      print('🔔 DEBUG: Updating reminder for challenge: ${updatedChallenge.title}');
-      print('🔔 DEBUG: event.isEnabled: ${event.isEnabled}');
-      print('🔔 DEBUG: event.reminderTime: ${event.reminderTime}');
-      print('🔔 DEBUG: updatedChallenge.isReminderEnabled: ${updatedChallenge.isReminderEnabled}');
-      print('🔔 DEBUG: updatedChallenge.reminderTime: ${updatedChallenge.reminderTime}');
-
       if (event.isEnabled && event.reminderTime != null) {
-        print('🔔 DEBUG: Scheduling new reminder');
         await _notificationService.scheduleTaskReminder(
           updatedChallenge,
           event.reminderTime!,
         );
+        await _analytics.logReminderSet(
+          updatedChallenge.title,
+          event.reminderTime!,
+        );
       } else {
-        print('🔔 DEBUG: Cancelling reminder');
         await _notificationService.cancelTaskReminder(event.challengeId);
       }
 
       add(LoadChallengeData());
-    } catch (e) {
+    } catch (e, stack) {
+      await _analytics.logError(e, stack);
       emit(ChallengeError('Failed to update reminder: $e'));
     }
   }

@@ -69,6 +69,18 @@ class ChallengeSession extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'challenges': challenges.map((c) => c.toJson()).toList(),
+    'startDate': startDate.toIso8601String(),
+    'endDate': endDate?.toIso8601String(),
+    'isActive': isActive,
+    'isCompleted': isCompleted,
+    'currentDay': currentDay,
+    'failureReason': failureReason,
+    'failedChallenges': failedChallenges,
+  };
+
   @override
   List<Object?> get props => [
     id, challenges, startDate, endDate, isActive, 

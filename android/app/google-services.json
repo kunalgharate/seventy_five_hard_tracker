@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "496007025535",
+    "project_id": "dailymettle",
+    "storage_bucket": "dailymettle.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:496007025535:android:f8674a6bdbc2987f34c04a",
+        "android_client_info": {
+          "package_name": "com.seventyfive.hard.challenge"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLC3owchDKU0IVzcd25MzXXT_M-UIHddA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

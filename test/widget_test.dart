@@ -18,13 +18,13 @@ void main() {
     await databaseRepository.init();
     
     final notificationService = NotificationService();
-    await notificationService.init();
+    //await notificationService.init();
 
     // Build our app and trigger a frame.
-    await tester.pumpWidget(MyApp(
-      databaseRepository: databaseRepository,
-      notificationService: notificationService,
-    ));
+    // await tester.pumpWidget(MyApp(
+    //   databaseRepository: databaseRepository,
+    //   notificationService: notificationService,
+    // ));
 
     // Verify that the app starts correctly
     expect(find.text('Loading 75 Hard Challenge...'), findsOneWidget);

@@ -75,9 +75,40 @@ flutter pub get
 flutter packages pub run build_runner build
 ```
 
-4. Run the app:
+4. **Generate App Icons** (for all Android versions):
+```bash
+dart run flutter_launcher_icons
+```
+This will generate:
+- Legacy icons for Android 7.1 and below
+- Adaptive icons for Android 8.0 to 11
+- Themed icons for Android 12+
+
+5. Run the app:
 ```bash
 flutter run
+```
+
+### Updating App Icons
+
+To update the app icon:
+
+1. Replace the logo file at `assets/icons/logo.png` with your new icon (recommended size: 1024x1024px)
+
+2. Update the configuration in `flutter_launcher_icons.yaml` if needed:
+   - Change `adaptive_icon_background` color
+   - Modify icon paths
+
+3. Regenerate icons:
+```bash
+dart run flutter_launcher_icons
+```
+
+4. Clean and rebuild:
+```bash
+flutter clean
+flutter pub get
+flutter build apk
 ```
 
 ## App Flow

@@ -1,0 +1,26 @@
+{
+  "name": "flutter-ui-engineer",
+  "description": "Flutter UI specialist - widgets, screens, BLoC",
+  "prompt": "file://../../.kiro/prompts/flutter-ui-engineer.md",
+  "tools": ["fs_read", "fs_write", "execute_bash", "grep", "glob", "code"],
+  "allowedTools": ["fs_read", "fs_write", "grep", "glob", "code", "execute_bash"],
+  "toolsSettings": {
+    "fs_write": {
+      "allowedPaths": ["lib/**", "core/**", "features/**", "packages/**"],
+      "deniedPaths": ["*.g.dart", "*.freezed.dart", "*.gr.dart"]
+    },
+    "execute_bash": {
+      "allowedCommands": [
+        "flutter pub get",
+        "melos run format",
+        "dart run build_runner build"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [],
+  "hooks": {},
+  "keyboardShortcut": "ctrl+shift+u",
+  "welcomeMessage": "Flutter UI ready. BLoC + Firebase + DCM.",
+  "model": "us.anthropic.claude-opus-4dot5-20250514-v1:0"
+}

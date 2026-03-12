@@ -47,6 +47,21 @@ class AddJournalNote extends ChallengeEvent {
   List<Object> get props => [date, note];
 }
 
+class AddTaskNote extends ChallengeEvent {
+  final DateTime date;
+  final String challengeId;
+  final String note;
+
+  const AddTaskNote({
+    required this.date,
+    required this.challengeId,
+    required this.note,
+  });
+
+  @override
+  List<Object> get props => [date, challengeId, note];
+}
+
 class UpdateChallenge extends ChallengeEvent {
   final Challenge challenge;
 

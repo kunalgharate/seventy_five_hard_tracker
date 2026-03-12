@@ -1,0 +1,22 @@
+{
+  "project": {
+    "name": "Jiremali Samaj App",
+    "type": "Flutter Monorepo",
+    "version": "1.5.0"
+  },
+  "tech_stack": {
+    "framework": "Flutter 3.38",
+    "language": "Dart 3.5",
+    "state": "BLoC",
+    "di": "GetIt",
+    "nav": "AutoRoute",
+    "backend": "Firebase"
+  },
+  "must_follow": [
+    "BLoC only, no setState",
+    "Repository pattern",
+    "context.l10n for strings",
+    "Package imports",
+    "const constructors"
+  ]
+}

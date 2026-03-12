@@ -25,6 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final PageController _pageController = PageController();
   int _currentPage = 0;
   late AnimationController _headerAnimationController;
+  late AnimationController _pulseController;
 
   @override
   void initState() {
@@ -34,6 +35,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       vsync: this,
     );
     _headerAnimationController.forward();
+    
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
     
     // Start with 2 empty challenges
     _addNewChallenge();
@@ -47,6 +53,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
     _pageController.dispose();
     _headerAnimationController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -95,7 +102,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
            (challenge.iconName != null && challenge.iconName!.isNotEmpty);
   }
 
-  void _startChallenge() {
+  Future<void> _startChallenge() async {
     final validChallenges = _challenges
         .where((challenge) => challenge.title.trim().isNotEmpty)
         .toList();
@@ -111,7 +118,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     context.read<ChallengeBloc>().add(StartNewSession(validChallenges));
-    Navigator.pushReplacementNamed(context, '/home');
+    
+    // Wait a frame for the bloc to process before navigating
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/home');
+    }
   }
 
   @override
@@ -150,38 +163,47 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Animated Header
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.orange, Colors.red],
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.orange.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+          // Animated Header with Pulse
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: 1.0 + (_pulseController.value * 0.1),
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.orange, Colors.red],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.orange.withOpacity(0.3 + (_pulseController.value * 0.3)),
+                        blurRadius: 20 + (_pulseController.value * 20),
+                        spreadRadius: _pulseController.value * 5,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '75',
+                      style: TextStyle(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
-              ],
-            ),
-            child: const Center(
-              child: Text(
-                '75',
-                style: TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+              );
+            },
           ).animate().scale(delay: 200.ms, duration: 800.ms, curve: Curves.elasticOut),
           
           const SizedBox(height: 40),
           
-          // Animated Title
+          // Animated Title with Shimmer Effect
           AnimatedTextKit(
             animatedTexts: [
               TypewriterAnimatedText(
@@ -195,11 +217,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ],
             isRepeatingAnimation: false,
-          ),
+          ).animate().shimmer(delay: 1200.ms, duration: 1500.ms),
           
           const SizedBox(height: 20),
           
-          // Description
+          // Description with Fade and Slide
           Text(
             'Transform your life in 75 days with daily challenges that build mental toughness and discipline.',
             textAlign: TextAlign.center,
@@ -208,16 +230,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               color: Colors.grey[600],
               height: 1.5,
             ),
-          ).animate().fadeIn(delay: 1000.ms),
+          ).animate().fadeIn(delay: 1000.ms, duration: 600.ms).slideY(begin: 0.3, end: 0),
           
           const SizedBox(height: 60),
           
-          // Rules
+          // Rules with Staggered Animation
           _buildRulesList(),
           
           const Spacer(),
           
-          // Continue Button
+          // Continue Button with Scale and Glow
           _buildAnimatedButton(
             text: 'Start Setup',
             onPressed: () => _pageController.nextPage(
@@ -225,7 +247,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               curve: Curves.easeInOut,
             ),
             gradient: LinearGradient(colors: [Colors.blue, Colors.purple]),
-          ).animate().slideY(begin: 1, delay: 1500.ms),
+          ).animate()
+            .fadeIn(delay: 1500.ms, duration: 400.ms)
+            .scale(delay: 1500.ms, duration: 400.ms, begin: Offset(0.8, 0.8))
+            .then()
+            .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
     );
@@ -240,38 +266,46 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       '🏆 75 days of consistency',
     ];
 
-    return Column(
-      children: AnimationConfiguration.toStaggeredList(
-        duration: const Duration(milliseconds: 375),
-        childAnimationBuilder: (widget) => SlideAnimation(
-          horizontalOffset: 50.0,
-          child: FadeInAnimation(child: widget),
-        ),
-        children: rules.map((rule) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.orange,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  rule,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+    return AnimationLimiter(
+      child: Column(
+        children: List.generate(
+          rules.length,
+          (index) => AnimationConfiguration.staggeredList(
+            position: index,
+            delay: const Duration(milliseconds: 1200),
+            duration: const Duration(milliseconds: 500),
+            child: SlideAnimation(
+              verticalOffset: 50.0,
+              child: FadeInAnimation(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: Colors.orange,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          rules[index],
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        )).toList(),
+        ),
       ),
     );
   }
@@ -282,7 +316,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header with slide animation
           Row(
             children: [
               GestureDetector(
@@ -305,7 +339,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                   child: const Icon(Icons.arrow_back, size: 20),
                 ),
-              ),
+              ).animate().scale(duration: 300.ms, curve: Curves.easeOut),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -317,7 +351,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
-                    ),
+                    ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
                     Text(
                       '${_challenges.where((c) => c.title.trim().isNotEmpty).length} of ${_challenges.length} challenges ready',
                       style: TextStyle(
@@ -325,7 +359,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         color: Colors.grey[600],
                         fontWeight: FontWeight.w500,
                       ),
-                    ),
+                    ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
                   ],
                 ),
               ),
@@ -334,7 +368,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           
           const SizedBox(height: 8),
           
-          // Description with tips
+          // Description with tips - animated
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -360,11 +394,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ),
               ],
             ),
-          ),
+          ).animate()
+            .fadeIn(delay: 300.ms, duration: 500.ms)
+            .slideY(begin: -0.2, end: 0)
+            .then()
+            .shimmer(delay: 1000.ms, duration: 1500.ms),
           
           const SizedBox(height: 24),
           
-          // Challenges List
+          // Challenges List with staggered animation
           Expanded(
             child: AnimationLimiter(
               child: ListView.builder(
@@ -372,11 +410,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 itemBuilder: (context, index) {
                   return AnimationConfiguration.staggeredList(
                     position: index,
-                    duration: const Duration(milliseconds: 375),
+                    delay: const Duration(milliseconds: 400),
+                    duration: const Duration(milliseconds: 500),
                     child: SlideAnimation(
                       verticalOffset: 50.0,
                       child: FadeInAnimation(
-                        child: _buildChallengeCard(index),
+                        child: ScaleAnimation(
+                          scale: 0.9,
+                          child: _buildChallengeCard(index),
+                        ),
                       ),
                     ),
                   );
@@ -385,7 +427,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
           ),
           
-          // Add Challenge Button
+          // Add Challenge Button with pulse animation
           if (_challenges.length < 10)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -422,19 +464,43 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ],
                   ),
-                ),
+                ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .scale(duration: 1500.ms, begin: Offset(1.0, 1.0), end: Offset(1.05, 1.05)),
               ),
-            ),
+            ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.3, end: 0),
           
-          // Continue Button
+          // Continue Button with enhanced animation
           _buildAnimatedButton(
             text: 'Review My Challenges →',
-            onPressed: () => _pageController.nextPage(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            ),
+            onPressed: () {
+              final validChallenges = _challenges
+                  .where((challenge) => challenge.title.trim().isNotEmpty)
+                  .toList();
+
+              if (validChallenges.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Please add at least one challenge before continuing'),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+                return;
+              }
+
+              _pageController.nextPage(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+            },
             gradient: LinearGradient(colors: [Colors.orange, Colors.red]),
-          ),
+          ).animate()
+            .fadeIn(delay: 700.ms, duration: 400.ms)
+            .slideY(begin: 0.3, end: 0)
+            .then()
+            .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
     );
@@ -447,7 +513,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       margin: const EdgeInsets.only(bottom: 20),
       child: Stack(
         children: [
-          // Main card
+          // Main card with hover effect
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(

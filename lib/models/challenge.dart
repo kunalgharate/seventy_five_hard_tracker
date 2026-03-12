@@ -62,6 +62,17 @@ class Challenge extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'reminderTime': reminderTime,
+    'isReminderEnabled': isReminderEnabled,
+    'imagePath': imagePath,
+    'iconName': iconName,
+    'iconColor': iconColor,
+    'category': category,
+  };
+
   @override
   List<Object?> get props => [
     id, 
