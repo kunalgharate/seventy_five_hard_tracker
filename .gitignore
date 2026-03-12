@@ -48,3 +48,11 @@ service-account-base64.txt
 *.jks
 *.keystore
 key.properties
+
+# Sensitive files - DO NOT COMMIT
+*.jks
+*.keystore
+*.pem
+*-base64*.txt
+dayschallenge-*.json
+service-account*.json
