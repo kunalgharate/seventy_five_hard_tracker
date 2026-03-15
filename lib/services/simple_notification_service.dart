@@ -11,7 +11,7 @@ class SimpleNotificationService {
     tz.setLocalLocation(tz.getLocation('UTC'));
 
     // Initialize notifications
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const initSettings = InitializationSettings(android: androidSettings);
     
     await _notifications.initialize(initSettings);
