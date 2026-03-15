@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
@@ -12,8 +13,7 @@ import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
-import '../widgets/smooth_scroll_behavior.dart';
-import '../widgets/daily_journal_widget.dart';
+import '../widgets/journal_bottom_sheet.dart';
 import '../services/notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
@@ -25,65 +25,84 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   DateTime _selectedDay = DateTime.now();
+  late AnimationController _fabController;
 
   @override
   void initState() {
     super.initState();
+    _fabController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
     context.read<ChallengeBloc>().add(LoadChallengeData());
   }
 
   @override
+  void dispose() {
+    _fabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(
-        title: '75 Hard Challenge',
-        actions: [
-          // Test notification button (temporary for debugging)
-          IconButton(
-            icon: const Icon(Icons.notifications_active, color: Colors.orange),
-            onPressed: () async {
-              print('🔔 DEBUG: Test notification button pressed');
-              final notificationService = NotificationService();
-              
-              // Show dialog with test options
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Test Notifications'),
-                  content: const Text('Choose a test type:'),
-                  actions: [
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await notificationService.sendTestNotification();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Immediate test notification sent')),
-                        );
-                      },
-                      child: const Text('Immediate'),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await notificationService.scheduleTestNotification();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
-                        );
-                      },
-                      child: const Text('10 Seconds'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                  ],
-                ),
-              );
-            },
-            tooltip: 'Test Notifications',
-          ),
+    return BlocListener<ChallengeBloc, ChallengeState>(
+      listener: (context, state) {
+        // Force rebuild when state changes
+        if (state is ChallengeLoaded) {
+          setState(() {});
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppBar(
+          title: '75 Hard Challenge',
+          actions: [
+          // Test notification button (only in debug mode)
+          if (const bool.fromEnvironment('dart.vm.product') == false)
+            IconButton(
+              icon: const Icon(Icons.notifications_active, color: Colors.orange),
+              onPressed: () async {
+                print('🔔 DEBUG: Test notification button pressed');
+                final notificationService = NotificationService();
+                
+                // Show dialog with test options
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Test Notifications'),
+                    content: const Text('Choose a test type:'),
+                    actions: [
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await notificationService.sendTestNotification();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Immediate test notification sent')),
+                          );
+                        },
+                        child: const Text('Immediate'),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await notificationService.scheduleTestNotification();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
+                          );
+                        },
+                        child: const Text('10 Seconds'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              tooltip: 'Test Notifications',
+            ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
@@ -144,18 +163,60 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
-          if (state is ChallengeLoaded && !state.hasActiveSession) {
-            return FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, '/onboarding');
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Start Challenge'),
-              backgroundColor: Colors.green,
-            );
+          if (state is ChallengeLoaded) {
+            if (!state.hasActiveSession) {
+              return FloatingActionButton.extended(
+                onPressed: () {
+                  Navigator.pushReplacementNamed(context, '/onboarding');
+                },
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text(
+                  'Start Challenge',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            } else {
+              // Show journal FAB for active session
+              final selectedProgress = state.currentProgress
+                  .where((p) => _isSameDay(p.date, _selectedDay))
+                  .firstOrNull;
+              final hasNote = selectedProgress?.journalNote != null &&
+                  selectedProgress!.journalNote!.isNotEmpty;
+
+              return FloatingActionButton.extended(
+                onPressed: () => _showJournalBottomSheet(
+                  context,
+                  state,
+                  selectedProgress,
+                ),
+                icon: Icon(
+                  hasNote ? Icons.book : Icons.book_outlined,
+                  size: 20,
+                ),
+                label: Text(
+                  hasNote ? 'View Journal' : 'Add Journal',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            }
           }
           return const SizedBox.shrink();
         },
+      ),
       ),
     );
   }
@@ -230,7 +291,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           startDate: session.startDate,
                           endDate: session.startDate.add(const Duration(days: 74)),
                           onDateSelected: (selectedDate) {
-                            print('Home screen: Date selected: $selectedDate'); // Debug print
                             setState(() {
                               _selectedDay = selectedDate;
                             });
@@ -297,70 +357,57 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text(
                 'Challenge hasn\'t started yet',
                 style: TextStyle(color: Colors.grey),
-              )
+              ).animate().fadeIn(duration: 400.ms)
             else if (isFutureDate)
               const Text(
                 'Future date - complete today\'s tasks first!',
                 style: TextStyle(color: Colors.grey),
-              )
+              ).animate().fadeIn(duration: 400.ms)
             else
-              // Use original task cards with simple reminder functionality
+              // Animated task cards with staggered entrance
               ...session.challenges.asMap().entries.map((entry) {
                 final index = entry.key;
                 final challenge = entry.value;
                 final isCompleted = selectedProgress?.challengeCompletions[challenge.id] ?? false;
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == session.challenges.length - 1 ? 0 : 8,
-                  ),
-                  child: RepaintBoundary(
-                    child: DailyTaskCard(
-                      challenge: challenge,
-                      isCompleted: isCompleted,
-                      isEditable: isToday,
-                      onToggle: (completed) {
-                        context.read<ChallengeBloc>().add(
-                          UpdateDailyProgress(
-                            date: _selectedDay,
-                            challengeId: challenge.id,
-                            isCompleted: completed,
+                return AnimationConfiguration.staggeredList(
+                  position: index,
+                  duration: const Duration(milliseconds: 500),
+                  child: SlideAnimation(
+                    verticalOffset: 50.0,
+                    child: FadeInAnimation(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == session.challenges.length - 1 ? 0 : 8,
+                        ),
+                        child: RepaintBoundary(
+                          child: DailyTaskCard(
+                            challenge: challenge,
+                            isCompleted: isCompleted,
+                            isEditable: isToday,
+                            onToggle: (completed) {
+                              context.read<ChallengeBloc>().add(
+                                UpdateDailyProgress(
+                                  date: _selectedDay,
+                                  challengeId: challenge.id,
+                                  isCompleted: completed,
+                                ),
+                              );
+                            },
+                            onReminderUpdate: (updatedChallenge) {
+                              // Update the challenge with new reminder settings
+                              context.read<ChallengeBloc>().add(
+                                UpdateChallenge(updatedChallenge),
+                              );
+                            },
                           ),
-                        );
-                      },
-                      onReminderUpdate: (updatedChallenge) {
-                        print('🔔 CALLBACK DEBUG: onReminderUpdate called');
-                        print('🔔 CALLBACK DEBUG: updatedChallenge.id = ${updatedChallenge.id}');
-                        print('🔔 CALLBACK DEBUG: updatedChallenge.title = ${updatedChallenge.title}');
-                        print('🔔 CALLBACK DEBUG: updatedChallenge.isReminderEnabled = ${updatedChallenge.isReminderEnabled}');
-                        print('🔔 CALLBACK DEBUG: updatedChallenge.reminderTime = ${updatedChallenge.reminderTime}');
-                        print('🔔 CALLBACK DEBUG: Dispatching UpdateChallenge event...');
-                        
-                        // Update the challenge with new reminder settings
-                        context.read<ChallengeBloc>().add(
-                          UpdateChallenge(updatedChallenge),
-                        );
-                        
-                        print('🔔 CALLBACK DEBUG: UpdateChallenge event dispatched');
-                      },
+                        ),
+                      ),
                     ),
                   ),
                 );
               }),
             
-            const SizedBox(height: 16),
-            
-            // Daily Journal
-            if (!isBeforeStart && !isFutureDate)
-              DailyJournalWidget(
-                selectedDate: _selectedDay,
-                existingNote: selectedProgress?.journalNote,
-                onNoteSubmitted: (note) {
-                  context.read<ChallengeBloc>().add(
-                    AddJournalNote(date: _selectedDay, note: note),
-                  );
-                },
-                isEditable: isToday,
-              ),
+            const SizedBox(height: 80), // Space for FAB
           ],
         ),
       ),
@@ -491,6 +538,34 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Thank You!'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showJournalBottomSheet(
+    BuildContext context,
+    ChallengeLoaded state,
+    DailyProgress? selectedProgress,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => JournalBottomSheet(
+        date: _selectedDay,
+        existingNote: selectedProgress?.journalNote,
+        onSave: (note) {
+          context.read<ChallengeBloc>().add(
+                AddJournalNote(date: _selectedDay, note: note),
+              );
+        },
+        onDelete: selectedProgress?.journalNote != null
+            ? () {
+                context.read<ChallengeBloc>().add(
+                      AddJournalNote(date: _selectedDay, note: ''),
+                    );
+              }
+            : null,
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/challenge.dart';
 import 'challenge_icon_widget.dart';
+import 'task_note_bottom_sheet.dart';
 
 class DailyTaskCard extends StatefulWidget {
   final Challenge challenge;
@@ -12,6 +13,8 @@ class DailyTaskCard extends StatefulWidget {
   final bool isEditable;
   final Function(bool) onToggle;
   final Function(Challenge)? onReminderUpdate;
+  final Function(String)? onNoteAdded;
+  final String? existingNote;
   final int? dayNumber;
 
   const DailyTaskCard({
@@ -21,6 +24,8 @@ class DailyTaskCard extends StatefulWidget {
     required this.isEditable,
     required this.onToggle,
     this.onReminderUpdate,
+    this.onNoteAdded,
+    this.existingNote,
     this.dayNumber,
   });
 
@@ -1139,6 +1144,24 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Note Icon
+              if (widget.isEditable)
+                IconButton(
+                  onPressed: () => _showNoteBottomSheet(context),
+                  icon: Icon(
+                    widget.existingNote != null && widget.existingNote!.isNotEmpty
+                        ? Icons.note
+                        : Icons.note_add_outlined,
+                    color: widget.existingNote != null && widget.existingNote!.isNotEmpty
+                        ? Colors.blue[700]
+                        : Colors.grey[600],
+                    size: 20,
+                  ),
+                  padding: const EdgeInsets.all(6),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  tooltip: 'Add Note',
+                ),
+              
               // Generic Reminder Setup Icon (only when no reminder is set)
               if (widget.isEditable && !widget.challenge.isReminderEnabled)
                 IconButton(
@@ -1324,5 +1347,22 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         }
       });
     });
+  }
+
+  void _showNoteBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => TaskNoteBottomSheet(
+        taskTitle: widget.challenge.title,
+        existingNote: widget.existingNote,
+        onSave: (note) {
+          if (widget.onNoteAdded != null) {
+            widget.onNoteAdded!(note);
+          }
+        },
+      ),
+    );
   }
 }

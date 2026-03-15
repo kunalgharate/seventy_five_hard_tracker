@@ -1,0 +1,80 @@
+workflows:
+  android-release:
+    name: Android Release
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*.*.*'
+          include: true
+      cancel_previous_builds: true
+    
+    environment:
+      groups:
+        - Google
+      vars:
+        PACKAGE_NAME: "com.seventyfive.hard.challenge"
+        CM_KEYSTORE_PATH: /tmp/keystore.jks
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    
+    scripts:
+      - name: Set up keystore
+        script: |
+          if [ -z "$CM_KEYSTORE" ]; then
+            echo "ERROR: CM_KEYSTORE variable is empty!"
+            exit 1
+          fi
+          echo "CM_KEYSTORE length: ${#CM_KEYSTORE}"
+          echo "$CM_KEYSTORE" | base64 --decode > $CM_KEYSTORE_PATH
+          if [ ! -f $CM_KEYSTORE_PATH ]; then
+            echo "ERROR: Keystore file was not created!"
+            exit 1
+          fi
+          echo "Verifying keystore SHA1:"
+          keytool -list -v -keystore $CM_KEYSTORE_PATH -alias $CM_KEY_ALIAS -storepass $CM_KEYSTORE_PASSWORD | grep SHA1
+      
+      - name: Set up local.properties
+        script: |
+          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+      
+      - name: Set up key.properties
+        script: |
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+      
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+      
+      - name: Build AAB with Flutter
+        script: |
+          flutter build appbundle --release \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$((BUILD_NUMBER))
+    
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/mapping.txt
+      - flutter_drive.log
+    
+    publishing:
+      email:
+        recipients:
+          - kunalgharate@gmail.com
+        notify:
+          success: true
+          failure: true
+      
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: production
+        submit_as_draft: false

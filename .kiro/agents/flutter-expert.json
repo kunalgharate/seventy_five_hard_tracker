@@ -1,0 +1,27 @@
+{
+  "name": "flutter-expert",
+  "description": "Expert Flutter Architect - BLoC, Firebase, Melos monorepo",
+  "prompt": "file://../../.kiro/prompts/flutter-expert.md",
+  "tools": ["fs_read", "fs_write", "execute_bash", "grep", "glob", "code"],
+  "allowedTools": ["fs_read", "grep", "glob", "code"],
+  "toolsSettings": {
+    "fs_write": {
+      "allowedPaths": ["lib/**", "core/**", "features/**", "packages/**"],
+      "deniedPaths": ["build/**", ".dart_tool/**", "*.g.dart", "*.freezed.dart", "*.gr.dart"]
+    },
+    "execute_bash": {
+      "allowedCommands": [
+        "flutter pub get",
+        "melos bootstrap",
+        "melos run format",
+        "dart run build_runner build"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [],
+  "hooks": {},
+  "keyboardShortcut": "ctrl+shift+f",
+  "welcomeMessage": "Flutter expert ready. BLoC + Firebase + Melos.",
+  "model": "us.anthropic.claude-opus-4dot5-20250514-v1:0"
+}

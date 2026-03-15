@@ -1,7 +1,8 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
-import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/challenge.dart';
 
 class NotificationService {
@@ -48,6 +49,49 @@ class NotificationService {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     
+    // Create notification channels with tune.wav
+    final androidPlugin = _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidPlugin != null) {
+      // Daily motivation channel
+      const dailyChannel = AndroidNotificationChannel(
+        'daily_motivation_v2',
+        'Daily Motivation',
+        description: 'Daily motivational messages for 75 Hard Challenge',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
+      
+      // Task reminders channel
+      const taskChannel = AndroidNotificationChannel(
+        'task_reminders_v2',
+        'Task Reminders',
+        description: 'Reminders for individual challenge tasks',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
+
+      // Pending tasks channel
+      const pendingChannel = AndroidNotificationChannel(
+        'pending_tasks',
+        'Pending Tasks',
+        description: 'Reminder for incomplete daily tasks',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('tune'),
+        enableVibration: true,
+      );
+      
+      await androidPlugin.createNotificationChannel(dailyChannel);
+      await androidPlugin.createNotificationChannel(taskChannel);
+      await androidPlugin.createNotificationChannel(pendingChannel);
+    }
+    
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
@@ -93,7 +137,6 @@ class NotificationService {
             channelDescription: 'Test notifications to verify system works',
             importance: Importance.high,
             priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
           ),
         ),
       );
@@ -122,7 +165,6 @@ class NotificationService {
             channelDescription: 'Test notifications to verify system works',
             importance: Importance.high,
             priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -152,7 +194,6 @@ class NotificationService {
             channelDescription: 'Main notification channel',
             importance: Importance.high,
             priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -165,19 +206,24 @@ class NotificationService {
 
   Future<void> scheduleDailyMotivation() async {
     try {
+      // Fetch motivational message (online or offline)
+      final message = await _fetchMotivationalMessage();
+      
       await _notifications.zonedSchedule(
         0, // Notification ID
         '75 Hard Challenge',
-        _getMotivationalMessage(),
+        message,
         _nextInstanceOf8AM(),
         const NotificationDetails(
           android: AndroidNotificationDetails(
-            'daily_motivation',
+            'daily_motivation_v2',
             'Daily Motivation',
             channelDescription: 'Daily motivational messages for 75 Hard Challenge',
-            importance: Importance.high,
-            priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
+            importance: Importance.max,
+            priority: Priority.max,
+            sound: RawResourceAndroidNotificationSound('tune'),
+            playSound: true,
+            enableVibration: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -187,6 +233,30 @@ class NotificationService {
     } catch (e) {
       print('🔔 ERROR: Failed to schedule daily motivation: $e');
     }
+  }
+
+  Future<String> _fetchMotivationalMessage() async {
+    try {
+      // Try to fetch from ZenQuotes API
+      final response = await http.get(
+        Uri.parse('https://zenquotes.io/api/random'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List && data.isNotEmpty) {
+          final quote = data[0]['q'] as String;
+          final author = data[0]['a'] as String;
+          print('🔔 DEBUG: Fetched quote from ZenQuotes API');
+          return '$quote - $author';
+        }
+      }
+    } catch (e) {
+      print('🔔 DEBUG: Failed to fetch online quote, using offline: $e');
+    }
+
+    // Fallback to offline messages
+    return _getMotivationalMessage();
   }
 
   Future<void> scheduleTaskReminder(Challenge challenge, String time) async {
@@ -260,12 +330,14 @@ class NotificationService {
           scheduledTime,
           const NotificationDetails(
             android: AndroidNotificationDetails(
-              'task_reminders',
+              'task_reminders_v2',
               'Task Reminders',
               channelDescription: 'Reminders for individual challenge tasks',
-              importance: Importance.high,
-              priority: Priority.high,
-              sound: RawResourceAndroidNotificationSound('notification_sound'),
+              importance: Importance.max,
+              priority: Priority.max,
+              sound: RawResourceAndroidNotificationSound('tune'),
+              playSound: true,
+              enableVibration: true,
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -302,7 +374,6 @@ class NotificationService {
               channelDescription: 'Reminders for individual challenge tasks',
               importance: Importance.high,
               priority: Priority.high,
-              sound: RawResourceAndroidNotificationSound('notification_sound'),
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -342,7 +413,6 @@ class NotificationService {
               channelDescription: 'Reminders for individual challenge tasks',
               importance: Importance.high,
               priority: Priority.high,
-              sound: RawResourceAndroidNotificationSound('notification_sound'),
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -408,7 +478,6 @@ class NotificationService {
                 channelDescription: 'Reminders for individual challenge tasks',
                 importance: Importance.high,
                 priority: Priority.high,
-                sound: RawResourceAndroidNotificationSound('notification_sound'),
               ),
             ),
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -466,7 +535,6 @@ class NotificationService {
           channelDescription: 'Notifications when challenge is reset',
           importance: Importance.max,
           priority: Priority.max,
-          sound: RawResourceAndroidNotificationSound('notification_sound'),
         ),
       ),
     );
@@ -484,7 +552,6 @@ class NotificationService {
           channelDescription: 'Notification for completing the 75 Hard Challenge',
           importance: Importance.max,
           priority: Priority.max,
-          sound: RawResourceAndroidNotificationSound('notification_sound'),
         ),
       ),
     );
@@ -556,7 +623,6 @@ class NotificationService {
             'Test Channel',
             importance: Importance.max,
             priority: Priority.max,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -600,7 +666,6 @@ class NotificationService {
             channelDescription: 'Main notification channel',
             importance: Importance.max,
             priority: Priority.max,
-            sound: RawResourceAndroidNotificationSound('notification_sound'),
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,

@@ -1,0 +1,20 @@
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icons/logo.png"
+  
+  # Adaptive icons for Android 8.0+ (API 26+)
+  adaptive_icon_background: "#FFA726"
+  adaptive_icon_foreground: "assets/icons/logo.png"
+  
+  # Support for Android 12+ (API 31+)
+  # Monochrome icon for themed icons
+  adaptive_icon_monochrome: "assets/icons/logo.png"
+  
+  # Minimum SDK version
+  min_sdk_android: 21
+  
+  # Generate icons for all Android versions
+  # Legacy icons for Android 7.1 and below
+  # Adaptive icons for Android 8.0 to 11
+  # Themed icons for Android 12+

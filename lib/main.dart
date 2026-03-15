@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'firebase_options.dart';
 import 'models/challenge.dart';
 import 'models/daily_progress.dart';
 import 'models/challenge_session.dart';
@@ -13,28 +16,31 @@ import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 import 'services/notification_service.dart';
 import 'services/simple_notification_service.dart';
+import 'services/analytics_service.dart';
+import 'services/daily_check_service.dart';
 import 'widgets/smooth_scroll_behavior.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Hive
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
   await Hive.initFlutter();
-  
-  // Register adapters
+
   Hive.registerAdapter(ChallengeAdapter());
   Hive.registerAdapter(DailyProgressAdapter());
   Hive.registerAdapter(ChallengeSessionAdapter());
-  
-  // Initialize notifications
+
   await NotificationService.initialize();
-  
-  // Also initialize simple service for testing
+  await NotificationService().scheduleDailyMotivation();
   await SimpleNotificationService.initialize();
-  
-  // Set system UI overlay style
+  await DailyCheckService().schedulePendingTaskNotification();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -43,10 +49,9 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
-  
-  // Initialize flutter_animate
+
   Animate.restartOnHotReload = true;
-  
+
   runApp(const MyApp());
 }
 
@@ -65,11 +70,13 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
         home: const InitialScreen(),
+        navigatorObservers: [AnalyticsService().getObserver()],
         routes: {
           '/onboarding': (context) => const OnboardingScreen(),
           '/home': (context) => const HomeScreen(),
           '/history': (context) => const HistoryScreen(),
           '/settings': (context) => const SettingsScreen(),
+          '/privacy': (context) => const PrivacyPolicyScreen(),
         },
       ),
     );
@@ -199,16 +206,6 @@ class MyApp extends StatelessWidget {
         ),
       ),
       
-      // Card Theme
-      cardTheme: CardTheme(
-        elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        color: Colors.white,
-      ),
-      
       // Elevated Button Theme
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -291,27 +288,43 @@ class InitialScreen extends StatefulWidget {
   State<InitialScreen> createState() => _InitialScreenState();
 }
 
-class _InitialScreenState extends State<InitialScreen> {
+class _InitialScreenState extends State<InitialScreen>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialRoute();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      DailyCheckService().checkMissedDaysOnAppOpen();
+    }
+  }
+
   void _checkInitialRoute() async {
-    // Shorter delay to ensure smooth transition from native splash
     await Future.delayed(const Duration(milliseconds: 800));
-    
+
     if (!mounted) return;
 
     try {
+      await AnalyticsService().logAppOpen();
+
       final bloc = context.read<ChallengeBloc>();
-      
-      // Initialize the database repository first
       await bloc.repository.init();
-      
+
+      await DailyCheckService().checkMissedDaysOnAppOpen();
+
       final hasActiveSession = await bloc.repository.hasActiveSession();
-      
+
       if (mounted) {
         if (hasActiveSession) {
           Navigator.pushReplacementNamed(context, '/home');
@@ -319,9 +332,8 @@ class _InitialScreenState extends State<InitialScreen> {
           Navigator.pushReplacementNamed(context, '/onboarding');
         }
       }
-    } catch (e) {
-      print('Error checking initial route: $e');
-      // If there's an error, default to onboarding
+    } catch (e, stack) {
+      await AnalyticsService().logError(e, stack);
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/onboarding');
       }

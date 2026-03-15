@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:convert';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
@@ -152,34 +153,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'About 75 Hard Challenge',
+                  'Data Management',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'The 75 Hard Challenge is a mental toughness program that requires you to complete specific daily tasks for 75 consecutive days.',
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Rules:\n'
-                  '• Complete ALL your daily tasks every day\n'
-                  '• Miss any task = Start over from Day 1\n'
-                  '• No modifications once started\n'
-                  '• Track your progress daily',
+                ListTile(
+                  leading: const Icon(Icons.download),
+                  title: const Text('Export Data'),
+                  subtitle: const Text('Download your progress as JSON'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _exportData,
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: _showRandomQuote,
-                  icon: const Icon(Icons.format_quote),
-                  label: const Text('Get Motivated'),
+                Text(
+                  'About',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('App Version'),
+                  subtitle: const Text('1.0.3+4'),
+                  onTap: () {},
+                ),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip),
+                  title: const Text('Privacy Policy'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.pushNamed(context, '/privacy');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description),
+                  title: const Text('Terms of Service'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    // TODO: Add terms of service
+                  },
                 ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _exportData() async {
+    try {
+      final bloc = context.read<ChallengeBloc>();
+      final state = bloc.state;
+      
+      if (state is! ChallengeLoaded) {
+        _showMessage('No data to export', isError: true);
+        return;
+      }
+
+      final exportData = {
+        'exported_at': DateTime.now().toIso8601String(),
+        'app_version': '1.0.3+4',
+        'active_session': state.activeSession?.toJson(),
+        'all_sessions': state.allSessions.map((s) => s.toJson()).toList(),
+        'current_progress': state.currentProgress.map((p) => p.toJson()).toList(),
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+      
+      // Show export dialog with data
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Export Data'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Your data has been prepared for export.'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Size: ${(jsonString.length / 1024).toStringAsFixed(2)} KB',
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Copy the data below and save it to a file:',
+                  style: TextStyle(fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 200,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      jsonString,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      
+      _showMessage('Data exported successfully');
+    } catch (e) {
+      _showMessage('Failed to export data: $e', isError: true);
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
     );
   }
 
