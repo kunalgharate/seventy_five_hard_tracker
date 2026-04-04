@@ -21,6 +21,7 @@ import 'services/notification_service.dart';
 import 'services/simple_notification_service.dart';
 import 'services/analytics_service.dart';
 import 'services/daily_check_service.dart';
+import 'services/fcm_service.dart';
 import 'widgets/smooth_scroll_behavior.dart';
 
 void main() async {
@@ -29,6 +30,8 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+  await FcmService.instance.init();
 
   await Hive.initFlutter();
 

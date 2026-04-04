@@ -46,7 +46,7 @@ class NotificationService {
       print('🔔 DEBUG: Fallback to UTC: $e');
     }
     
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const initSettings = InitializationSettings(android: androidSettings);
     
     // Create notification channels with tune.wav
