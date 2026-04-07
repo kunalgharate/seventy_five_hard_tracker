@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
+import '../models/challenge.dart';
 import '../services/quotes_service.dart';
 import '../widgets/custom_app_bar.dart';
 
@@ -193,7 +194,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Terms of Service'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    // TODO: Add terms of service
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Terms of Service'),
+                        content: const SingleChildScrollView(
+                          child: Text(
+                            'By using 75 Hard Challenge Tracker, you agree to:\n\n'
+                            '• Use the app for personal challenge tracking only\n'
+                            '• All data is stored locally on your device\n'
+                            '• We do not collect or share personal information\n'
+                            '• The app is provided as-is without warranty\n'
+                            '• You are responsible for your own health and safety during the challenge\n\n'
+                            'For questions, contact the developer through the Play Store listing.',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
                   },
                 ),
               ],
@@ -297,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildReminderTile(challenge) {
+  Widget _buildReminderTile(Challenge challenge) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -327,7 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showTimePickerDialog(challenge) {
+  void _showTimePickerDialog(Challenge challenge) {
     final currentTime = challenge.reminderTime != null
         ? TimeOfDay(
             hour: int.parse(challenge.reminderTime!.split(':')[0]),

@@ -25,13 +25,21 @@ class ChallengeAdapter extends TypeAdapter<Challenge> {
       iconName: fields[5] as String?,
       iconColor: fields[6] as int?,
       category: fields[7] as String,
+      taskType: fields[8] as String,
+      reminderType: fields[9] as String,
+      reminderStartHour: fields[10] as int,
+      reminderEndHour: fields[11] as int,
+      allowNightReminders: fields[12] as bool,
+      reminderIntervalMinutes: fields[13] as int?,
+      photoRequired: fields[14] as bool,
+      showInRegularTab: fields[15] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Challenge obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +55,23 @@ class ChallengeAdapter extends TypeAdapter<Challenge> {
       ..writeByte(6)
       ..write(obj.iconColor)
       ..writeByte(7)
-      ..write(obj.category);
+      ..write(obj.category)
+      ..writeByte(8)
+      ..write(obj.taskType)
+      ..writeByte(9)
+      ..write(obj.reminderType)
+      ..writeByte(10)
+      ..write(obj.reminderStartHour)
+      ..writeByte(11)
+      ..write(obj.reminderEndHour)
+      ..writeByte(12)
+      ..write(obj.allowNightReminders)
+      ..writeByte(13)
+      ..write(obj.reminderIntervalMinutes)
+      ..writeByte(14)
+      ..write(obj.photoRequired)
+      ..writeByte(15)
+      ..write(obj.showInRegularTab);
   }
 
   @override

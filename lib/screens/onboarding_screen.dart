@@ -8,8 +8,10 @@ import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_event.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
+import '../widgets/reminder_bottom_sheet.dart';
 import '../services/challenge_icon_service.dart';
 import '../services/dynamic_color_service.dart';
+import '../services/task_templates.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -66,6 +68,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         id: DateTime.now().millisecondsSinceEpoch.toString() + _challenges.length.toString(),
         title: '',
         category: 'general',
+        taskType: 'hard', // Default to hard
+        reminderType: 'once', // Default to once
+        reminderStartHour: 8, // 8 AM
+        reminderEndHour: 22, // 10 PM
+        allowNightReminders: true,
+        isReminderEnabled: true, // Enable by default
       ));
       setState(() {});
     }
@@ -86,6 +94,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     String? imagePath,
     int? iconColor,
     String? category,
+    String? taskType,
+    String? reminderType,
+    String? reminderTime,
+    int? reminderStartHour,
+    int? reminderEndHour,
+    bool? allowNightReminders,
+    bool? isReminderEnabled,
   }) {
     _challenges[index] = _challenges[index].copyWith(
       title: title,
@@ -93,6 +108,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       imagePath: imagePath,
       iconColor: iconColor,
       category: category,
+      taskType: taskType,
+      reminderType: reminderType,
+      reminderTime: reminderTime,
+      reminderStartHour: reminderStartHour,
+      reminderEndHour: reminderEndHour,
+      allowNightReminders: allowNightReminders,
+      isReminderEnabled: isReminderEnabled,
     );
     setState(() {});
   }
@@ -117,9 +139,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       return;
     }
 
+    // Validate that hard tasks have a reminder time set
+    final hardTasksWithoutReminder = validChallenges
+        .where((c) => c.taskType == 'hard' && c.isReminderEnabled && c.reminderTime == null)
+        .toList();
+
+    if (hardTasksWithoutReminder.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please set reminder time for: ${hardTasksWithoutReminder.map((c) => c.title).join(', ')}',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      // Go back to setup page
+      _pageController.animateToPage(1,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      return;
+    }
+
     context.read<ChallengeBloc>().add(StartNewSession(validChallenges));
     
-    // Wait a frame for the bloc to process before navigating
     await Future.delayed(const Duration(milliseconds: 100));
     
     if (mounted) {
@@ -430,42 +472,75 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           // Add Challenge Button with pulse animation
           if (_challenges.length < 10)
             Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: GestureDetector(
-                onTap: _addNewChallenge,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.green[400]!, Colors.teal[500]!],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.green.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.add_circle_outline, color: Colors.white),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Add Another Challenge (${_challenges.length}/10)',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _addNewChallenge,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green[400]!, Colors.teal[500]!],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Add (${_challenges.length}/10)',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-                  .scale(duration: 1500.ms, begin: Offset(1.0, 1.0), end: Offset(1.05, 1.05)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _showTemplatePicker,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue[400]!, Colors.indigo[500]!],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                            SizedBox(width: 6),
+                            Text(
+                              'Templates',
+                              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.3, end: 0),
           
@@ -749,6 +824,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ],
                     ),
                   ),
+                
+                // Task configuration
+                if (challenge.title.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  // Reminder Button - full width
+                  _buildReminderButton(index, challenge),
+                  if (challenge.isReminderEnabled && challenge.reminderTime != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '⏰ ${_getReminderDescription(challenge)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
               ],
             ),
           ),
@@ -959,5 +1052,242 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         },
       ),
     );
+  }
+
+  Widget _buildCompactDropdown({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required Function(String?) onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            underline: const SizedBox(),
+            isDense: true,
+            items: items,
+            onChanged: onChanged,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReminderButton(int index, Challenge challenge) {
+    final hasReminder = challenge.isReminderEnabled && challenge.reminderTime != null;
+    return GestureDetector(
+      onTap: () => _showReminderSetup(index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: hasReminder ? Colors.orange[50] : Colors.red[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: hasReminder ? Colors.orange[300]! : Colors.red[300]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasReminder ? Icons.alarm_on : Icons.alarm_add,
+              size: 18,
+              color: hasReminder ? Colors.orange[600] : Colors.red[600],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hasReminder ? 'Reminder Set ✓' : '⚠ Set Reminder (Required)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: hasReminder ? Colors.orange[700] : Colors.red[700],
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18,
+              color: hasReminder ? Colors.orange[400] : Colors.red[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getReminderDescription(Challenge challenge) {
+    final data = challenge.reminderTime ?? '';
+    if (data.startsWith('once:')) return 'Once at ${_formatTimeStr(data.substring(5))}';
+    if (data.startsWith('multiple:')) {
+      final count = data.substring(9).split(',').length;
+      return '$count times daily';
+    }
+    if (data.startsWith('hourly:')) return 'Every hour from ${_formatTimeStr(data.substring(7))}';
+    if (data.startsWith('interval:')) {
+      final parts = data.substring(9).split(':');
+      final mins = int.tryParse(parts[0]) ?? 0;
+      return mins < 60 ? 'Every $mins min' : 'Every ${(mins / 60).round()}h';
+    }
+    if (data.startsWith('custom:')) {
+      final count = data.substring(7).split(',').length;
+      return '$count custom times';
+    }
+    if (data.isNotEmpty) return 'At ${_formatTimeStr(data)}';
+    return 'Enabled';
+  }
+
+  String _formatTimeStr(String time) {
+    final parts = time.split(':');
+    if (parts.length < 2) return time;
+    final h = int.tryParse(parts[0]) ?? 0;
+    final m = int.tryParse(parts[1]) ?? 0;
+    final period = h >= 12 ? 'PM' : 'AM';
+    final hour = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '$hour:${m.toString().padLeft(2, '0')} $period';
+  }
+
+  void _showReminderSetup(int index) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ReminderBottomSheet(
+        challenge: _challenges[index],
+        onSave: (updatedChallenge) {
+          _challenges[index] = updatedChallenge;
+          setState(() {});
+        },
+      ),
+    );
+  }
+
+  void _showTemplatePicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Quick Add from Templates',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: TaskTemplates.grouped.entries.map((entry) {
+                    final category = entry.key;
+                    final templates = entry.value;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            category[0].toUpperCase() + category.substring(1),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                        ...templates.map((t) => ListTile(
+                          leading: Icon(_getTemplateIcon(t.iconName), color: DynamicColorService.getColorForCategory(t.category)),
+                          title: Text(t.title),
+                          trailing: const Icon(Icons.add_circle_outline, color: Colors.green),
+                          onTap: () {
+                            if (_challenges.length >= 10) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Maximum 10 challenges')),
+                              );
+                              return;
+                            }
+                            final challenge = TaskTemplates.toChallenge(t);
+                            final controller = TextEditingController(text: t.title);
+                            _controllers.add(controller);
+                            _challenges.add(challenge);
+                            Navigator.pop(context);
+                            setState(() {});
+                          },
+                        )),
+                        const Divider(),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getTemplateIcon(String name) {
+    const map = {
+      'fitness_center': Icons.fitness_center,
+      'directions_run': Icons.directions_run,
+      'self_improvement': Icons.self_improvement,
+      'directions_walk': Icons.directions_walk,
+      'air': Icons.air,
+      'edit_note': Icons.edit_note,
+      'water_drop': Icons.water_drop,
+      'no_food': Icons.no_food,
+      'restaurant': Icons.restaurant,
+      'no_drinks': Icons.no_drinks,
+      'menu_book': Icons.menu_book,
+      'school': Icons.school,
+      'headphones': Icons.headphones,
+      'alarm': Icons.alarm,
+      'phone_disabled': Icons.phone_disabled,
+      'shower': Icons.shower,
+      'camera_alt': Icons.camera_alt,
+      'bedtime': Icons.bedtime,
+    };
+    return map[name] ?? Icons.check_circle;
   }
 }

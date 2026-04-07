@@ -27,23 +27,18 @@ class NotificationService {
     // Get device timezone info
     final now = DateTime.now();
     final offset = now.timeZoneOffset;
-    print('🔔 DEBUG: Device timezone offset: $offset');
-    print('🔔 DEBUG: Device timezone name: ${now.timeZoneName}');
-    
+
     // Set timezone based on device offset
     try {
       // Try common timezone names first
       if (offset.inHours == 5 && offset.inMinutes == 330) {
         tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
-        print('🔔 DEBUG: Set timezone to Asia/Kolkata');
       } else {
         // Fallback to UTC and handle offset manually
         tz.setLocalLocation(tz.getLocation('UTC'));
-        print('🔔 DEBUG: Using UTC with manual offset handling');
       }
     } catch (e) {
       tz.setLocalLocation(tz.getLocation('UTC'));
-      print('🔔 DEBUG: Fallback to UTC: $e');
     }
     
     const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
@@ -101,30 +96,23 @@ class NotificationService {
   }
   
   void _onNotificationTapped(NotificationResponse response) {
-    print('🔔 DEBUG: Notification tapped: ${response.payload}');
     // Handle notification tap here
   }
 
   Future<void> _requestPermissions() async {
-    print('🔔 DEBUG: Requesting notification permissions');
-    
+
     // Use flutter_local_notifications API for permission requests
     final androidImplementation = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     
     if (androidImplementation != null) {
       // Request notification permission (Android 13+)
-      final notificationPermission = await androidImplementation.requestNotificationsPermission();
-      print('🔔 DEBUG: Notification permission: $notificationPermission');
-      
+
       // Request exact alarm permission
-      final exactAlarmPermission = await androidImplementation.requestExactAlarmsPermission();
-      print('🔔 DEBUG: Exact alarm permission: $exactAlarmPermission');
     }
   }
 
   // Test method to send immediate notification
   Future<void> sendTestNotification() async {
-    print('🔔 DEBUG: Sending test notification');
     try {
       await _notifications.show(
         999, // Test notification ID
@@ -140,19 +128,15 @@ class NotificationService {
           ),
         ),
       );
-      print('🔔 DEBUG: Test notification sent successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to send test notification: $e');
     }
   }
 
   // Test method to schedule notification in 10 seconds
   Future<void> scheduleTestNotification() async {
-    print('🔔 DEBUG: Scheduling test notification for 10 seconds from now');
     try {
       final scheduledTime = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 10));
-      print('🔔 DEBUG: Test notification scheduled for: $scheduledTime');
-      
+
       await _notifications.zonedSchedule(
         998, // Test scheduled notification ID
         'Scheduled Test',
@@ -169,15 +153,12 @@ class NotificationService {
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
-      print('🔔 DEBUG: Test notification scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule test notification: $e');
     }
   }
   
   // Simple test following the guide pattern
   Future<void> scheduleSimpleTest() async {
-    print('🔔 DEBUG: Scheduling simple test notification');
     final DateTime scheduledTime = DateTime.now().add(const Duration(seconds: 30));
     final tz.TZDateTime tzScheduleTime = tz.TZDateTime.from(scheduledTime, tz.local);
     
@@ -198,9 +179,7 @@ class NotificationService {
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
-      print('🔔 DEBUG: Simple test notification scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule simple test: $e');
     }
   }
 
@@ -229,9 +208,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
       );
-      print('🔔 DEBUG: Daily motivation scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule daily motivation: $e');
     }
   }
 
@@ -247,12 +224,10 @@ class NotificationService {
         if (data is List && data.isNotEmpty) {
           final quote = data[0]['q'] as String;
           final author = data[0]['a'] as String;
-          print('🔔 DEBUG: Fetched quote from ZenQuotes API');
           return '$quote - $author';
         }
       }
     } catch (e) {
-      print('🔔 DEBUG: Failed to fetch online quote, using offline: $e');
     }
 
     // Fallback to offline messages
@@ -260,67 +235,45 @@ class NotificationService {
   }
 
   Future<void> scheduleTaskReminder(Challenge challenge, String time) async {
-    print('🔔 DEBUG: scheduleTaskReminder called');
-    print('🔔 DEBUG: Challenge: ${challenge.title}');
-    print('🔔 DEBUG: isReminderEnabled: ${challenge.isReminderEnabled}');
-    print('🔔 DEBUG: reminderTime: ${challenge.reminderTime}');
-    print('🔔 DEBUG: time parameter: $time');
-    
+
     if (!challenge.isReminderEnabled || challenge.reminderTime == null) {
-      print('🔔 DEBUG: Reminder not enabled or time is null - returning');
       return;
     }
 
     // Cancel any existing reminders for this challenge
     await cancelTaskReminder(challenge.id);
-    print('🔔 DEBUG: Cancelled existing reminders for ${challenge.id}');
 
     // Parse reminder data to determine type and schedule accordingly
     final reminderData = challenge.reminderTime!;
-    print('🔔 DEBUG: Processing reminderData: $reminderData');
-    
+
     if (reminderData.startsWith('once:')) {
-      print('🔔 DEBUG: Scheduling ONCE reminder');
       await _scheduleOnceReminder(challenge, reminderData.substring(5));
     } else if (reminderData.startsWith('multiple:')) {
-      print('🔔 DEBUG: Scheduling MULTIPLE reminders');
       await _scheduleMultipleReminders(challenge, reminderData.substring(9));
     } else if (reminderData.startsWith('hourly:')) {
-      print('🔔 DEBUG: Scheduling HOURLY reminders');
       await _scheduleHourlyReminders(challenge, reminderData.substring(7));
     } else if (reminderData.startsWith('interval:')) {
-      print('🔔 DEBUG: Scheduling INTERVAL reminders');
       await _scheduleIntervalReminders(challenge, reminderData.substring(9));
     } else if (reminderData.startsWith('custom:')) {
-      print('🔔 DEBUG: Scheduling CUSTOM reminders');
       await _scheduleCustomReminders(challenge, reminderData.substring(7));
     } else {
       // Handle both simple time format (18:03) and fallback
-      print('🔔 DEBUG: Using FALLBACK - scheduling simple daily reminder');
-      print('🔔 DEBUG: Fallback time: $reminderData');
       await _scheduleOnceReminder(challenge, reminderData);
     }
     
-    print('🔔 DEBUG: scheduleTaskReminder completed');
   }
 
   Future<void> _scheduleOnceReminder(Challenge challenge, String time) async {
-    print('🔔 DEBUG: _scheduleOnceReminder called with time: $time');
-    
+
     try {
       final timeParts = time.split(':');
-      print('🔔 DEBUG: Time parts: $timeParts');
-      
+
       final hour = int.parse(timeParts[0]);
       final minute = int.parse(timeParts[1]);
-      print('🔔 DEBUG: Parsed hour: $hour, minute: $minute');
 
       final scheduledTime = _nextInstanceOfTime(hour, minute);
-      print('🔔 DEBUG: Scheduled time: $scheduledTime');
-      print('🔔 DEBUG: Current time: ${tz.TZDateTime.now(tz.local)}');
-      
+
       final notificationId = challenge.id.hashCode;
-      print('🔔 DEBUG: Notification ID: $notificationId');
 
       if (_canScheduleMoreNotifications()) {
         await _notifications.zonedSchedule(
@@ -345,12 +298,9 @@ class NotificationService {
         );
         _scheduledNotificationCount++;
       } else {
-        print('🔔 WARNING: Notification limit reached, skipping notification');
       }
       
-      print('🔔 DEBUG: Notification scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule notification: $e');
     }
   }
 
@@ -381,25 +331,21 @@ class NotificationService {
         );
         _scheduledNotificationCount++;
       } else {
-        print('🔔 WARNING: Notification limit reached, skipping notification');
         break;
       }
     }
   }
 
   Future<void> _scheduleHourlyReminders(Challenge challenge, String startTime) async {
-    print('🔔 DEBUG: _scheduleHourlyReminders called with: $startTime');
-    
+
     final timeParts = startTime.split(':');
     final startHour = int.parse(timeParts[0]);
     final startMinute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
     
-    print('🔔 DEBUG: Starting hourly reminders from $startHour:${startMinute.toString().padLeft(2, '0')}');
-    
+
     // Schedule hourly reminders from start time until 11 PM (23:00)
     for (int hour = startHour; hour <= 23; hour++) {
-      print('🔔 DEBUG: Scheduling hourly reminder for $hour:${startMinute.toString().padLeft(2, '0')}');
-      
+
       if (_canScheduleMoreNotifications()) {
         await _notifications.zonedSchedule(
           challenge.id.hashCode + hour, // Unique ID for each hour
@@ -419,26 +365,20 @@ class NotificationService {
           matchDateTimeComponents: DateTimeComponents.time,
         );
         _scheduledNotificationCount++;
-        print('🔔 DEBUG: Scheduled hourly reminder for $hour:${startMinute.toString().padLeft(2, '0')} successfully');
       } else {
-        print('🔔 WARNING: Notification limit reached, skipping hourly notification');
         break;
       }
     }
     
-    print('🔔 DEBUG: Finished scheduling hourly reminders');
   }
 
   Future<void> _scheduleIntervalReminders(Challenge challenge, String intervalData) async {
-    print('🔔 DEBUG: _scheduleIntervalReminders called with: $intervalData');
-    
+
     try {
       // Parse interval data - expecting format like "15:09:00" (15 min interval starting at 09:00)
       final parts = intervalData.split(':');
-      print('🔔 DEBUG: Interval parts: $parts');
-      
+
       if (parts.length < 3) {
-        print('🔔 ERROR: Invalid interval format. Expected format: "15:09:00"');
         return;
       }
       
@@ -446,16 +386,14 @@ class NotificationService {
       final startHour = int.parse(parts[1]);
       final startMinute = int.parse(parts[2]);
       
-      print('🔔 DEBUG: Interval: $intervalMinutes minutes, Start: $startHour:$startMinute');
-      
+
       // Calculate how many reminders fit in the day (from start time to 10 PM)
       final startTimeInMinutes = startHour * 60 + startMinute;
-      final endTimeInMinutes = 22 * 60; // 10 PM
+      const endTimeInMinutes = 22 * 60; // 10 PM
       final totalMinutes = endTimeInMinutes - startTimeInMinutes;
       final numberOfReminders = (totalMinutes / intervalMinutes).floor() + 1;
       
-      print('🔔 DEBUG: Will schedule $numberOfReminders reminders');
-      
+
       for (int i = 0; i < numberOfReminders; i++) {
         final reminderTimeInMinutes = startTimeInMinutes + (i * intervalMinutes);
         if (reminderTimeInMinutes > endTimeInMinutes) break;
@@ -463,8 +401,7 @@ class NotificationService {
         final hour = (reminderTimeInMinutes / 60).floor();
         final minute = reminderTimeInMinutes % 60;
         
-        print('🔔 DEBUG: Scheduling reminder $i at $hour:${minute.toString().padLeft(2, '0')}');
-        
+
         if (_canScheduleMoreNotifications()) {
           await _notifications.zonedSchedule(
             challenge.id.hashCode + i,
@@ -484,14 +421,11 @@ class NotificationService {
             matchDateTimeComponents: DateTimeComponents.time,
           );
           _scheduledNotificationCount++;
-          print('🔔 DEBUG: Scheduled reminder $i successfully');
         } else {
-          print('🔔 WARNING: Notification limit reached, skipping interval notification');
           break;
         }
       }
     } catch (e) {
-      print('🔔 ERROR: Failed to parse interval data: $e');
     }
   }
 
@@ -512,10 +446,8 @@ class NotificationService {
   }
 
   Future<void> cancelAllNotifications() async {
-    print('🔔 DEBUG: Cancelling all notifications');
     await _notifications.cancelAll();
     _scheduledNotificationCount = 0;
-    print('🔔 DEBUG: All notifications cancelled');
   }
   
   bool _canScheduleMoreNotifications() {
@@ -570,17 +502,13 @@ class NotificationService {
 
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     final now = DateTime.now();
-    print('🔔 DEBUG: _nextInstanceOfTime - Device local time: $now');
-    print('🔔 DEBUG: _nextInstanceOfTime - Target hour: $hour, minute: $minute');
-    
+
     // Create target time in device local time
     var targetTime = DateTime(now.year, now.month, now.day, hour, minute);
-    print('🔔 DEBUG: _nextInstanceOfTime - Target device time: $targetTime');
-    
+
     // If time is in the past, add one day
     if (targetTime.isBefore(now)) {
       targetTime = targetTime.add(const Duration(days: 1));
-      print('🔔 DEBUG: _nextInstanceOfTime - Time was in past, moved to tomorrow: $targetTime');
     }
     
     // Convert to TZDateTime using the device's timezone offset
@@ -588,29 +516,16 @@ class NotificationService {
     final utcTime = targetTime.subtract(offset);
     final scheduledDate = tz.TZDateTime.from(utcTime, tz.UTC).add(offset);
     
-    print('🔔 DEBUG: _nextInstanceOfTime - Final scheduled time: $scheduledDate');
     return scheduledDate;
   }
-  
-  // Get pending notifications for debugging
-  Future<void> debugPendingNotifications() async {
-    final pendingNotifications = await _notifications.pendingNotificationRequests();
-    print('🔔 DEBUG: Pending notifications count: ${pendingNotifications.length}');
-    for (final notification in pendingNotifications) {
-      print('🔔 DEBUG: ID: ${notification.id}, Title: ${notification.title}');
-    }
-  }
-  
+
   // Quick test - schedule notification 2 minutes from now
   Future<void> scheduleQuickTest() async {
     final now = DateTime.now();
     final testTime = now.add(const Duration(minutes: 2));
     final tzTestTime = tz.TZDateTime.from(testTime, tz.local);
     
-    print('🔔 DEBUG: Quick test - Current time: $now');
-    print('🔔 DEBUG: Quick test - Scheduled for: $testTime');
-    print('🔔 DEBUG: Quick test - TZ scheduled for: $tzTestTime');
-    
+
     try {
       await _notifications.zonedSchedule(
         995,
@@ -627,16 +542,13 @@ class NotificationService {
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
-      print('🔔 DEBUG: Quick test notification scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule quick test: $e');
     }
   }
   
   // Simple working method following exact guide pattern
   Future<void> scheduleWorkingTest(int hour, int minute) async {
-    print('🔔 DEBUG: scheduleWorkingTest called for $hour:$minute');
-    
+
     // Create target DateTime in device local time
     final now = DateTime.now();
     var scheduledTime = DateTime(now.year, now.month, now.day, hour, minute);
@@ -646,13 +558,10 @@ class NotificationService {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
     
-    print('🔔 DEBUG: Device time now: $now');
-    print('🔔 DEBUG: Target device time: $scheduledTime');
-    
+
     // Convert to TZDateTime using the exact guide pattern
     final tz.TZDateTime tzScheduleTime = tz.TZDateTime.from(scheduledTime, tz.local);
-    print('🔔 DEBUG: TZ scheduled time: $tzScheduleTime');
-    
+
     try {
       await _notifications.zonedSchedule(
         994,
@@ -670,9 +579,7 @@ class NotificationService {
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
-      print('🔔 DEBUG: Working test scheduled successfully');
     } catch (e) {
-      print('🔔 ERROR: Failed to schedule working test: $e');
     }
   }
 

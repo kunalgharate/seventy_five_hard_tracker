@@ -8,63 +8,61 @@ class DatabaseRepository {
   static const String _dailyProgressBoxName = 'daily_progress';
   static const String _settingsBoxName = 'settings';
 
-  late Box<ChallengeSession> _sessionBox;
-  late Box<DailyProgress> _progressBox;
-  late Box _settingsBox;
+  Box<ChallengeSession>? _sessionBox;
+  Box<DailyProgress>? _progressBox;
+  Box? _settingsBox;
+
+  bool get _isInitialized =>
+      _sessionBox != null && _progressBox != null && _settingsBox != null;
 
   Future<void> init() async {
-    await Hive.initFlutter();
-    
-    // Register adapters
-    if (!Hive.isAdapterRegistered(0)) {
-      Hive.registerAdapter(ChallengeAdapter());
-    }
-    if (!Hive.isAdapterRegistered(1)) {
-      Hive.registerAdapter(DailyProgressAdapter());
-    }
-    if (!Hive.isAdapterRegistered(2)) {
-      Hive.registerAdapter(ChallengeSessionAdapter());
-    }
+    if (_isInitialized) return;
 
-    // Open boxes
-    _sessionBox = await Hive.openBox<ChallengeSession>(_challengeSessionBoxName);
+    // Open boxes (adapters are registered once in main.dart)
+    _sessionBox =
+        await Hive.openBox<ChallengeSession>(_challengeSessionBoxName);
     _progressBox = await Hive.openBox<DailyProgress>(_dailyProgressBoxName);
     _settingsBox = await Hive.openBox(_settingsBoxName);
   }
 
+  Future<void> _ensureInitialized() async {
+    if (!_isInitialized) await init();
+  }
+
   // Challenge Session methods
   Future<void> saveSession(ChallengeSession session) async {
-    await _sessionBox.put(session.id, session);
+    await _ensureInitialized();
+    await _sessionBox!.put(session.id, session);
   }
 
   ChallengeSession? getActiveSession() {
     try {
-      return _sessionBox.values.firstWhere(
-        (session) => session.isActive,
-      );
+      return _sessionBox?.values.firstWhere((session) => session.isActive);
     } catch (e) {
       return null;
     }
   }
 
   List<ChallengeSession> getAllSessions() {
-    return _sessionBox.values.toList()
+    return (_sessionBox?.values.toList() ?? [])
       ..sort((a, b) => b.startDate.compareTo(a.startDate));
   }
 
   Future<void> updateSession(ChallengeSession session) async {
-    await _sessionBox.put(session.id, session);
+    await _ensureInitialized();
+    await _sessionBox!.put(session.id, session);
   }
 
   // Daily Progress methods
   Future<void> saveDailyProgress(DailyProgress progress) async {
+    await _ensureInitialized();
     final key = _dateToKey(progress.date);
-    await _progressBox.put(key, progress);
+    await _progressBox!.put(key, progress);
   }
 
   DailyProgress? getDailyProgress(DateTime date) {
     final key = _dateToKey(date);
-    return _progressBox.get(key);
+    return _progressBox?.get(key);
   }
 
   List<DailyProgress> getProgressForSession(DateTime startDate) {
@@ -81,11 +79,12 @@ class DatabaseRepository {
 
   // Settings methods
   Future<void> saveSetting(String key, dynamic value) async {
-    await _settingsBox.put(key, value);
+    await _ensureInitialized();
+    await _settingsBox!.put(key, value);
   }
 
   T? getSetting<T>(String key) {
-    return _settingsBox.get(key) as T?;
+    return _settingsBox?.get(key) as T?;
   }
 
   // Utility methods
@@ -95,24 +94,37 @@ class DatabaseRepository {
 
   Future<bool> hasActiveSession() async {
     await _ensureInitialized();
-    final sessions = _sessionBox.values.toList();
-    return sessions.any((session) => session.isActive && !session.isCompleted);
-  }
-
-  Future<void> _ensureInitialized() async {
-    if (!Hive.isBoxOpen(_challengeSessionBoxName)) {
-      await init();
-    }
+    return _sessionBox!.values
+        .any((session) => session.isActive && !session.isCompleted);
   }
 
   Future<void> clearAllData() async {
-    await _sessionBox.clear();
-    await _progressBox.clear();
-    await _settingsBox.clear();
+    await _ensureInitialized();
+    await _sessionBox!.clear();
+    await _progressBox!.clear();
+    await _settingsBox!.clear();
   }
 
   Future<void> clearAllDailyProgress() async {
     await _ensureInitialized();
-    await _progressBox.clear();
+    await _progressBox!.clear();
+  }
+
+  Future<void> restoreFromJson(Map<String, dynamic> data) async {
+    await _ensureInitialized();
+    await clearAllData();
+
+    final sessions = (data['sessions'] as List?) ?? [];
+    for (final s in sessions) {
+      final session = ChallengeSession.fromJson(s as Map<String, dynamic>);
+      await _sessionBox!.put(session.id, session);
+    }
+
+    final progress = (data['progress'] as List?) ?? [];
+    for (final p in progress) {
+      final dp = DailyProgress.fromJson(p as Map<String, dynamic>);
+      final key = _dateToKey(dp.date);
+      await _progressBox!.put(key, dp);
+    }
   }
 }

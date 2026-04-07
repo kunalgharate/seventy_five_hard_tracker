@@ -126,7 +126,6 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
-                        print('Date tapped: $date'); // Debug print
                         widget.onDateSelected(date);
                       },
                       borderRadius: BorderRadius.circular(12),

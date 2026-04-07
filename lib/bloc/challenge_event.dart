@@ -100,3 +100,27 @@ class UpdateChallengeReminder extends ChallengeEvent {
   @override
   List<Object?> get props => [challengeId, reminderTime, isEnabled];
 }
+
+class AddChallengeToSession extends ChallengeEvent {
+  final Challenge challenge;
+
+  const AddChallengeToSession(this.challenge);
+
+  @override
+  List<Object> get props => [challenge];
+}
+
+class AddTaskPhoto extends ChallengeEvent {
+  final DateTime date;
+  final String challengeId;
+  final String photoPath;
+
+  const AddTaskPhoto({
+    required this.date,
+    required this.challengeId,
+    required this.photoPath,
+  });
+
+  @override
+  List<Object> get props => [date, challengeId, photoPath];
+}

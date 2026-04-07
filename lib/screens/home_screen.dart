@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -14,7 +15,7 @@ import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
-import '../services/notification_service.dart';
+import '../services/smart_notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -25,24 +26,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
-  late AnimationController _fabController;
 
   @override
   void initState() {
     super.initState();
-    _fabController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat(reverse: true);
     context.read<ChallengeBloc>().add(LoadChallengeData());
-  }
-
-  @override
-  void dispose() {
-    _fabController.dispose();
-    super.dispose();
   }
 
   @override
@@ -59,14 +49,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           title: '75 Hard Challenge',
           actions: [
           // Test notification button (only in debug mode)
-          if (const bool.fromEnvironment('dart.vm.product') == false)
+          if (kDebugMode)
             IconButton(
               icon: const Icon(Icons.notifications_active, color: Colors.orange),
               onPressed: () async {
-                print('🔔 DEBUG: Test notification button pressed');
-                final notificationService = NotificationService();
+                final notificationService = SmartNotificationService();
                 
-                // Show dialog with test options
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -77,9 +65,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: () async {
                           Navigator.pop(context);
                           await notificationService.sendTestNotification();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Immediate test notification sent')),
-                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Immediate test notification sent')),
+                            );
+                          }
                         },
                         child: const Text('Immediate'),
                       ),
@@ -87,9 +77,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         onPressed: () async {
                           Navigator.pop(context);
                           await notificationService.scheduleTestNotification();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
-                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
+                            );
+                          }
                         },
                         child: const Text('10 Seconds'),
                       ),
@@ -245,6 +237,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               color: Colors.grey[600],
             ),
           ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/onboarding'),
+            icon: const Icon(Icons.add),
+            label: const Text('Create 75 Hard Challenge'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
     );
@@ -365,10 +370,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ).animate().fadeIn(duration: 400.ms)
             else
               // Animated task cards with staggered entrance
-              ...session.challenges.asMap().entries.map((entry) {
+              ...session.challenges.where((c) => c.taskType != 'regular').toList().asMap().entries.map((entry) {
                 final index = entry.key;
                 final challenge = entry.value;
                 final isCompleted = selectedProgress?.challengeCompletions[challenge.id] ?? false;
+                final totalNonRegular = session.challenges.where((c) => c.taskType != 'regular').length;
                 return AnimationConfiguration.staggeredList(
                   position: index,
                   duration: const Duration(milliseconds: 500),
@@ -377,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: FadeInAnimation(
                       child: Padding(
                         padding: EdgeInsets.only(
-                          bottom: index == session.challenges.length - 1 ? 0 : 8,
+                          bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
                           child: DailyTaskCard(

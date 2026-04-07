@@ -26,13 +26,15 @@ class ChallengeSessionAdapter extends TypeAdapter<ChallengeSession> {
       currentDay: fields[6] as int,
       failureReason: fields[7] as String?,
       failedChallenges: (fields[8] as List?)?.cast<String>(),
+      resetMode: fields[9] as String,
+      totalDaysTarget: fields[10] as int,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChallengeSession obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +52,11 @@ class ChallengeSessionAdapter extends TypeAdapter<ChallengeSession> {
       ..writeByte(7)
       ..write(obj.failureReason)
       ..writeByte(8)
-      ..write(obj.failedChallenges);
+      ..write(obj.failedChallenges)
+      ..writeByte(9)
+      ..write(obj.resetMode)
+      ..writeByte(10)
+      ..write(obj.totalDaysTarget);
   }
 
   @override

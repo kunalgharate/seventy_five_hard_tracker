@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -41,7 +42,7 @@ class FcmService {
           description: 'Push notifications from 75 Hard Challenge',
           importance: Importance.max,
           playSound: true,
-          sound: RawResourceAndroidNotificationSound('tune'),
+          sound: RawResourceAndroidNotificationSound('notification'),
         ),
       );
     }
@@ -69,7 +70,7 @@ class FcmService {
     // Log FCM token for testing
     final token = await _messaging.getToken();
     // ignore: avoid_print
-    print('🔔 FCM Token: $token');
+    if (kDebugMode) print('🔔 FCM Token: $token');
   }
 
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
@@ -93,7 +94,7 @@ class FcmService {
           importance: Importance.max,
           priority: Priority.max,
           icon: 'ic_notification',
-          sound: RawResourceAndroidNotificationSound('tune'),
+          sound: RawResourceAndroidNotificationSound('notification'),
           playSound: true,
         ),
       ),
@@ -105,6 +106,6 @@ class FcmService {
     // Handle deep-link / navigation from notification data
     // e.g., message.data['screen'] → navigate accordingly
     // ignore: avoid_print
-    print('🔔 FCM tap data: ${message.data}');
+    if (kDebugMode) print('🔔 FCM tap data: ${message.data}');
   }
 }
