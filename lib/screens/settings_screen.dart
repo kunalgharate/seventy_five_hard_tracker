@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
+import '../models/challenge.dart';
 import '../services/quotes_service.dart';
 import '../widgets/custom_app_bar.dart';
 
@@ -36,7 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildActiveSessionSettings(ChallengeLoaded state) {
     final session = state.activeSession!;
-    
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -50,8 +51,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'Task Reminders',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -59,16 +60,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
-                ...session.challenges.map((challenge) => 
-                  _buildReminderTile(challenge)
-                ),
+                ...session.challenges
+                    .map((challenge) => _buildReminderTile(challenge)),
               ],
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Motivational Quotes Section
         Card(
           child: Padding(
@@ -79,8 +79,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'Daily Motivation',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -97,9 +97,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Danger Zone
         Card(
           child: Padding(
@@ -110,9 +110,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'Danger Zone',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -155,8 +155,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'Data Management',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 ListTile(
@@ -170,8 +170,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'About',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 ListTile(
@@ -193,7 +193,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Terms of Service'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    // TODO: Add terms of service
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Terms of Service'),
+                        content: const SingleChildScrollView(
+                          child: Text(
+                            'By using 75 Hard Challenge Tracker, you agree to:\n\n'
+                            '• Use the app for personal challenge tracking only\n'
+                            '• All data is stored locally on your device\n'
+                            '• We do not collect or share personal information\n'
+                            '• The app is provided as-is without warranty\n'
+                            '• You are responsible for your own health and safety during the challenge\n\n'
+                            'For questions, contact the developer through the Play Store listing.',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
                   },
                 ),
               ],
@@ -208,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final bloc = context.read<ChallengeBloc>();
       final state = bloc.state;
-      
+
       if (state is! ChallengeLoaded) {
         _showMessage('No data to export', isError: true);
         return;
@@ -219,11 +241,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'app_version': '1.0.3+4',
         'active_session': state.activeSession?.toJson(),
         'all_sessions': state.allSessions.map((s) => s.toJson()).toList(),
-        'current_progress': state.currentProgress.map((p) => p.toJson()).toList(),
+        'current_progress':
+            state.currentProgress.map((p) => p.toJson()).toList(),
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
-      
+
       // Show export dialog with data
       showDialog(
         context: context,
@@ -281,7 +304,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       );
-      
+
       _showMessage('Data exported successfully');
     } catch (e) {
       _showMessage('Failed to export data: $e', isError: true);
@@ -297,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildReminderTile(challenge) {
+  Widget _buildReminderTile(Challenge challenge) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -312,22 +335,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _showTimePickerDialog(challenge);
             } else {
               context.read<ChallengeBloc>().add(
-                UpdateChallengeReminder(
-                  challengeId: challenge.id,
-                  isEnabled: false,
-                ),
-              );
+                    UpdateChallengeReminder(
+                      challengeId: challenge.id,
+                      isEnabled: false,
+                    ),
+                  );
             }
           },
         ),
-        onTap: challenge.isReminderEnabled 
+        onTap: challenge.isReminderEnabled
             ? () => _showTimePickerDialog(challenge)
             : null,
       ),
     );
   }
 
-  void _showTimePickerDialog(challenge) {
+  void _showTimePickerDialog(Challenge challenge) {
     final currentTime = challenge.reminderTime != null
         ? TimeOfDay(
             hour: int.parse(challenge.reminderTime!.split(':')[0]),
@@ -340,21 +363,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       initialTime: currentTime,
     ).then((selectedTime) {
       if (selectedTime != null && mounted) {
-        final timeString = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+        final timeString =
+            '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
         context.read<ChallengeBloc>().add(
-          UpdateChallengeReminder(
-            challengeId: challenge.id,
-            reminderTime: timeString,
-            isEnabled: true,
-          ),
-        );
+              UpdateChallengeReminder(
+                challengeId: challenge.id,
+                reminderTime: timeString,
+                isEnabled: true,
+              ),
+            );
       }
     });
   }
 
   void _showRandomQuote() async {
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => const Center(child: CircularProgressIndicator()),
@@ -363,9 +387,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final quote = await _quotesService.getMotivationalQuote();
       if (!mounted) return;
-      
+
       Navigator.of(context).pop(); // Close loading dialog
-      
+
       if (!mounted) return;
       showDialog(
         context: context,
@@ -389,7 +413,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Failed to load quote. Check your internet connection.'),
+          content:
+              Text('Failed to load quote. Check your internet connection.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -413,11 +438,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () {
               Navigator.of(context).pop();
               context.read<ChallengeBloc>().add(
-                const ResetChallenge(
-                  reason: 'Manual reset by user',
-                  failedChallenges: [],
-                ),
-              );
+                    const ResetChallenge(
+                      reason: 'Manual reset by user',
+                      failedChallenges: [],
+                    ),
+                  );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Reset', style: TextStyle(color: Colors.white)),

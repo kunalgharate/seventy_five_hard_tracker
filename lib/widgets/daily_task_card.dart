@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/challenge.dart';
 import 'challenge_icon_widget.dart';
+import 'reminder_bottom_sheet.dart';
 import 'task_note_bottom_sheet.dart';
 
 class DailyTaskCard extends StatefulWidget {
@@ -102,838 +103,13 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   void _showGenericReminderSetup() {
     if (widget.onReminderUpdate == null) return;
-    
-    // State variables for the modal
-    bool tempReminderEnabled = widget.challenge.isReminderEnabled;
-    
-    // Initialize reminder type and time from saved data
-    String tempReminderType = 'once'; // Default type
-    String tempReminderTime = '09:00'; // Default time
-    int tempIntervalMinutes = 120; // Default 2 hours
-    List<String> tempCustomTimes = ['09:00', '18:00']; // Default times
-    
-    if (widget.challenge.reminderTime != null) {
-      final reminderData = widget.challenge.reminderTime!;
-      tempReminderTime = _getDisplayTime(reminderData);
-      
-      // Detect reminder type from saved data
-      if (reminderData.startsWith('once:')) {
-        tempReminderType = 'once';
-      } else if (reminderData.startsWith('multiple:')) {
-        tempReminderType = 'multiple';
-        tempCustomTimes = reminderData.substring(9).split(',');
-      } else if (reminderData.startsWith('hourly:')) {
-        tempReminderType = 'hourly';
-      } else if (reminderData.startsWith('interval:')) {
-        tempReminderType = 'interval';
-        final parts = reminderData.substring(9).split(':');
-        tempIntervalMinutes = int.parse(parts[0]);
-      } else if (reminderData.startsWith('custom:')) {
-        tempReminderType = 'custom';
-        tempCustomTimes = reminderData.substring(7).split(',');
-      }
-    }
-    
-    List<String> tempCustomTimesBackup = widget.challenge.reminderTime != null 
-        ? [widget.challenge.reminderTime!] 
-        : ['09:00'];
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.8,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Icon(Icons.notifications, color: Colors.orange[600], size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Set Reminder',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Enable/Disable Toggle
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey[200]!),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.notifications, color: Colors.orange[600], size: 24),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Enable Reminders',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Get notified for this task',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Switch(
-                                value: tempReminderEnabled,
-                                onChanged: (value) {
-                                  setModalState(() {
-                                    tempReminderEnabled = value;
-                                    if (value && tempReminderTime.isEmpty) {
-                                      tempReminderTime = '09:00';
-                                    }
-                                  });
-                                },
-                                activeColor: Colors.orange[600],
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        if (tempReminderEnabled) ...[
-                          const SizedBox(height: 20),
-                          
-                          // Reminder Type Selection
-                          Text(
-                            'Reminder Type',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          
-                          // All 5 reminder types with full functionality
-                          _buildFunctionalReminderType(
-                            'once',
-                            'Once',
-                            'Single reminder at specific time',
-                            Icons.schedule_outlined,
-                            tempReminderType,
-                            (type) => setModalState(() => tempReminderType = type),
-                          ),
-                          _buildFunctionalReminderType(
-                            'multiple',
-                            'Multiple Times',
-                            'Several reminders throughout the day',
-                            Icons.schedule,
-                            tempReminderType,
-                            (type) => setModalState(() {
-                              tempReminderType = type;
-                              if (tempCustomTimes.length < 2) {
-                                tempCustomTimes = ['09:00', '18:00'];
-                              }
-                            }),
-                          ),
-                          _buildFunctionalReminderType(
-                            'hourly',
-                            'Every Hour',
-                            'Hourly reminders during active hours',
-                            Icons.access_time,
-                            tempReminderType,
-                            (type) => setModalState(() => tempReminderType = type),
-                          ),
-                          _buildFunctionalReminderType(
-                            'interval',
-                            'Every X Hours',
-                            'Regular intervals (15 min - 12 hours)',
-                            Icons.timer,
-                            tempReminderType,
-                            (type) => setModalState(() => tempReminderType = type),
-                          ),
-                          _buildFunctionalReminderType(
-                            'custom',
-                            'Custom Schedule',
-                            'Flexible timing for any pattern',
-                            Icons.tune,
-                            tempReminderType,
-                            (type) => setModalState(() => tempReminderType = type),
-                          ),
-                          
-                          const SizedBox(height: 20),
-                          
-                          // Type-specific configuration
-                          if (tempReminderType == 'once') ...[
-                            _buildTimeSelector(
-                              'Reminder Time',
-                              tempReminderTime,
-                              (time) => setModalState(() => tempReminderTime = time),
-                            ),
-                          ] else if (tempReminderType == 'multiple') ...[
-                            _buildMultipleTimeSelector(
-                              'Reminder Times',
-                              tempCustomTimes,
-                              (times) => setModalState(() => tempCustomTimes = times),
-                            ),
-                          ] else if (tempReminderType == 'hourly') ...[
-                            _buildHourlyConfiguration(
-                              tempReminderTime,
-                              (time) => setModalState(() => tempReminderTime = time),
-                            ),
-                          ] else if (tempReminderType == 'interval') ...[
-                            _buildIntervalConfiguration(
-                              tempIntervalMinutes,
-                              tempReminderTime,
-                              (minutes) => setModalState(() => tempIntervalMinutes = minutes),
-                              (time) => setModalState(() => tempReminderTime = time),
-                            ),
-                          ] else if (tempReminderType == 'custom') ...[
-                            _buildCustomScheduleConfiguration(
-                              tempCustomTimes,
-                              (times) => setModalState(() => tempCustomTimes = times),
-                            ),
-                          ],
-                          
-                          const SizedBox(height: 30),
-                        ] else ...[
-                          const SizedBox(height: 20),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Enable reminders to configure settings',
-                                  style: GoogleFonts.inter(
-                                    color: Colors.grey[600],
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 30),
-                        ],
-                        
-                        // Save Button
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              // Prepare reminder data based on type
-                              String? finalReminderTime;
-                              String? reminderData;
-                              
-                              if (tempReminderEnabled) {
-                                switch (tempReminderType) {
-                                  case 'once':
-                                    finalReminderTime = tempReminderTime;
-                                    reminderData = 'once:$tempReminderTime';
-                                    break;
-                                  case 'multiple':
-                                    finalReminderTime = tempCustomTimes.first;
-                                    reminderData = 'multiple:${tempCustomTimes.join(',')}';
-                                    break;
-                                  case 'hourly':
-                                    finalReminderTime = tempReminderTime;
-                                    reminderData = 'hourly:$tempReminderTime';
-                                    break;
-                                  case 'interval':
-                                    finalReminderTime = tempReminderTime;
-                                    reminderData = 'interval:$tempIntervalMinutes:$tempReminderTime';
-                                    break;
-                                  case 'custom':
-                                    finalReminderTime = tempCustomTimes.first;
-                                    reminderData = 'custom:${tempCustomTimes.join(',')}';
-                                    break;
-                                }
-                              }
-                              
-                              // Update the challenge
-                              final updatedChallenge = widget.challenge.copyWith(
-                                isReminderEnabled: tempReminderEnabled,
-                                reminderTime: tempReminderEnabled ? reminderData : null, // ✅ Save full reminderData format
-                              );
-                              
-                              widget.onReminderUpdate!(updatedChallenge);
-                              Navigator.pop(context);
-                              
-                              // Show success message
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    tempReminderEnabled 
-                                        ? _getSuccessMessage(tempReminderType, tempReminderTime, tempCustomTimes, tempIntervalMinutes)
-                                        : 'Reminder disabled',
-                                    style: GoogleFonts.inter(fontWeight: FontWeight.w500),
-                                  ),
-                                  backgroundColor: tempReminderEnabled ? Colors.green : Colors.orange,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange[600],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              tempReminderEnabled ? 'Save Reminder Settings' : 'Disable Reminder',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFunctionalReminderType(
-    String id,
-    String title,
-    String subtitle,
-    IconData icon,
-    String selectedType,
-    Function(String) onSelect,
-  ) {
-    final isSelected = selectedType == id;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () => onSelect(id),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.orange[50] : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? Colors.orange[300]! : Colors.grey[300]!,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? Colors.orange[600] : Colors.grey[600],
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected ? Colors.orange[700] : Colors.black87,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.orange[600],
-                  size: 20,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimeSelector(String title, String currentTime, Function(String) onTimeChanged) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: () async {
-            final timeParts = currentTime.split(':');
-            final time = await showTimePicker(
-              context: context,
-              initialTime: TimeOfDay(
-                hour: int.parse(timeParts[0]),
-                minute: int.parse(timeParts[1]),
-              ),
-            );
-            
-            if (time != null) {
-              final timeString = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-              onTimeChanged(timeString);
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.access_time, color: Colors.orange[600], size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    DateFormat('h:mm a').format(
-                      DateTime(2024, 1, 1, int.parse(currentTime.split(':')[0]), int.parse(currentTime.split(':')[1])),
-                    ),
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                Icon(Icons.arrow_forward_ios, color: Colors.grey[400], size: 16),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMultipleTimeSelector(String title, List<String> times, Function(List<String>) onTimesChanged) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                );
-                if (time != null) {
-                  final timeString = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-                  if (!times.contains(timeString)) {
-                    onTimesChanged([...times, timeString]..sort());
-                  }
-                }
-              },
-              icon: Icon(Icons.add, size: 16, color: Colors.orange[600]),
-              label: Text(
-                'Add Time',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.orange[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (times.isEmpty)
-          Text(
-            'No times added',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          )
-        else
-          Column(
-            children: times.map((timeStr) {
-              final timeParts = timeStr.split(':');
-              final displayTime = DateFormat('h:mm a').format(
-                DateTime(2024, 1, 1, int.parse(timeParts[0]), int.parse(timeParts[1])),
-              );
-              
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.schedule, color: Colors.orange[600], size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        displayTime,
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: Colors.orange[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () async {
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay(
-                            hour: int.parse(timeParts[0]),
-                            minute: int.parse(timeParts[1]),
-                          ),
-                        );
-                        if (time != null) {
-                          final timeString = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-                          final newTimes = [...times];
-                          final index = times.indexOf(timeStr);
-                          newTimes[index] = timeString;
-                          onTimesChanged(newTimes..sort());
-                        }
-                      },
-                      child: Icon(
-                        Icons.edit,
-                        size: 16,
-                        color: Colors.orange[600],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (times.length > 1)
-                      GestureDetector(
-                        onTap: () {
-                          final newTimes = [...times];
-                          newTimes.remove(timeStr);
-                          onTimesChanged(newTimes);
-                        },
-                        child: Icon(
-                          Icons.close,
-                          size: 16,
-                          color: Colors.red[600],
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildHourlyConfiguration(String startTime, Function(String) onStartTimeChanged) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Start Time',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 8),
-        _buildTimeSelector('', startTime, onStartTimeChanged),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue[200]!),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info, color: Colors.blue[600], size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Hourly reminders will continue until 10:00 PM or when you mark the task as complete',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.blue[700],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIntervalConfiguration(
-    int intervalMinutes,
-    String startTime,
-    Function(int) onIntervalChanged,
-    Function(String) onStartTimeChanged,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Interval',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildIntervalOption('15 min', 15, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('30 min', 30, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('1 hour', 60, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('2 hours', 120, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('3 hours', 180, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('4 hours', 240, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('6 hours', 360, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('8 hours', 480, intervalMinutes, onIntervalChanged),
-            _buildIntervalOption('12 hours', 720, intervalMinutes, onIntervalChanged),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Start Time',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 8),
-        _buildTimeSelector('', startTime, onStartTimeChanged),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue[200]!),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info, color: Colors.blue[600], size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _getIntervalDescription(intervalMinutes),
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.blue[700],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIntervalOption(String label, int minutes, int currentInterval, Function(int) onIntervalChanged) {
-    final isSelected = currentInterval == minutes;
-    return GestureDetector(
-      onTap: () => onIntervalChanged(minutes),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.orange[600] : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? Colors.orange[600]! : Colors.grey[300]!,
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomScheduleConfiguration(List<String> times, Function(List<String>) onTimesChanged) {
-    return _buildMultipleTimeSelector('Custom Times', times, onTimesChanged);
-  }
-
-  String _getIntervalDescription(int intervalMinutes) {
-    if (intervalMinutes < 60) {
-      return 'Reminder every $intervalMinutes minutes until task is completed';
-    } else {
-      final hours = intervalMinutes / 60;
-      if (hours == hours.round()) {
-        return 'Reminder every ${hours.round()} hour${hours > 1 ? 's' : ''} until task is completed';
-      } else {
-        return 'Reminder every ${hours.toStringAsFixed(1)} hours until task is completed';
-      }
-    }
-  }
-
-  String _getSuccessMessage(String type, String time, List<String> customTimes, int intervalMinutes) {
-    switch (type) {
-      case 'once':
-        return 'Reminder set for ${DateFormat('h:mm a').format(DateTime(2024, 1, 1, int.parse(time.split(':')[0]), int.parse(time.split(':')[1])))}';
-      case 'multiple':
-        return 'Multiple reminders set (${customTimes.length} times)';
-      case 'hourly':
-        return 'Hourly reminders enabled starting at ${DateFormat('h:mm a').format(DateTime(2024, 1, 1, int.parse(time.split(':')[0]), int.parse(time.split(':')[1])))}';
-      case 'interval':
-        final hours = intervalMinutes / 60;
-        final intervalText = intervalMinutes < 60 
-            ? '$intervalMinutes minutes' 
-            : hours == hours.round() 
-                ? '${hours.round()} hour${hours > 1 ? 's' : ''}'
-                : '${hours.toStringAsFixed(1)} hours';
-        return 'Reminders set every $intervalText starting at ${DateFormat('h:mm a').format(DateTime(2024, 1, 1, int.parse(time.split(':')[0]), int.parse(time.split(':')[1])))}';
-      case 'custom':
-        return 'Custom reminder schedule set (${customTimes.length} time${customTimes.length > 1 ? 's' : ''})';
-      default:
-        return 'Reminder settings saved';
-    }
-  }
-
-  Widget _buildGenericReminderType(String title, String subtitle, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () {
-          // For now, just show that it's selected
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$title selected - Full implementation coming soon'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.grey[600], size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => ReminderBottomSheet(
+        challenge: widget.challenge,
+        onSave: (updated) => widget.onReminderUpdate!(updated),
       ),
     );
   }
@@ -944,8 +120,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       animation: Listenable.merge([_completionController, _pulseController]),
       builder: (context, child) {
         return Transform.scale(
-          scale: widget.isCompleted ? _scaleAnimation.value : 
-                 (widget.isEditable ? _pulseAnimation.value : 1.0),
+          scale: widget.isCompleted
+              ? _scaleAnimation.value
+              : (widget.isEditable ? _pulseAnimation.value : 1.0),
           child: _buildCard(),
         );
       },
@@ -976,8 +153,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   Widget _buildCard() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), // Reduced vertical margin
-      child: Stack( // Use Stack to position alarm icon at top right
+      margin: const EdgeInsets.symmetric(
+          horizontal: 16, vertical: 6), // Reduced vertical margin
+      child: Stack(
+        // Use Stack to position alarm icon at top right
         children: [
           GlassmorphicContainer(
             width: double.infinity,
@@ -991,17 +170,17 @@ class _DailyTaskCardState extends State<DailyTaskCard>
               end: Alignment.bottomRight,
               colors: widget.isCompleted
                   ? [
-                      Colors.green[400]!.withOpacity(0.1),
-                      Colors.green[600]!.withOpacity(0.05),
+                      Colors.green[400]!.withValues(alpha: 0.1),
+                      Colors.green[600]!.withValues(alpha: 0.05),
                     ]
                   : widget.isEditable
                       ? [
-                          Colors.blue[400]!.withOpacity(0.1),
-                          Colors.purple[400]!.withOpacity(0.05),
+                          Colors.blue[400]!.withValues(alpha: 0.1),
+                          Colors.purple[400]!.withValues(alpha: 0.05),
                         ]
                       : [
-                          Colors.red[400]!.withOpacity(0.1),
-                          Colors.orange[400]!.withOpacity(0.05),
+                          Colors.red[400]!.withValues(alpha: 0.1),
+                          Colors.orange[400]!.withValues(alpha: 0.05),
                         ],
             ),
             borderGradient: LinearGradient(
@@ -1009,24 +188,25 @@ class _DailyTaskCardState extends State<DailyTaskCard>
               end: Alignment.bottomRight,
               colors: widget.isCompleted
                   ? [
-                      Colors.green[400]!.withOpacity(0.5),
-                      Colors.green[600]!.withOpacity(0.2),
+                      Colors.green[400]!.withValues(alpha: 0.5),
+                      Colors.green[600]!.withValues(alpha: 0.2),
                     ]
                   : widget.isEditable
                       ? [
-                          Colors.blue[400]!.withOpacity(0.5),
-                          Colors.purple[400]!.withOpacity(0.2),
+                          Colors.blue[400]!.withValues(alpha: 0.5),
+                          Colors.purple[400]!.withValues(alpha: 0.2),
                         ]
                       : [
-                          Colors.red[400]!.withOpacity(0.5),
-                          Colors.orange[400]!.withOpacity(0.2),
+                          Colors.red[400]!.withValues(alpha: 0.5),
+                          Colors.orange[400]!.withValues(alpha: 0.2),
                         ],
             ),
             child: _buildCardContent(),
           ),
-          
+
           // Alarm icon positioned at top right
-          if (widget.challenge.isReminderEnabled && widget.challenge.reminderTime != null)
+          if (widget.challenge.isReminderEnabled &&
+              widget.challenge.reminderTime != null)
             Positioned(
               top: 8,
               right: 8,
@@ -1035,12 +215,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.orange[100]?.withOpacity(0.9),
+                    color: Colors.orange[100]?.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.orange[300]!, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.orange.withOpacity(0.2),
+                        color: Colors.orange.withValues(alpha: 0.2),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -1057,11 +237,13 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                       const SizedBox(width: 4),
                       Text(
                         () {
-                          final displayTime = _getDisplayTime(widget.challenge.reminderTime!);
+                          final displayTime =
+                              _getDisplayTime(widget.challenge.reminderTime!);
                           final timeParts = displayTime.split(':');
                           final hour = int.parse(timeParts[0]);
                           final minute = int.parse(timeParts[1]);
-                          return DateFormat('h:mm a').format(DateTime(2024, 1, 1, hour, minute));
+                          return DateFormat('h:mm a')
+                              .format(DateTime(2024, 1, 1, hour, minute));
                         }(),
                         style: GoogleFonts.inter(
                           fontSize: 10,
@@ -1081,7 +263,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   Widget _buildCardContent() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), // Optimized padding
+      padding: const EdgeInsets.symmetric(
+          horizontal: 14, vertical: 8), // Optimized padding
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center, // Better alignment
         children: [
@@ -1089,10 +272,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           AnimatedChallengeIcon(
             challenge: widget.challenge,
             size: 44, // Optimized size
-            onTap: widget.isEditable ? () => widget.onToggle(!widget.isCompleted) : null,
+            onTap: widget.isEditable
+                ? () => widget.onToggle(!widget.isCompleted)
+                : null,
           ),
           const SizedBox(width: 14), // Optimized spacing
-          
+
           // Challenge Details
           Expanded(
             child: Column(
@@ -1106,12 +291,13 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                   style: TextStyle(
                     fontSize: 16, // Restored to 16 for better readability
                     fontWeight: FontWeight.w600,
-                    color: widget.isCompleted 
-                        ? Colors.green[700] 
-                        : widget.isEditable 
-                        ? Colors.grey[800] 
-                        : Colors.red[700],
-                    decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                    color: widget.isCompleted
+                        ? Colors.green[700]
+                        : widget.isEditable
+                            ? Colors.grey[800]
+                            : Colors.red[700],
+                    decoration:
+                        widget.isCompleted ? TextDecoration.lineThrough : null,
                     decorationColor: Colors.green,
                     decorationThickness: 2,
                     height: 1.2, // Tighter line height
@@ -1125,11 +311,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                   _getStatusText(),
                   style: TextStyle(
                     fontSize: 12, // Restored to 12 for readability
-                    color: widget.isCompleted 
-                        ? Colors.green[600] 
-                        : widget.isEditable 
-                        ? Colors.grey[600] 
-                        : Colors.red[600],
+                    color: widget.isCompleted
+                        ? Colors.green[600]
+                        : widget.isEditable
+                            ? Colors.grey[600]
+                            : Colors.red[600],
                     fontWeight: FontWeight.w500,
                     height: 1.1, // Tight line height
                   ),
@@ -1139,7 +325,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
               ],
             ),
           ),
-          
+
           // Reminder and completion section
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1149,19 +335,22 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 IconButton(
                   onPressed: () => _showNoteBottomSheet(context),
                   icon: Icon(
-                    widget.existingNote != null && widget.existingNote!.isNotEmpty
+                    widget.existingNote != null &&
+                            widget.existingNote!.isNotEmpty
                         ? Icons.note
                         : Icons.note_add_outlined,
-                    color: widget.existingNote != null && widget.existingNote!.isNotEmpty
+                    color: widget.existingNote != null &&
+                            widget.existingNote!.isNotEmpty
                         ? Colors.blue[700]
                         : Colors.grey[600],
                     size: 20,
                   ),
                   padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: 'Add Note',
                 ),
-              
+
               // Generic Reminder Setup Icon (only when no reminder is set)
               if (widget.isEditable && !widget.challenge.isReminderEnabled)
                 IconButton(
@@ -1172,10 +361,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                     size: 20,
                   ),
                   padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: 'Set Reminder',
                 ),
-              
+
               // Completion Button/Status
               _buildCompletionWidget(),
             ],
@@ -1195,7 +385,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: (widget.isCompleted ? Colors.green : Colors.red).withOpacity(0.3),
+              color: (widget.isCompleted ? Colors.green : Colors.red)
+                  .withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -1221,7 +412,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           borderRadius: BorderRadius.circular(16), // Pill shape
           boxShadow: [
             BoxShadow(
-              color: (widget.isCompleted ? Colors.green : Colors.grey).withOpacity(0.3),
+              color: (widget.isCompleted ? Colors.green : Colors.grey)
+                  .withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -1242,16 +434,19 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 3,
                       offset: const Offset(0, 1),
                     ),
                   ],
                 ),
                 child: Icon(
-                  widget.isCompleted ? Icons.check : Icons.radio_button_unchecked,
+                  widget.isCompleted
+                      ? Icons.check
+                      : Icons.radio_button_unchecked,
                   size: 16,
-                  color: widget.isCompleted ? Colors.green[600] : Colors.grey[600],
+                  color:
+                      widget.isCompleted ? Colors.green[600] : Colors.grey[600],
                 ),
               ),
             ),
@@ -1268,7 +463,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     if (!widget.isEditable) {
       return 'Missed';
     }
-    if (widget.challenge.reminderTime != null && widget.challenge.isReminderEnabled) {
+    if (widget.challenge.reminderTime != null &&
+        widget.challenge.isReminderEnabled) {
       return 'Reminder: ${widget.challenge.reminderTime}';
     }
     return 'Tap to complete';
@@ -1280,7 +476,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     // Use post-frame callback to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
+
       // Create overlay entry for celebration animation
       final overlay = Overlay.of(context);
       late OverlayEntry overlayEntry;
@@ -1296,13 +492,14 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             child: Container(
               alignment: Alignment.center,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.green[600],
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withOpacity(0.4),
+                      color: Colors.green.withValues(alpha: 0.4),
                       blurRadius: 12,
                       spreadRadius: 2,
                       offset: const Offset(0, 4),

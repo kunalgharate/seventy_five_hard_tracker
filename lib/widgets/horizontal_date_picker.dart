@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'smooth_scroll_behavior.dart';
 
 class HorizontalDatePicker extends StatefulWidget {
   final DateTime selectedDate;
@@ -31,7 +30,7 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    
+
     // Auto-scroll to selected date after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToSelectedDate();
@@ -48,16 +47,18 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
 
   void _scrollToSelectedDate() {
     if (!_scrollController.hasClients) return;
-    
-    final daysDifference = widget.selectedDate.difference(widget.startDate).inDays;
-    final itemWidth = 68.0; // Width of each date item
+
+    final daysDifference =
+        widget.selectedDate.difference(widget.startDate).inDays;
+    const itemWidth = 68.0; // Width of each date item
     final screenWidth = MediaQuery.of(context).size.width;
-    final scrollPosition = (daysDifference * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
-    
+    final scrollPosition =
+        (daysDifference * itemWidth) - (screenWidth / 2) + (itemWidth / 2);
+
     // Clamp the scroll position to valid range
     final maxScroll = _scrollController.position.maxScrollExtent;
     final targetPosition = scrollPosition.clamp(0.0, maxScroll);
-    
+
     // Only animate if the position is significantly different
     final currentPosition = _scrollController.offset;
     if ((targetPosition - currentPosition).abs() > 50) {
@@ -77,7 +78,7 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 120,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,16 +118,19 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                 final date = widget.startDate.add(Duration(days: index));
                 final isSelected = _isSameDay(date, widget.selectedDate);
                 final isToday = _isSameDay(date, DateTime.now());
-                final isCompleted = widget.completedDates?.any((d) => _isSameDay(d, date)) ?? false;
-                final isIncomplete = widget.incompleteDates?.any((d) => _isSameDay(d, date)) ?? false;
-                
+                final isCompleted =
+                    widget.completedDates?.any((d) => _isSameDay(d, date)) ??
+                        false;
+                final isIncomplete =
+                    widget.incompleteDates?.any((d) => _isSameDay(d, date)) ??
+                        false;
+
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
-                        print('Date tapped: $date'); // Debug print
                         widget.onDateSelected(date);
                       },
                       borderRadius: BorderRadius.circular(12),
@@ -161,7 +165,8 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: const Color(0xFFFFA726).withOpacity(0.3),
+                                    color: const Color(0xFFFFA726)
+                                        .withValues(alpha: 0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
                                   ),

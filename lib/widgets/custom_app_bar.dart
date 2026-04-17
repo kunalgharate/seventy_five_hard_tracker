@@ -23,7 +23,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
@@ -34,7 +34,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -109,20 +109,20 @@ class AppBarTheme {
   static const Color primaryColor = Color(0xFFFFA726);
   static const Color secondaryColor = Color(0xFFFF7043);
   static const Color accentColor = Color(0xFFEC407A);
-  
+
   static const LinearGradient gradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [primaryColor, secondaryColor, accentColor],
   );
-  
+
   static const TextStyle titleStyle = TextStyle(
     color: Colors.white,
     fontSize: 20,
     fontWeight: FontWeight.bold,
     letterSpacing: 0.5,
   );
-  
+
   static const IconThemeData iconTheme = IconThemeData(
     color: Colors.white,
     size: 24,
