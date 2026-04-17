@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import '../firebase_options.dart';
 import 'fcm_service.dart';
 import 'simple_background_check_service.dart';
-import 'analytics_service.dart';
 
 /// Manages internet connectivity and lazy Firebase initialization.
 /// Firebase services are initialized when internet becomes available.
@@ -22,19 +21,29 @@ class ConnectivityService {
   bool get isFirebaseReady => _firebaseInitialized;
 
   /// Try to init Firebase now. Returns true if successful.
+  /// Times out after 5 seconds to avoid blocking app startup.
   Future<bool> initFirebase() async {
     if (_firebaseInitialized) return true;
     try {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform)
+          .timeout(const Duration(seconds: 5));
+      FlutterError.onError =
+          FirebaseCrashlytics.instance.recordFlutterFatalError;
       _firebaseInitialized = true;
       // Init dependent services
-      try { await FcmService.instance.init(); } catch (_) {}
-      try { await SimpleBackgroundCheckService().checkOnAppOpen(); } catch (_) {}
+      try {
+        await FcmService.instance.init();
+      } catch (_) {}
+      try {
+        unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
+      } catch (_) {}
       if (kDebugMode) print('🌐 Firebase initialized successfully');
       return true;
     } catch (e) {
-      if (kDebugMode) print('🌐 Firebase init failed: $e');
+      if (kDebugMode) {
+        print('🌐 Firebase init failed (will retry when online): $e');
+      }
       return false;
     }
   }

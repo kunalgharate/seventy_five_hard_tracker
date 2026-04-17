@@ -78,7 +78,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.3),
+                      color: AppColors.primary.withValues(alpha: 0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -108,7 +108,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               const SizedBox(height: 16),
               Text(
                 'Create your challenge with custom daily tasks and start your transformation journey.',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600], height: 1.5),
+                style: TextStyle(
+                    fontSize: 16, color: Colors.grey[600], height: 1.5),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -122,9 +123,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -148,8 +152,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey[600],
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.fitness_center), label: '75 Hard'),
-          BottomNavigationBarItem(icon: Icon(Icons.task_alt), label: 'Daily Tasks'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.fitness_center), label: '75 Hard'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.task_alt), label: 'Daily Tasks'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

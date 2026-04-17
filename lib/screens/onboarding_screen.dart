@@ -25,7 +25,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final List<TextEditingController> _controllers = [];
   final List<Challenge> _challenges = [];
   final PageController _pageController = PageController();
-  int _currentPage = 0;
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
 
@@ -37,12 +36,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       vsync: this,
     );
     _headerAnimationController.forward();
-    
+
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     // Start with 2 empty challenges
     _addNewChallenge();
     _addNewChallenge();
@@ -63,9 +62,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (_challenges.length < 10) {
       final controller = TextEditingController();
       _controllers.add(controller);
-      
+
       _challenges.add(Challenge(
-        id: DateTime.now().millisecondsSinceEpoch.toString() + _challenges.length.toString(),
+        id: DateTime.now().millisecondsSinceEpoch.toString() +
+            _challenges.length.toString(),
         title: '',
         category: 'general',
         taskType: 'hard', // Default to hard
@@ -88,7 +88,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
-  void _updateChallenge(int index, {
+  void _updateChallenge(
+    int index, {
     String? title,
     String? iconName,
     String? imagePath,
@@ -121,7 +122,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   bool _hasCustomIcon(Challenge challenge) {
     return (challenge.imagePath != null && challenge.imagePath!.isNotEmpty) ||
-           (challenge.iconName != null && challenge.iconName!.isNotEmpty);
+        (challenge.iconName != null && challenge.iconName!.isNotEmpty);
   }
 
   Future<void> _startChallenge() async {
@@ -141,7 +142,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // Validate that hard tasks have a reminder time set
     final hardTasksWithoutReminder = validChallenges
-        .where((c) => c.taskType == 'hard' && c.isReminderEnabled && c.reminderTime == null)
+        .where((c) =>
+            c.taskType == 'hard' &&
+            c.isReminderEnabled &&
+            c.reminderTime == null)
         .toList();
 
     if (hardTasksWithoutReminder.isNotEmpty) {
@@ -161,9 +165,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     context.read<ChallengeBloc>().add(StartNewSession(validChallenges));
-    
+
     await Future.delayed(const Duration(milliseconds: 100));
-    
+
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
     }
@@ -187,7 +191,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         child: SafeArea(
           child: PageView(
             controller: _pageController,
-            onPageChanged: (page) => setState(() => _currentPage = page),
+            onPageChanged: (page) => setState(() {}),
             children: [
               _buildWelcomePage(),
               _buildChallengeSetupPage(),
@@ -215,13 +219,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
+                    gradient: const LinearGradient(
                       colors: [Colors.orange, Colors.red],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.orange.withOpacity(0.3 + (_pulseController.value * 0.3)),
+                        color: Colors.orange.withValues(
+                            alpha: 0.3 + (_pulseController.value * 0.3)),
                         blurRadius: 20 + (_pulseController.value * 20),
                         spreadRadius: _pulseController.value * 5,
                         offset: const Offset(0, 10),
@@ -241,10 +246,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ),
               );
             },
-          ).animate().scale(delay: 200.ms, duration: 800.ms, curve: Curves.elasticOut),
-          
+          )
+              .animate()
+              .scale(delay: 200.ms, duration: 800.ms, curve: Curves.elasticOut),
+
           const SizedBox(height: 40),
-          
+
           // Animated Title with Shimmer Effect
           AnimatedTextKit(
             animatedTexts: [
@@ -260,9 +267,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ],
             isRepeatingAnimation: false,
           ).animate().shimmer(delay: 1200.ms, duration: 1500.ms),
-          
+
           const SizedBox(height: 20),
-          
+
           // Description with Fade and Slide
           Text(
             'Transform your life in 75 days with daily challenges that build mental toughness and discipline.',
@@ -272,15 +279,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               color: Colors.grey[600],
               height: 1.5,
             ),
-          ).animate().fadeIn(delay: 1000.ms, duration: 600.ms).slideY(begin: 0.3, end: 0),
-          
+          )
+              .animate()
+              .fadeIn(delay: 1000.ms, duration: 600.ms)
+              .slideY(begin: 0.3, end: 0),
+
           const SizedBox(height: 60),
-          
+
           // Rules with Staggered Animation
           _buildRulesList(),
-          
+
           const Spacer(),
-          
+
           // Continue Button with Scale and Glow
           _buildAnimatedButton(
             text: 'Start Setup',
@@ -288,12 +298,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
             ),
-            gradient: LinearGradient(colors: [Colors.blue, Colors.purple]),
-          ).animate()
-            .fadeIn(delay: 1500.ms, duration: 400.ms)
-            .scale(delay: 1500.ms, duration: 400.ms, begin: Offset(0.8, 0.8))
-            .then()
-            .shimmer(delay: 500.ms, duration: 1500.ms),
+            gradient:
+                const LinearGradient(colors: [Colors.blue, Colors.purple]),
+          )
+              .animate()
+              .fadeIn(delay: 1500.ms, duration: 400.ms)
+              .scale(
+                  delay: 1500.ms,
+                  duration: 400.ms,
+                  begin: const Offset(0.8, 0.8))
+              .then()
+              .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
     );
@@ -326,7 +341,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.orange,
                           shape: BoxShape.circle,
                         ),
@@ -373,7 +388,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -393,7 +408,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
-                    ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
+                    )
+                        .animate()
+                        .fadeIn(duration: 400.ms)
+                        .slideX(begin: -0.2, end: 0),
                     Text(
                       '${_challenges.where((c) => c.title.trim().isNotEmpty).length} of ${_challenges.length} challenges ready',
                       style: TextStyle(
@@ -407,9 +425,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Description with tips - animated
           Container(
             padding: const EdgeInsets.all(16),
@@ -422,7 +440,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             child: Row(
               children: [
-                Icon(Icons.lightbulb_outline, color: Colors.blue[600], size: 20),
+                Icon(Icons.lightbulb_outline,
+                    color: Colors.blue[600], size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -436,14 +455,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ),
               ],
             ),
-          ).animate()
-            .fadeIn(delay: 300.ms, duration: 500.ms)
-            .slideY(begin: -0.2, end: 0)
-            .then()
-            .shimmer(delay: 1000.ms, duration: 1500.ms),
-          
+          )
+              .animate()
+              .fadeIn(delay: 300.ms, duration: 500.ms)
+              .slideY(begin: -0.2, end: 0)
+              .then()
+              .shimmer(delay: 1000.ms, duration: 1500.ms),
+
           const SizedBox(height: 24),
-          
+
           // Challenges List with staggered animation
           Expanded(
             child: AnimationLimiter(
@@ -468,7 +488,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
-          
+
           // Add Challenge Button with pulse animation
           if (_challenges.length < 10)
             Container(
@@ -487,7 +507,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.green.withOpacity(0.3),
+                              color: Colors.green.withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -496,11 +516,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                            const Icon(Icons.add_circle_outline,
+                                color: Colors.white, size: 20),
                             const SizedBox(width: 6),
                             Text(
                               'Add (${_challenges.length}/10)',
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
@@ -520,7 +544,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.blue.withOpacity(0.3),
+                              color: Colors.blue.withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -529,11 +553,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                            Icon(Icons.auto_awesome,
+                                color: Colors.white, size: 20),
                             SizedBox(width: 6),
                             Text(
                               'Templates',
-                              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
@@ -543,7 +571,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ],
               ),
             ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.3, end: 0),
-          
+
           // Continue Button with enhanced animation
           _buildAnimatedButton(
             text: 'Review My Challenges →',
@@ -555,10 +583,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               if (validChallenges.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: const Text('Please add at least one challenge before continuing'),
+                    content: const Text(
+                        'Please add at least one challenge before continuing'),
                     backgroundColor: Colors.red,
                     behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                     margin: const EdgeInsets.all(16),
                   ),
                 );
@@ -570,12 +600,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 curve: Curves.easeInOut,
               );
             },
-            gradient: LinearGradient(colors: [Colors.orange, Colors.red]),
-          ).animate()
-            .fadeIn(delay: 700.ms, duration: 400.ms)
-            .slideY(begin: 0.3, end: 0)
-            .then()
-            .shimmer(delay: 500.ms, duration: 1500.ms),
+            gradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
+          )
+              .animate()
+              .fadeIn(delay: 700.ms, duration: 400.ms)
+              .slideY(begin: 0.3, end: 0)
+              .then()
+              .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
     );
@@ -583,7 +614,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Widget _buildChallengeCard(int index) {
     final challenge = _challenges[index];
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       child: Stack(
@@ -603,12 +634,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 15,
                   offset: const Offset(0, 8),
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
@@ -669,12 +700,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Icon and input section
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.center, // Center align both elements
+                  crossAxisAlignment:
+                      CrossAxisAlignment.center, // Center align both elements
                   children: [
                     // Challenge Icon
                     GestureDetector(
@@ -686,18 +718,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           gradient: _hasCustomIcon(challenge)
                               ? null
                               : LinearGradient(
-                                  colors: [Colors.grey[100]!, Colors.grey[200]!],
+                                  colors: [
+                                    Colors.grey[100]!,
+                                    Colors.grey[200]!
+                                  ],
                                 ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _hasCustomIcon(challenge) 
-                                ? Colors.blue[300]! 
+                            color: _hasCustomIcon(challenge)
+                                ? Colors.blue[300]!
                                 : Colors.grey[300]!,
                             width: 2,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -732,9 +767,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               ),
                       ),
                     ),
-                    
+
                     const SizedBox(width: 16),
-                    
+
                     // Challenge Input - Expanded to fill remaining space
                     Expanded(
                       child: Container(
@@ -745,7 +780,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           border: Border.all(color: Colors.grey[300]!),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
+                              color: Colors.black.withValues(alpha: 0.02),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -773,17 +808,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           textAlignVertical: TextAlignVertical.center,
                           onChanged: (value) {
                             _updateChallenge(index, title: value);
-                            
+
                             // Auto-detect category and icon only if no custom icon is set
-                            if (value.isNotEmpty && !_hasCustomIcon(challenge)) {
-                              final iconData = ChallengeIconService.findBestIcon(value);
+                            if (value.isNotEmpty &&
+                                !_hasCustomIcon(challenge)) {
+                              final iconData =
+                                  ChallengeIconService.findBestIcon(value);
                               if (iconData != null) {
                                 // Use dynamic color instead of fixed color
-                                final dynamicColor = DynamicColorService.getColorForText(value);
+                                final dynamicColor =
+                                    DynamicColorService.getColorForText(value);
                                 _updateChallenge(
                                   index,
                                   iconName: iconData.name,
-                                  iconColor: dynamicColor.value,
+                                  iconColor: dynamicColor.toARGB32(),
                                 );
                               }
                             }
@@ -793,12 +831,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                   ],
                 ),
-                
+
                 // Progress indicator
                 if (challenge.title.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(top: 16),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.green[50],
                       borderRadius: BorderRadius.circular(20),
@@ -824,13 +863,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ],
                     ),
                   ),
-                
+
                 // Task configuration
                 if (challenge.title.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   // Reminder Button - full width
                   _buildReminderButton(index, challenge),
-                  if (challenge.isReminderEnabled && challenge.reminderTime != null) ...[
+                  if (challenge.isReminderEnabled &&
+                      challenge.reminderTime != null) ...[
                     const SizedBox(height: 8),
                     Text(
                       '⏰ ${_getReminderDescription(challenge)}',
@@ -881,9 +921,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           Text(
             'You will need to complete ALL of these challenges EVERY DAY for 75 days.',
             style: TextStyle(
@@ -892,9 +932,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               fontWeight: FontWeight.w500,
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Challenges Preview
           Expanded(
             child: AnimationLimiter(
@@ -915,7 +955,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withValues(alpha: 0.05),
                                 blurRadius: 5,
                                 offset: const Offset(2, 2),
                               ),
@@ -955,7 +995,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
           ),
-          
+
           // Warning
           Container(
             padding: const EdgeInsets.all(16),
@@ -980,14 +1020,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Start Button
           _buildAnimatedButton(
             text: 'Start 75 Hard Challenge!',
             onPressed: _startChallenge,
-            gradient: LinearGradient(colors: [Colors.orange, Colors.red]),
+            gradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
           ),
         ],
       ),
@@ -1007,7 +1047,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: gradient.colors.first.withOpacity(0.3),
+            color: gradient.colors.first.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1054,50 +1094,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     );
   }
 
-  Widget _buildCompactDropdown({
-    required String label,
-    required String value,
-    required List<DropdownMenuItem<String>> items,
-    required Function(String?) onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          DropdownButton<String>(
-            value: value,
-            isExpanded: true,
-            underline: const SizedBox(),
-            isDense: true,
-            items: items,
-            onChanged: onChanged,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildReminderButton(int index, Challenge challenge) {
-    final hasReminder = challenge.isReminderEnabled && challenge.reminderTime != null;
+    final hasReminder =
+        challenge.isReminderEnabled && challenge.reminderTime != null;
     return GestureDetector(
       onTap: () => _showReminderSetup(index),
       child: Container(
@@ -1128,8 +1127,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(Icons.chevron_right, size: 18,
-              color: hasReminder ? Colors.orange[400] : Colors.red[400]),
+            Icon(Icons.chevron_right,
+                size: 18,
+                color: hasReminder ? Colors.orange[400] : Colors.red[400]),
           ],
         ),
       ),
@@ -1138,12 +1138,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   String _getReminderDescription(Challenge challenge) {
     final data = challenge.reminderTime ?? '';
-    if (data.startsWith('once:')) return 'Once at ${_formatTimeStr(data.substring(5))}';
+    if (data.startsWith('once:')) {
+      return 'Once at ${_formatTimeStr(data.substring(5))}';
+    }
     if (data.startsWith('multiple:')) {
       final count = data.substring(9).split(',').length;
       return '$count times daily';
     }
-    if (data.startsWith('hourly:')) return 'Every hour from ${_formatTimeStr(data.substring(7))}';
+    if (data.startsWith('hourly:')) {
+      return 'Every hour from ${_formatTimeStr(data.substring(7))}';
+    }
     if (data.startsWith('interval:')) {
       final parts = data.substring(9).split(':');
       final mins = int.tryParse(parts[0]) ?? 0;
@@ -1236,24 +1240,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           ),
                         ),
                         ...templates.map((t) => ListTile(
-                          leading: Icon(_getTemplateIcon(t.iconName), color: DynamicColorService.getColorForCategory(t.category)),
-                          title: Text(t.title),
-                          trailing: const Icon(Icons.add_circle_outline, color: Colors.green),
-                          onTap: () {
-                            if (_challenges.length >= 10) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Maximum 10 challenges')),
-                              );
-                              return;
-                            }
-                            final challenge = TaskTemplates.toChallenge(t);
-                            final controller = TextEditingController(text: t.title);
-                            _controllers.add(controller);
-                            _challenges.add(challenge);
-                            Navigator.pop(context);
-                            setState(() {});
-                          },
-                        )),
+                              leading: Icon(_getTemplateIcon(t.iconName),
+                                  color:
+                                      DynamicColorService.getColorForCategory(
+                                          t.category)),
+                              title: Text(t.title),
+                              trailing: const Icon(Icons.add_circle_outline,
+                                  color: Colors.green),
+                              onTap: () {
+                                if (_challenges.length >= 10) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Maximum 10 challenges')),
+                                  );
+                                  return;
+                                }
+                                final challenge = TaskTemplates.toChallenge(t);
+                                final controller =
+                                    TextEditingController(text: t.title);
+                                _controllers.add(controller);
+                                _challenges.add(challenge);
+                                Navigator.pop(context);
+                                setState(() {});
+                              },
+                            )),
                         const Divider(),
                       ],
                     );

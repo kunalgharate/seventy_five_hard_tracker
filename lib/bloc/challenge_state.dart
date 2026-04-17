@@ -28,11 +28,11 @@ class ChallengeLoaded extends ChallengeState {
 
   @override
   List<Object?> get props => [
-    activeSession,
-    allSessions,
-    currentProgress,
-    hasActiveSession,
-  ];
+        activeSession,
+        allSessions,
+        currentProgress,
+        hasActiveSession,
+      ];
 
   ChallengeLoaded copyWith({
     ChallengeSession? activeSession,

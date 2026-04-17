@@ -1,5 +1,4 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import '../models/challenge.dart';
 import '../models/daily_progress.dart';
 import '../models/challenge_session.dart';
 

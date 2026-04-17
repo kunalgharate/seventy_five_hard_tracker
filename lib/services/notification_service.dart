@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
@@ -10,8 +11,9 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  
+  final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
+
   // Track scheduled notifications to avoid Samsung's 500 alarm limit
   static int _scheduledNotificationCount = 0;
   static const int _maxNotifications = 400; // Safe limit below Samsung's 500
@@ -23,7 +25,7 @@ class NotificationService {
   Future<void> _init() async {
     // Initialize timezone data
     tz.initializeTimeZones();
-    
+
     // Get device timezone info
     final now = DateTime.now();
     final offset = now.timeZoneOffset;
@@ -40,14 +42,15 @@ class NotificationService {
     } catch (e) {
       tz.setLocalLocation(tz.getLocation('UTC'));
     }
-    
-    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
+
+    const androidSettings =
+        AndroidInitializationSettings('@drawable/ic_notification');
     const initSettings = InitializationSettings(android: androidSettings);
-    
+
     // Create notification channels with tune.wav
-    final androidPlugin = _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
     if (androidPlugin != null) {
       // Daily motivation channel
       const dailyChannel = AndroidNotificationChannel(
@@ -59,7 +62,7 @@ class NotificationService {
         sound: RawResourceAndroidNotificationSound('tune'),
         enableVibration: true,
       );
-      
+
       // Task reminders channel
       const taskChannel = AndroidNotificationChannel(
         'task_reminders_v2',
@@ -81,29 +84,30 @@ class NotificationService {
         sound: RawResourceAndroidNotificationSound('tune'),
         enableVibration: true,
       );
-      
+
       await androidPlugin.createNotificationChannel(dailyChannel);
       await androidPlugin.createNotificationChannel(taskChannel);
       await androidPlugin.createNotificationChannel(pendingChannel);
     }
-    
+
     await _notifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
-    
+
     await _requestPermissions();
   }
-  
+
   void _onNotificationTapped(NotificationResponse response) {
     // Handle notification tap here
   }
 
   Future<void> _requestPermissions() async {
-
     // Use flutter_local_notifications API for permission requests
-    final androidImplementation = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    
+    final androidImplementation =
+        _notifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
     if (androidImplementation != null) {
       // Request notification permission (Android 13+)
 
@@ -129,13 +133,15 @@ class NotificationService {
         ),
       );
     } catch (e) {
+      if (kDebugMode) print('Notification error in sendTestNotification: $e');
     }
   }
 
   // Test method to schedule notification in 10 seconds
   Future<void> scheduleTestNotification() async {
     try {
-      final scheduledTime = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 10));
+      final scheduledTime =
+          tz.TZDateTime.now(tz.local).add(const Duration(seconds: 10));
 
       await _notifications.zonedSchedule(
         998, // Test scheduled notification ID
@@ -154,14 +160,19 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     } catch (e) {
+      if (kDebugMode) {
+        print('Notification error in scheduleTestNotification: $e');
+      }
     }
   }
-  
+
   // Simple test following the guide pattern
   Future<void> scheduleSimpleTest() async {
-    final DateTime scheduledTime = DateTime.now().add(const Duration(seconds: 30));
-    final tz.TZDateTime tzScheduleTime = tz.TZDateTime.from(scheduledTime, tz.local);
-    
+    final DateTime scheduledTime =
+        DateTime.now().add(const Duration(seconds: 30));
+    final tz.TZDateTime tzScheduleTime =
+        tz.TZDateTime.from(scheduledTime, tz.local);
+
     try {
       await _notifications.zonedSchedule(
         997,
@@ -180,6 +191,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     } catch (e) {
+      if (kDebugMode) print('Notification error in scheduleSimpleTest: $e');
     }
   }
 
@@ -187,7 +199,7 @@ class NotificationService {
     try {
       // Fetch motivational message (online or offline)
       final message = await _fetchMotivationalMessage();
-      
+
       await _notifications.zonedSchedule(
         0, // Notification ID
         '75 Hard Challenge',
@@ -197,7 +209,8 @@ class NotificationService {
           android: AndroidNotificationDetails(
             'daily_motivation_v2',
             'Daily Motivation',
-            channelDescription: 'Daily motivational messages for 75 Hard Challenge',
+            channelDescription:
+                'Daily motivational messages for 75 Hard Challenge',
             importance: Importance.max,
             priority: Priority.max,
             sound: RawResourceAndroidNotificationSound('tune'),
@@ -209,15 +222,20 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (e) {
+      if (kDebugMode) {
+        print('Notification error in scheduleDailyMotivation: $e');
+      }
     }
   }
 
   Future<String> _fetchMotivationalMessage() async {
     try {
       // Try to fetch from ZenQuotes API
-      final response = await http.get(
-        Uri.parse('https://zenquotes.io/api/random'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(
+            Uri.parse('https://zenquotes.io/api/random'),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -228,6 +246,9 @@ class NotificationService {
         }
       }
     } catch (e) {
+      if (kDebugMode) {
+        print('Notification error in _fetchMotivationalMessage: $e');
+      }
     }
 
     // Fallback to offline messages
@@ -235,7 +256,6 @@ class NotificationService {
   }
 
   Future<void> scheduleTaskReminder(Challenge challenge, String time) async {
-
     if (!challenge.isReminderEnabled || challenge.reminderTime == null) {
       return;
     }
@@ -260,11 +280,9 @@ class NotificationService {
       // Handle both simple time format (18:03) and fallback
       await _scheduleOnceReminder(challenge, reminderData);
     }
-    
   }
 
   Future<void> _scheduleOnceReminder(Challenge challenge, String time) async {
-
     try {
       final timeParts = time.split(':');
 
@@ -298,13 +316,18 @@ class NotificationService {
         );
         _scheduledNotificationCount++;
       } else {
+        if (kDebugMode) {
+          print(
+              'Notification error in _scheduleOnceReminder: max notifications reached');
+        }
       }
-      
     } catch (e) {
+      if (kDebugMode) print('Notification error in _scheduleOnceReminder: $e');
     }
   }
 
-  Future<void> _scheduleMultipleReminders(Challenge challenge, String timesData) async {
+  Future<void> _scheduleMultipleReminders(
+      Challenge challenge, String timesData) async {
     final times = timesData.split(',');
     for (int i = 0; i < times.length; i++) {
       final timeParts = times[i].split(':');
@@ -336,16 +359,14 @@ class NotificationService {
     }
   }
 
-  Future<void> _scheduleHourlyReminders(Challenge challenge, String startTime) async {
-
+  Future<void> _scheduleHourlyReminders(
+      Challenge challenge, String startTime) async {
     final timeParts = startTime.split(':');
     final startHour = int.parse(timeParts[0]);
     final startMinute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-    
 
     // Schedule hourly reminders from start time until 11 PM (23:00)
     for (int hour = startHour; hour <= 23; hour++) {
-
       if (_canScheduleMoreNotifications()) {
         await _notifications.zonedSchedule(
           challenge.id.hashCode + hour, // Unique ID for each hour
@@ -369,11 +390,10 @@ class NotificationService {
         break;
       }
     }
-    
   }
 
-  Future<void> _scheduleIntervalReminders(Challenge challenge, String intervalData) async {
-
+  Future<void> _scheduleIntervalReminders(
+      Challenge challenge, String intervalData) async {
     try {
       // Parse interval data - expecting format like "15:09:00" (15 min interval starting at 09:00)
       final parts = intervalData.split(':');
@@ -381,26 +401,24 @@ class NotificationService {
       if (parts.length < 3) {
         return;
       }
-      
+
       final intervalMinutes = int.parse(parts[0]);
       final startHour = int.parse(parts[1]);
       final startMinute = int.parse(parts[2]);
-      
 
       // Calculate how many reminders fit in the day (from start time to 10 PM)
       final startTimeInMinutes = startHour * 60 + startMinute;
       const endTimeInMinutes = 22 * 60; // 10 PM
       final totalMinutes = endTimeInMinutes - startTimeInMinutes;
       final numberOfReminders = (totalMinutes / intervalMinutes).floor() + 1;
-      
 
       for (int i = 0; i < numberOfReminders; i++) {
-        final reminderTimeInMinutes = startTimeInMinutes + (i * intervalMinutes);
+        final reminderTimeInMinutes =
+            startTimeInMinutes + (i * intervalMinutes);
         if (reminderTimeInMinutes > endTimeInMinutes) break;
-        
+
         final hour = (reminderTimeInMinutes / 60).floor();
         final minute = reminderTimeInMinutes % 60;
-        
 
         if (_canScheduleMoreNotifications()) {
           await _notifications.zonedSchedule(
@@ -426,10 +444,14 @@ class NotificationService {
         }
       }
     } catch (e) {
+      if (kDebugMode) {
+        print('Notification error in _scheduleIntervalReminders: $e');
+      }
     }
   }
 
-  Future<void> _scheduleCustomReminders(Challenge challenge, String timesData) async {
+  Future<void> _scheduleCustomReminders(
+      Challenge challenge, String timesData) async {
     // Same as multiple reminders
     await _scheduleMultipleReminders(challenge, timesData);
   }
@@ -437,11 +459,12 @@ class NotificationService {
   Future<void> cancelTaskReminder(String challengeId) async {
     // Cancel multiple possible notification IDs for this challenge
     final baseId = challengeId.hashCode;
-    
+
     // Cancel up to 50 possible notifications (covers hourly, interval, and multiple reminders)
     for (int i = 0; i < 50; i++) {
       await _notifications.cancel(baseId + i);
-      _scheduledNotificationCount = (_scheduledNotificationCount - 1).clamp(0, _maxNotifications);
+      _scheduledNotificationCount =
+          (_scheduledNotificationCount - 1).clamp(0, _maxNotifications);
     }
   }
 
@@ -449,12 +472,13 @@ class NotificationService {
     await _notifications.cancelAll();
     _scheduledNotificationCount = 0;
   }
-  
+
   bool _canScheduleMoreNotifications() {
     return _scheduledNotificationCount < _maxNotifications;
   }
 
-  Future<void> showFailureNotification(int daysFailed, List<String> failedTasks) async {
+  Future<void> showFailureNotification(
+      int daysFailed, List<String> failedTasks) async {
     final taskList = failedTasks.join(', ');
     await _notifications.show(
       999, // Special ID for failure notifications
@@ -481,7 +505,8 @@ class NotificationService {
         android: AndroidNotificationDetails(
           'challenge_completion',
           'Challenge Completion',
-          channelDescription: 'Notification for completing the 75 Hard Challenge',
+          channelDescription:
+              'Notification for completing the 75 Hard Challenge',
           importance: Importance.max,
           priority: Priority.max,
         ),
@@ -491,12 +516,13 @@ class NotificationService {
 
   tz.TZDateTime _nextInstanceOf8AM() {
     final now = tz.TZDateTime.now(tz.local);
-    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, 8);
-    
+    var scheduledDate =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, 8);
+
     if (scheduledDate.isBefore(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
-    
+
     return scheduledDate;
   }
 
@@ -510,12 +536,12 @@ class NotificationService {
     if (targetTime.isBefore(now)) {
       targetTime = targetTime.add(const Duration(days: 1));
     }
-    
+
     // Convert to TZDateTime using the device's timezone offset
     final offset = now.timeZoneOffset;
     final utcTime = targetTime.subtract(offset);
     final scheduledDate = tz.TZDateTime.from(utcTime, tz.UTC).add(offset);
-    
+
     return scheduledDate;
   }
 
@@ -524,7 +550,6 @@ class NotificationService {
     final now = DateTime.now();
     final testTime = now.add(const Duration(minutes: 2));
     final tzTestTime = tz.TZDateTime.from(testTime, tz.local);
-    
 
     try {
       await _notifications.zonedSchedule(
@@ -543,24 +568,24 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     } catch (e) {
+      if (kDebugMode) print('Notification error in scheduleQuickTest: $e');
     }
   }
-  
+
   // Simple working method following exact guide pattern
   Future<void> scheduleWorkingTest(int hour, int minute) async {
-
     // Create target DateTime in device local time
     final now = DateTime.now();
     var scheduledTime = DateTime(now.year, now.month, now.day, hour, minute);
-    
+
     // If time is in the past, schedule for tomorrow
     if (scheduledTime.isBefore(now)) {
       scheduledTime = scheduledTime.add(const Duration(days: 1));
     }
-    
 
     // Convert to TZDateTime using the exact guide pattern
-    final tz.TZDateTime tzScheduleTime = tz.TZDateTime.from(scheduledTime, tz.local);
+    final tz.TZDateTime tzScheduleTime =
+        tz.TZDateTime.from(scheduledTime, tz.local);
 
     try {
       await _notifications.zonedSchedule(
@@ -580,6 +605,7 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     } catch (e) {
+      if (kDebugMode) print('Notification error in scheduleWorkingTest: $e');
     }
   }
 
@@ -601,7 +627,7 @@ class NotificationService {
       "The harder you work, the luckier you get.",
       "Don't stop when you're tired. Stop when you're done.",
     ];
-    
+
     final now = DateTime.now();
     final index = now.day % messages.length;
     return messages[index];

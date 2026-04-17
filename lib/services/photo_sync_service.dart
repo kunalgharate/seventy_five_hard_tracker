@@ -26,12 +26,14 @@ class PhotoSyncService {
   }
 
   /// Upload photo to Firebase Storage. Returns download URL or null.
-  Future<String?> uploadPhoto(File file, String challengeId, DateTime date) async {
+  Future<String?> uploadPhoto(
+      File file, String challengeId, DateTime date) async {
     final user = _auth.currentUser;
     if (user == null) return null;
 
     try {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final path = 'users/${user.uid}/photos/$dateStr/$challengeId.jpg';
       final ref = _storage.ref().child(path);
 

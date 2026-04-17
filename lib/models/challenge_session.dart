@@ -5,36 +5,36 @@ import 'challenge.dart';
 part 'challenge_session.g.dart';
 
 enum ResetMode {
-  hard,  // Any missed task resets to day 1
-  soft   // Missed tasks tracked but no reset
+  hard, // Any missed task resets to day 1
+  soft // Missed tasks tracked but no reset
 }
 
 @HiveType(typeId: 2)
 class ChallengeSession extends Equatable {
   @HiveField(0)
   final String id;
-  
+
   @HiveField(1)
   final List<Challenge> challenges;
-  
+
   @HiveField(2)
   final DateTime startDate;
-  
+
   @HiveField(3)
   final DateTime? endDate;
-  
+
   @HiveField(4)
   final bool isActive;
-  
+
   @HiveField(5)
   final bool isCompleted;
-  
+
   @HiveField(6)
   final int currentDay;
-  
+
   @HiveField(7)
   final String? failureReason;
-  
+
   @HiveField(8)
   final List<String>? failedChallenges;
 
@@ -89,25 +89,29 @@ class ChallengeSession extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'challenges': challenges.map((c) => c.toJson()).toList(),
-    'startDate': startDate.toIso8601String(),
-    'endDate': endDate?.toIso8601String(),
-    'isActive': isActive,
-    'isCompleted': isCompleted,
-    'currentDay': currentDay,
-    'failureReason': failureReason,
-    'failedChallenges': failedChallenges,
-    'resetMode': resetMode,
-    'totalDaysTarget': totalDaysTarget,
-  };
+        'id': id,
+        'challenges': challenges.map((c) => c.toJson()).toList(),
+        'startDate': startDate.toIso8601String(),
+        'endDate': endDate?.toIso8601String(),
+        'isActive': isActive,
+        'isCompleted': isCompleted,
+        'currentDay': currentDay,
+        'failureReason': failureReason,
+        'failedChallenges': failedChallenges,
+        'resetMode': resetMode,
+        'totalDaysTarget': totalDaysTarget,
+      };
 
   factory ChallengeSession.fromJson(Map<String, dynamic> json) {
     return ChallengeSession(
       id: json['id'] as String,
-      challenges: (json['challenges'] as List).map((c) => Challenge.fromJson(c as Map<String, dynamic>)).toList(),
+      challenges: (json['challenges'] as List)
+          .map((c) => Challenge.fromJson(c as Map<String, dynamic>))
+          .toList(),
       startDate: DateTime.parse(json['startDate'] as String),
-      endDate: json['endDate'] != null ? DateTime.parse(json['endDate'] as String) : null,
+      endDate: json['endDate'] != null
+          ? DateTime.parse(json['endDate'] as String)
+          : null,
       isActive: json['isActive'] as bool,
       isCompleted: json['isCompleted'] as bool,
       currentDay: json['currentDay'] as int,
@@ -120,8 +124,16 @@ class ChallengeSession extends Equatable {
 
   @override
   List<Object?> get props => [
-    id, challenges, startDate, endDate, isActive, 
-    isCompleted, currentDay, failureReason, failedChallenges,
-    resetMode, totalDaysTarget
-  ];
+        id,
+        challenges,
+        startDate,
+        endDate,
+        isActive,
+        isCompleted,
+        currentDay,
+        failureReason,
+        failedChallenges,
+        resetMode,
+        totalDaysTarget
+      ];
 }

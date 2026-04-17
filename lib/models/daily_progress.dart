@@ -7,13 +7,13 @@ part 'daily_progress.g.dart';
 class DailyProgress extends Equatable {
   @HiveField(0)
   final DateTime date;
-  
+
   @HiveField(1)
   final Map<String, bool> challengeCompletions; // challengeId -> completed
-  
+
   @HiveField(2)
   final String? journalNote;
-  
+
   @HiveField(3)
   final bool isCompleted;
 
@@ -51,18 +51,19 @@ class DailyProgress extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'date': date.toIso8601String(),
-    'challengeCompletions': challengeCompletions,
-    'journalNote': journalNote,
-    'isCompleted': isCompleted,
-    'taskNotes': taskNotes,
-    'taskPhotos': taskPhotos,
-  };
+        'date': date.toIso8601String(),
+        'challengeCompletions': challengeCompletions,
+        'journalNote': journalNote,
+        'isCompleted': isCompleted,
+        'taskNotes': taskNotes,
+        'taskPhotos': taskPhotos,
+      };
 
   factory DailyProgress.fromJson(Map<String, dynamic> json) {
     return DailyProgress(
       date: DateTime.parse(json['date'] as String),
-      challengeCompletions: (json['challengeCompletions'] as Map).cast<String, bool>(),
+      challengeCompletions:
+          (json['challengeCompletions'] as Map).cast<String, bool>(),
       journalNote: json['journalNote'] as String?,
       isCompleted: json['isCompleted'] as bool,
       taskNotes: (json['taskNotes'] as Map?)?.cast<String, String>(),

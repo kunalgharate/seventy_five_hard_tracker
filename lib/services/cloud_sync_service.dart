@@ -4,8 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/challenge_session.dart';
-import '../models/daily_progress.dart';
 import '../repositories/database_repository.dart';
 
 /// Encrypts and syncs user data to Firestore.

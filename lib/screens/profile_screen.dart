@@ -35,7 +35,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Profile', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text('Profile',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -122,9 +123,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildStatsCard(ChallengeLoaded state) {
     final totalSessions = state.allSessions.length;
-    final completedSessions = state.allSessions.where((s) => s.isCompleted).length;
+    final completedSessions =
+        state.allSessions.where((s) => s.isCompleted).length;
     final totalDaysTracked = state.currentProgress.length;
-    final completedDays = state.currentProgress.where((p) => p.isCompleted).length;
+    final completedDays =
+        state.currentProgress.where((p) => p.isCompleted).length;
 
     return Card(
       child: Padding(
@@ -132,19 +135,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Your Journey', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('Your Journey',
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             Row(
               children: [
-                _statTile('Sessions', '$totalSessions', Icons.replay, Colors.blue),
-                _statTile('Completed', '$completedSessions', Icons.emoji_events, Colors.amber),
+                _statTile(
+                    'Sessions', '$totalSessions', Icons.replay, Colors.blue),
+                _statTile('Completed', '$completedSessions', Icons.emoji_events,
+                    Colors.amber),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                _statTile('Days Tracked', '$totalDaysTracked', Icons.calendar_today, Colors.green),
-                _statTile('Days Done', '$completedDays', Icons.check_circle, Colors.teal),
+                _statTile('Days Tracked', '$totalDaysTracked',
+                    Icons.calendar_today, Colors.green),
+                _statTile('Days Done', '$completedDays', Icons.check_circle,
+                    Colors.teal),
               ],
             ),
             if (totalDaysTracked > 0) ...[
@@ -176,15 +185,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           children: [
             Icon(icon, color: color, size: 24),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+            Text(label,
+                style: TextStyle(fontSize: 11, color: Colors.grey[600])),
           ],
         ),
       ),
@@ -198,7 +210,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Cloud Sync', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('Cloud Sync',
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
               'All data is AES-encrypted before upload. We cannot read your data.',
@@ -218,7 +232,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _isSyncing ? null : _syncToCloud,
                     icon: _isSyncing
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.cloud_upload),
                     label: Text(_isSyncing ? 'Syncing...' : 'Backup Now'),
                     style: ElevatedButton.styleFrom(
@@ -250,7 +267,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Privacy & Security', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('Privacy & Security',
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             _privacyRow(Icons.lock, 'AES-256 encryption for all cloud data'),
             _privacyRow(Icons.visibility_off, 'We cannot read your data'),
@@ -289,7 +308,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(user != null ? 'Cloud backup enabled!' : 'Sign-in failed. Try again.'),
+          content: Text(user != null
+              ? 'Cloud backup enabled!'
+              : 'Sign-in failed. Try again.'),
           backgroundColor: user != null ? Colors.green : Colors.red,
         ),
       );
@@ -300,19 +321,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _syncService.signOut();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed out'), backgroundColor: Colors.grey),
+        const SnackBar(
+            content: Text('Signed out'), backgroundColor: Colors.grey),
       );
     }
   }
 
   Future<void> _syncToCloud() async {
+    final repo = context.read<ChallengeBloc>().repository;
     if (!_syncService.isSignedIn) {
       await _signIn();
       if (!_syncService.isSignedIn) return;
     }
 
     setState(() => _isSyncing = true);
-    final repo = context.read<ChallengeBloc>().repository;
     final success = await _syncService.syncToCloud(repo);
     await _loadLastSync();
     setState(() => _isSyncing = false);
@@ -320,7 +342,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Backup complete!' : 'Backup failed. Check connection.'),
+          content: Text(success
+              ? 'Backup complete!'
+              : 'Backup failed. Check connection.'),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -348,18 +372,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               'This will replace your local data. Continue?',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel')),
               ElevatedButton(
                 onPressed: () async {
                   Navigator.pop(ctx);
                   final repo = context.read<ChallengeBloc>().repository;
+                  final bloc = context.read<ChallengeBloc>();
                   await repo.restoreFromJson(data);
-                  context.read<ChallengeBloc>().add(LoadChallengeData());
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Restore complete!'), backgroundColor: Colors.green),
-                    );
-                  }
+                  if (!mounted) return;
+                  bloc.add(LoadChallengeData());
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Restore complete!'),
+                        backgroundColor: Colors.green),
+                  );
                 },
                 child: const Text('Restore'),
               ),
@@ -368,7 +396,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No backup found'), backgroundColor: Colors.orange),
+          const SnackBar(
+              content: Text('No backup found'), backgroundColor: Colors.orange),
         );
       }
     }

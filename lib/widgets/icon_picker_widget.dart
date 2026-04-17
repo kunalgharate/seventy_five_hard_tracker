@@ -10,7 +10,8 @@ class IconPickerWidget extends StatefulWidget {
   final String? selectedIconName;
   final String? selectedImagePath;
   final int? selectedColor;
-  final Function(String? iconName, String? imagePath, int? color) onSelectionChanged;
+  final Function(String? iconName, String? imagePath, int? color)
+      onSelectionChanged;
 
   const IconPickerWidget({
     super.key,
@@ -56,7 +57,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -127,7 +128,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
 
   Widget _buildCategorySection(String category) {
     final icons = ChallengeIconService.getIconsByCategory(category);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -173,14 +174,15 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
 
   Widget _buildIconOption(ChallengeIconData iconData) {
     final isSelected = _selectedIconName == iconData.name;
-    final color = _selectedColor != null ? Color(_selectedColor!) : iconData.color;
+    final color =
+        _selectedColor != null ? Color(_selectedColor!) : iconData.color;
 
     return GestureDetector(
       onTap: () {
         setState(() {
           _selectedIconName = iconData.name;
           _selectedImagePath = null; // Clear image when icon is selected
-          _selectedColor ??= iconData.color.value;
+          _selectedColor ??= iconData.color.toARGB32();
         });
         widget.onSelectionChanged(_selectedIconName, null, _selectedColor);
       },
@@ -190,7 +192,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              color.withOpacity(0.8),
+              color.withValues(alpha: 0.8),
               color,
             ],
           ),
@@ -200,7 +202,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
               : null,
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -289,10 +291,10 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
+          color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
           ),
         ),
         child: Column(
@@ -350,14 +352,15 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
         itemCount: colors.length,
         itemBuilder: (context, index) {
           final color = colors[index];
-          final isSelected = _selectedColor == color.value;
+          final isSelected = _selectedColor == color.toARGB32();
 
           return GestureDetector(
             onTap: () {
               setState(() {
-                _selectedColor = color.value;
+                _selectedColor = color.toARGB32();
               });
-              widget.onSelectionChanged(_selectedIconName, _selectedImagePath, _selectedColor);
+              widget.onSelectionChanged(
+                  _selectedIconName, _selectedImagePath, _selectedColor);
             },
             child: Container(
               decoration: BoxDecoration(
@@ -368,7 +371,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
                     : null,
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.4),
+                    color: color.withValues(alpha: 0.4),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -407,6 +410,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
         widget.onSelectionChanged(null, _selectedImagePath, _selectedColor);
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error picking image: $e')),
       );

@@ -1,237 +1,98 @@
 # 75 Hard Challenge Tracker
 
-A Flutter app to help users track their 75 Hard personal challenge with custom daily tasks, progress tracking, and motivational features.
+A Flutter mobile app for tracking the 75 Hard mental toughness challenge with customizable daily tasks, smart notifications, and cloud backup.
 
-#Play Store link : https://play.google.com/store/apps/details?id=com.seventyfive.hard.challenge&hl=en-US&ah=kv1OY6af0PDN2jAVgNwd8HGqf3Y
+## Overview
 
-## Features
+The 75 Hard Challenge Tracker helps users commit to a 75-day personal development challenge. Users define their daily tasks, track completion each day, receive smart reminders, and monitor progress with detailed statistics. The app supports both strict "Hard Mode" (miss a task, restart from Day 1) and flexible "Soft Mode" (track without penalties).
 
-### 🎯 Core Features
-- **Custom Challenge Setup**: Create up to 10 personalized daily tasks
-- **75-Day Progress Tracking**: Visual calendar with completion status
-- **Automatic Reset**: Miss any task = automatic reset to Day 1
-- **Session History**: Track all previous attempts and failure points
-- **Local Storage**: All data stored locally using Hive database
+## Key Features
 
-### 📱 User Experience
-- **Material Design**: Clean, modern Android-focused UI
-- **Progress Statistics**: Current streak, best streak, completion percentage
-- **Daily Journal**: Add personal notes for each day
-- **Completion Certificate**: Celebration screen for finishing 75 days
+- **Two challenge modes** — Hard (strict reset on failure) and Soft (flexible tracking)
+- **Three task types** — Hard (must-do), Soft (should-do), Regular (optional habits)
+- **Smart notifications** — Once, multiple, hourly, interval, and custom reminders
+- **Daily journal** — Per-day reflections and per-task notes
+- **Photo proof** — Attach photos to tasks as evidence
+- **Progress tracking** — Day counter, completion %, streaks, and history
+- **Cloud backup** — AES-256 encrypted sync via Firebase
+- **Offline-first** — All core features work without internet
+- **50+ icons, 25+ colors** — Rich customization for tasks
 
-### 🔔 Notifications & Reminders
-- **Daily Motivation**: 8AM motivational quotes (online + offline backup)
-- **Custom Task Reminders**: Set individual reminder times for each challenge
-- **Reset Notifications**: Automatic alerts when challenge resets
-- **Completion Celebration**: Special notification for finishing
+## Documentation
 
-### 📊 Progress Tracking
-- **Visual Calendar**: Color-coded days (green = completed, red = failed)
-- **Statistics Dashboard**: Current day, completion rate, streaks
-- **History View**: All previous sessions with failure analysis
-- **Challenge Breakdown**: See which specific tasks caused failures
+| Document | Description |
+|---|---|
+| [Product Requirements (PRD)](docs/PRODUCT_REQUIREMENTS.md) | Full product specification for QA — features, user flows, business rules, data models, notification system, edge cases, and testing checklist |
 
-## Technical Implementation
+### What the PRD Covers
 
-### Architecture
-- **State Management**: BLoC pattern with flutter_bloc
-- **Local Database**: Hive for offline data storage
-- **Notifications**: flutter_local_notifications with timezone support
-- **UI Framework**: Material Design 3
+The product requirements document is the single source of truth for QA testing. It includes:
 
-### Key Dependencies
-```yaml
-dependencies:
-  flutter_bloc: ^8.1.3          # State management
-  hive: ^2.2.3                  # Local database
-  hive_flutter: ^1.1.0          # Flutter integration
-  flutter_local_notifications: ^17.2.2  # Local notifications
-  table_calendar: ^3.1.2        # Calendar widget
-  http: ^1.2.2                  # API calls for quotes
-  permission_handler: ^11.3.1   # Android permissions
-```
+- **Challenge modes** — How Hard Mode and Soft Mode work, reset logic, completion criteria
+- **Task types** — Hard, Soft, Regular — what each means and how they interact with resets
+- **User flows** — Onboarding, daily tracking, missed-day detection, completion, manual reset, cloud sync
+- **Screens & navigation** — Every screen in the app, what it shows, and how to navigate
+- **Notification system** — All 5 reminder types, night summary, motivation quotes, notification ID generation, limits
+- **Data models** — Challenge, ChallengeSession, DailyProgress — every field documented
+- **Business rules** — Day counter calculation, completion checks, midnight timer, scheduling logic
+- **Cloud sync & security** — AES-256 encryption, Firebase auth, backup/restore flows
+- **Edge cases** — Offline behavior, timezone handling, notification limits, boundary conditions
+- **QA testing checklist** — 100+ test cases organized by feature area
+
+## Tech Stack
+
+- **Framework:** Flutter (Dart)
+- **State Management:** flutter_bloc
+- **Local Database:** Hive
+- **Notifications:** flutter_local_notifications + timezone
+- **Cloud:** Firebase (Auth, Firestore, Storage, Analytics, Crashlytics, FCM)
+- **Encryption:** AES-256 via encrypt package
+- **UI:** Material 3, Glassmorphism, flutter_animate, Poppins + Inter fonts
 
 ## Getting Started
 
-### Prerequisites
-- Flutter SDK (latest stable version)
-- Android Studio or VS Code
-- Android device/emulator for testing
-
-### Installation
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd seventy_five_hard_tracker
-```
-
-2. Install dependencies:
-```bash
+# Install dependencies
 flutter pub get
-```
 
-3. Generate Hive adapters:
-```bash
-flutter packages pub run build_runner build
-```
+# Generate Hive adapters
+dart run build_runner build --delete-conflicting-outputs
 
-4. **Generate App Icons** (for all Android versions):
-```bash
-dart run flutter_launcher_icons
-```
-This will generate:
-- Legacy icons for Android 7.1 and below
-- Adaptive icons for Android 8.0 to 11
-- Themed icons for Android 12+
-
-5. Run the app:
-```bash
+# Run the app
 flutter run
+
+# Run tests
+flutter test
+
+# Run linter
+flutter analyze
+
+# Format code
+dart format .
 ```
 
-### Updating App Icons
+## Project Structure
 
-To update the app icon:
+```
+lib/
+├── bloc/                  # BLoC state management (events, states, business logic)
+├── models/                # Data models (Challenge, ChallengeSession, DailyProgress)
+├── repositories/          # Database repository (Hive CRUD operations)
+├── screens/               # App screens (Home, Onboarding, Settings, Profile, History)
+├── services/              # Services (notifications, cloud sync, analytics, icons, colors)
+├── widgets/               # Reusable widgets (task cards, date picker, journal, reminders)
+└── main.dart              # App entry point, theming, routing
 
-1. Replace the logo file at `assets/icons/logo.png` with your new icon (recommended size: 1024x1024px)
+test/
+├── bug_condition_exploration_test.dart   # Bug condition verification tests
+└── preservation_property_test.dart       # Preservation property tests
 
-2. Update the configuration in `flutter_launcher_icons.yaml` if needed:
-   - Change `adaptive_icon_background` color
-   - Modify icon paths
-
-3. Regenerate icons:
-```bash
-dart run flutter_launcher_icons
+docs/
+└── PRODUCT_REQUIREMENTS.md              # Full PRD for QA
 ```
 
-4. Clean and rebuild:
-```bash
-flutter clean
-flutter pub get
-flutter build apk
-```
+## Version
 
-## App Flow
-
-### 1. Onboarding
-- User creates 1-10 custom daily challenges
-- Examples: "Workout 45min", "Read 10 pages", "Drink 1 gallon water"
-- Challenges are locked once the session starts
-
-### 2. Daily Tracking
-- Calendar view showing all 75 days
-- Check off completed tasks each day
-- Add optional journal notes
-- View progress statistics
-
-### 3. Automatic Reset Logic
-- App checks for missed days automatically
-- If any task is incomplete, challenge resets to Day 1
-- Failure reason and missed tasks are recorded
-- User receives notification about reset
-
-### 4. Completion
-- After 75 consecutive successful days
-- Celebration screen with achievement notification
-- Session saved to history as completed
-
-### 5. History & Analytics
-- View all previous attempts
-- See failure points and reasons
-- Track improvement over time
-- Analyze which tasks are most challenging
-
-## Notification Features
-
-### Daily Motivation (8:00 AM)
-- Inspirational quotes to start the day
-- Online API with offline fallback
-- Customizable motivational messages
-
-### Task Reminders
-- Individual reminder times for each challenge
-- User can enable/disable per task
-- Customizable notification times
-
-### System Notifications
-- Challenge reset alerts
-- Completion celebrations
-- Daily progress reminders
-
-## Data Storage
-
-### Local Database (Hive)
-- **Challenge Sessions**: Track each 75-day attempt
-- **Daily Progress**: Store completion status for each day
-- **Settings**: User preferences and configurations
-
-### Data Models
-- `Challenge`: Individual task with reminder settings
-- `ChallengeSession`: 75-day session with metadata
-- `DailyProgress`: Daily completion status and journal notes
-
-## Privacy & Security
-- **No Account Required**: Completely local app
-- **No Data Collection**: All data stays on device
-- **Offline Capable**: Works without internet connection
-- **Local Notifications**: No external notification services
-
-## Customization Options
-
-### Settings Screen
-- Configure task reminder times
-- Preview motivational quotes
-- Reset current challenge (with confirmation)
-- View app information and rules
-
-### Notification Preferences
-- Enable/disable daily motivation
-- Set custom reminder times per task
-- Control notification frequency
-
-## Development Notes
-
-### State Management (BLoC)
-- `ChallengeBloc`: Main business logic
-- Events: User actions (start session, update progress, etc.)
-- States: UI states (loading, loaded, error, completed, reset)
-
-### Database Schema
-- Type-safe Hive adapters with code generation
-- Efficient local storage with minimal overhead
-- Automatic data migration support
-
-### Notification System
-- Timezone-aware scheduling
-- Persistent notifications across app restarts
-- Battery optimization friendly
-
-## Future Enhancements
-
-### Potential Features
-- Export progress data
-- Share achievements on social media
-- Multiple challenge templates
-- Progress charts and analytics
-- Photo attachments for daily progress
-- Integration with fitness trackers
-- Community features (optional)
-
-### Technical Improvements
-- Background sync capabilities
-- Enhanced offline quote database
-- Performance optimizations
-- Accessibility improvements
-- iOS support expansion
-
-## Contributing
-
-This is a personal challenge tracker focused on simplicity and privacy. The app is designed to work completely offline with no external dependencies beyond motivational quote APIs.
-
-## License
-
-This project is created for educational and personal use. Feel free to modify and adapt for your own 75 Hard challenge journey!
-
----
-
-**Remember**: The 75 Hard Challenge is about mental toughness and consistency. This app is just a tool - your commitment and discipline are what matter most! 💪
+**Current:** 1.1.0+5  
+**Min SDK:** Android 23 (6.0 Marshmallow)  
+**Dart SDK:** ^3.5.0

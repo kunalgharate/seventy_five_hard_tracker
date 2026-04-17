@@ -24,17 +24,33 @@ class WaterReminderWidget extends StatefulWidget {
 
 class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   bool _isExpanded = false;
-  
+
   // Default hourly reminders from 7 AM to 10 PM
-  final List<int> _defaultHours = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+  final List<int> _defaultHours = [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+  ];
 
   bool _isTimeCompleted(int hour) {
-    return widget.completedTimes.any((time) => 
-      time.day == widget.selectedDate.day &&
-      time.month == widget.selectedDate.month &&
-      time.year == widget.selectedDate.year &&
-      time.hour == hour
-    );
+    return widget.completedTimes.any((time) =>
+        time.day == widget.selectedDate.day &&
+        time.month == widget.selectedDate.month &&
+        time.year == widget.selectedDate.year &&
+        time.hour == hour);
   }
 
   void _toggleWaterIntake(int hour) {
@@ -59,10 +75,10 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            timePickerTheme: TimePickerThemeData(
+            timePickerTheme: const TimePickerThemeData(
               backgroundColor: Colors.white,
-              hourMinuteTextColor: const Color(0xFFFFA726),
-              dayPeriodTextColor: const Color(0xFFFFA726),
+              hourMinuteTextColor: Color(0xFFFFA726),
+              dayPeriodTextColor: Color(0xFFFFA726),
             ),
           ),
           child: child!,
@@ -83,11 +99,12 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   }
 
   int get _completedCount {
-    return widget.completedTimes.where((time) => 
-      time.day == widget.selectedDate.day &&
-      time.month == widget.selectedDate.month &&
-      time.year == widget.selectedDate.year
-    ).length;
+    return widget.completedTimes
+        .where((time) =>
+            time.day == widget.selectedDate.day &&
+            time.month == widget.selectedDate.month &&
+            time.year == widget.selectedDate.year)
+        .length;
   }
 
   @override
@@ -118,11 +135,12 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.blue[100]!.withOpacity(0.3),
-                    Colors.cyan[50]!.withOpacity(0.2),
+                    Colors.blue[100]!.withValues(alpha: 0.3),
+                    Colors.cyan[50]!.withValues(alpha: 0.2),
                   ],
                 ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Row(
                 children: [
@@ -163,9 +181,12 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                   ),
                   // Progress indicator
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: _completedCount >= 8 ? Colors.green[100] : Colors.orange[100],
+                      color: _completedCount >= 8
+                          ? Colors.green[100]
+                          : Colors.orange[100],
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -173,7 +194,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: _completedCount >= 8 ? Colors.green[700] : Colors.orange[700],
+                        color: _completedCount >= 8
+                            ? Colors.green[700]
+                            : Colors.orange[700],
                       ),
                     ),
                   ),
@@ -186,7 +209,7 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
               ),
             ),
           ),
-          
+
           // Content
           if (_isExpanded)
             Padding(
@@ -203,12 +226,13 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // Hourly grid
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 4,
                       childAspectRatio: 1.2,
                       crossAxisSpacing: 8,
@@ -219,22 +243,24 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       final hour = _defaultHours[index];
                       final isCompleted = _isTimeCompleted(hour);
                       final isPast = isToday && DateTime.now().hour > hour;
-                      
+
                       return InkWell(
-                        onTap: widget.isEditable ? () => _toggleWaterIntake(hour) : null,
+                        onTap: widget.isEditable
+                            ? () => _toggleWaterIntake(hour)
+                            : null,
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: isCompleted 
+                            color: isCompleted
                                 ? Colors.blue[500]
-                                : isPast 
+                                : isPast
                                     ? Colors.red[100]
                                     : Colors.grey[100],
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: isCompleted 
+                              color: isCompleted
                                   ? Colors.blue[700]!
-                                  : isPast 
+                                  : isPast
                                       ? Colors.red[300]!
                                       : Colors.grey[300]!,
                             ),
@@ -243,23 +269,26 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                isCompleted ? Icons.water_drop : Icons.water_drop_outlined,
-                                color: isCompleted 
+                                isCompleted
+                                    ? Icons.water_drop
+                                    : Icons.water_drop_outlined,
+                                color: isCompleted
                                     ? Colors.white
-                                    : isPast 
+                                    : isPast
                                         ? Colors.red[600]
                                         : Colors.grey[600],
                                 size: 20,
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                DateFormat('h a').format(DateTime(2024, 1, 1, hour)),
+                                DateFormat('h a')
+                                    .format(DateTime(2024, 1, 1, hour)),
                                 style: GoogleFonts.inter(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w500,
-                                  color: isCompleted 
+                                  color: isCompleted
                                       ? Colors.white
-                                      : isPast 
+                                      : isPast
                                           ? Colors.red[600]
                                           : Colors.grey[700],
                                 ),
@@ -270,9 +299,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       );
                     },
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Custom time and quick actions
                   Row(
                     children: [
@@ -282,7 +311,8 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                           icon: const Icon(Icons.add_alarm, size: 18),
                           label: Text(
                             'Custom Time',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                            style:
+                                GoogleFonts.inter(fontWeight: FontWeight.w500),
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.blue[600],
@@ -297,11 +327,14 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: widget.isEditable ? () => _toggleWaterIntake(DateTime.now().hour) : null,
+                          onPressed: widget.isEditable
+                              ? () => _toggleWaterIntake(DateTime.now().hour)
+                              : null,
                           icon: const Icon(Icons.water_drop, size: 18),
                           label: Text(
                             'Log Now',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                            style:
+                                GoogleFonts.inter(fontWeight: FontWeight.w500),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue[500],
@@ -315,9 +348,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Progress bar
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,7 +371,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: _completedCount >= 8 ? Colors.green[700] : Colors.blue[700],
+                              color: _completedCount >= 8
+                                  ? Colors.green[700]
+                                  : Colors.blue[700],
                             ),
                           ),
                         ],
@@ -348,7 +383,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                         value: (_completedCount / 8).clamp(0.0, 1.0),
                         backgroundColor: Colors.grey[200],
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          _completedCount >= 8 ? Colors.green[500]! : Colors.blue[500]!,
+                          _completedCount >= 8
+                              ? Colors.green[500]!
+                              : Colors.blue[500]!,
                         ),
                         minHeight: 6,
                       ),

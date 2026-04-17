@@ -45,7 +45,7 @@ class ChallengeIconWidget extends StatelessWidget {
           gradient: _getGradient(),
           boxShadow: [
             BoxShadow(
-              color: _getIconColor().withOpacity(0.3),
+              color: _getIconColor().withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -73,7 +73,7 @@ class ChallengeIconWidget extends StatelessWidget {
 
   Widget _buildCustomImage() {
     final imagePath = challenge.imagePath!;
-    
+
     if (imagePath.startsWith('http')) {
       // Network image
       return ClipRRect(
@@ -96,18 +96,18 @@ class ChallengeIconWidget extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildAutoDetectedIcon(),
+          errorBuilder: (context, error, stackTrace) =>
+              _buildAutoDetectedIcon(),
         ),
       );
     }
   }
 
   Widget _buildPredefinedIcon() {
-    final iconData = ChallengeIconService.getAllIcons()
-        .firstWhere(
-          (icon) => icon.name == challenge.iconName,
-          orElse: () => ChallengeIconService.getAllIcons().first,
-        );
+    final iconData = ChallengeIconService.getAllIcons().firstWhere(
+      (icon) => icon.name == challenge.iconName,
+      orElse: () => ChallengeIconService.getAllIcons().first,
+    );
 
     return Center(
       child: FaIcon(
@@ -120,7 +120,7 @@ class ChallengeIconWidget extends StatelessWidget {
 
   Widget _buildAutoDetectedIcon() {
     final iconData = ChallengeIconService.findBestIcon(challenge.title);
-    
+
     return Center(
       child: FaIcon(
         iconData?.icon ?? FontAwesomeIcons.star,
@@ -159,11 +159,10 @@ class ChallengeIconWidget extends StatelessWidget {
     }
 
     if (challenge.iconName != null) {
-      final iconData = ChallengeIconService.getAllIcons()
-          .firstWhere(
-            (icon) => icon.name == challenge.iconName,
-            orElse: () => ChallengeIconService.getAllIcons().first,
-          );
+      final iconData = ChallengeIconService.getAllIcons().firstWhere(
+        (icon) => icon.name == challenge.iconName,
+        orElse: () => ChallengeIconService.getAllIcons().first,
+      );
       return iconData.color;
     }
 
@@ -176,7 +175,7 @@ class ChallengeIconWidget extends StatelessWidget {
     if (challenge.title.isNotEmpty) {
       return DynamicColorService.getGradientForText(challenge.title);
     }
-    
+
     final baseColor = _getIconColor();
     return LinearGradient(
       begin: Alignment.topLeft,

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/challenge.dart';
 import '../models/challenge_session.dart';
@@ -107,7 +106,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       ));
 
       // Check for missed days only on first load (app open)
-      if (activeSession != null && activeSession.isActive && !_hasCheckedMissedDays) {
+      if (activeSession != null &&
+          activeSession.isActive &&
+          !_hasCheckedMissedDays) {
         _hasCheckedMissedDays = true;
         await _checkForMissedDays(activeSession);
       }
@@ -434,10 +435,12 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       if (activeSession == null) return;
 
       final updatedChallenges = [...activeSession.challenges, event.challenge];
-      final updatedSession = activeSession.copyWith(challenges: updatedChallenges);
+      final updatedSession =
+          activeSession.copyWith(challenges: updatedChallenges);
       await _repository.saveSession(updatedSession);
 
-      final currentProgress = _repository.getProgressForSession(activeSession.startDate);
+      final currentProgress =
+          _repository.getProgressForSession(activeSession.startDate);
       final allSessions = _repository.getAllSessions();
       emit(ChallengeLoaded(
         activeSession: updatedSession,
@@ -506,7 +509,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     final start = DateTime(
         session.startDate.year, session.startDate.month, session.startDate.day);
     final days = today.difference(start).inDays + 1;
-    return days.clamp(1, 75);
+    return days.clamp(1, session.totalDaysTarget);
   }
 
   /// Checks for missed days. Uses [_isCheckingMissedDays] guard to prevent
@@ -521,8 +524,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final startDate = DateTime(
-          session.startDate.year, session.startDate.month, session.startDate.day);
+      final startDate = DateTime(session.startDate.year,
+          session.startDate.month, session.startDate.day);
 
       final daysSinceStart = today.difference(startDate).inDays;
 
@@ -553,7 +556,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             session.challenges.where((c) => c.type == TaskType.hard).toList();
 
         final missedHardTasks = hardChallenges
-            .where((c) => progress?.challengeCompletions[c.id] != true)
+            .where((c) => progress.challengeCompletions[c.id] != true)
             .map((c) => c.title)
             .toList();
 

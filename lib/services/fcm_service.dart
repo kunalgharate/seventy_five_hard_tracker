@@ -31,8 +31,8 @@ class FcmService {
     await _messaging.requestPermission();
 
     // Create high-importance Android channel for heads-up display
-    final androidPlugin = _localNotifications
-        .resolvePlatformSpecificImplementation<
+    final androidPlugin =
+        _localNotifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(

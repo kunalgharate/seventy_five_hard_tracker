@@ -4,28 +4,28 @@ import 'package:equatable/equatable.dart';
 part 'challenge.g.dart';
 
 enum TaskType {
-  hard,    // Must complete - resets to day 1 if missed
-  soft,    // Should complete - doesn't reset but tracked
-  regular  // Optional - for habit tracking only
+  hard, // Must complete - resets to day 1 if missed
+  soft, // Should complete - doesn't reset but tracked
+  regular // Optional - for habit tracking only
 }
 
 enum ReminderType {
-  once,    // Single reminder at specific time
-  hourly,  // Hourly reminders within time window
-  custom   // Custom interval
+  once, // Single reminder at specific time
+  hourly, // Hourly reminders within time window
+  custom // Custom interval
 }
 
 @HiveType(typeId: 0)
 class Challenge extends Equatable {
   @HiveField(0)
   final String id;
-  
+
   @HiveField(1)
   final String title;
-  
+
   @HiveField(2)
   final String? reminderTime; // Format: "HH:mm"
-  
+
   @HiveField(3)
   final bool isReminderEnabled;
 
@@ -86,17 +86,23 @@ class Challenge extends Equatable {
 
   TaskType get type {
     switch (taskType) {
-      case 'soft': return TaskType.soft;
-      case 'regular': return TaskType.regular;
-      default: return TaskType.hard;
+      case 'soft':
+        return TaskType.soft;
+      case 'regular':
+        return TaskType.regular;
+      default:
+        return TaskType.hard;
     }
   }
 
   ReminderType get reminder {
     switch (reminderType) {
-      case 'hourly': return ReminderType.hourly;
-      case 'custom': return ReminderType.custom;
-      default: return ReminderType.once;
+      case 'hourly':
+        return ReminderType.hourly;
+      case 'custom':
+        return ReminderType.custom;
+      default:
+        return ReminderType.once;
     }
   }
 
@@ -132,30 +138,31 @@ class Challenge extends Equatable {
       reminderStartHour: reminderStartHour ?? this.reminderStartHour,
       reminderEndHour: reminderEndHour ?? this.reminderEndHour,
       allowNightReminders: allowNightReminders ?? this.allowNightReminders,
-      reminderIntervalMinutes: reminderIntervalMinutes ?? this.reminderIntervalMinutes,
+      reminderIntervalMinutes:
+          reminderIntervalMinutes ?? this.reminderIntervalMinutes,
       photoRequired: photoRequired ?? this.photoRequired,
       showInRegularTab: showInRegularTab ?? this.showInRegularTab,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'reminderTime': reminderTime,
-    'isReminderEnabled': isReminderEnabled,
-    'imagePath': imagePath,
-    'iconName': iconName,
-    'iconColor': iconColor,
-    'category': category,
-    'taskType': taskType,
-    'reminderType': reminderType,
-    'reminderStartHour': reminderStartHour,
-    'reminderEndHour': reminderEndHour,
-    'allowNightReminders': allowNightReminders,
-    'reminderIntervalMinutes': reminderIntervalMinutes,
-    'photoRequired': photoRequired,
-    'showInRegularTab': showInRegularTab,
-  };
+        'id': id,
+        'title': title,
+        'reminderTime': reminderTime,
+        'isReminderEnabled': isReminderEnabled,
+        'imagePath': imagePath,
+        'iconName': iconName,
+        'iconColor': iconColor,
+        'category': category,
+        'taskType': taskType,
+        'reminderType': reminderType,
+        'reminderStartHour': reminderStartHour,
+        'reminderEndHour': reminderEndHour,
+        'allowNightReminders': allowNightReminders,
+        'reminderIntervalMinutes': reminderIntervalMinutes,
+        'photoRequired': photoRequired,
+        'showInRegularTab': showInRegularTab,
+      };
 
   factory Challenge.fromJson(Map<String, dynamic> json) {
     return Challenge(
@@ -180,9 +187,21 @@ class Challenge extends Equatable {
 
   @override
   List<Object?> get props => [
-    id, title, reminderTime, isReminderEnabled, imagePath, iconName, 
-    iconColor, category, taskType, reminderType, reminderStartHour, 
-    reminderEndHour, allowNightReminders, reminderIntervalMinutes, 
-    photoRequired, showInRegularTab
-  ];
+        id,
+        title,
+        reminderTime,
+        isReminderEnabled,
+        imagePath,
+        iconName,
+        iconColor,
+        category,
+        taskType,
+        reminderType,
+        reminderStartHour,
+        reminderEndHour,
+        allowNightReminders,
+        reminderIntervalMinutes,
+        photoRequired,
+        showInRegularTab
+      ];
 }

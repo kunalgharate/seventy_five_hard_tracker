@@ -207,7 +207,7 @@ class ChallengeIconService {
 
   static ChallengeIconData? findBestIcon(String challengeTitle) {
     final title = challengeTitle.toLowerCase();
-    
+
     // Search through all categories for matching keywords
     for (final category in categoryIcons.values) {
       for (final iconData in category) {
@@ -218,7 +218,7 @@ class ChallengeIconService {
         }
       }
     }
-    
+
     // Return default icon if no match found
     return categoryIcons['general']?.first;
   }

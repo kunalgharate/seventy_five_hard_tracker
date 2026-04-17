@@ -62,12 +62,13 @@ class SimpleBackgroundCheckService {
       final yesterdayProgress = progressBox.get(key) ??
           DailyProgress(
             date: yesterday,
-            challengeCompletions: {},
+            challengeCompletions: const {},
             isCompleted: false,
           );
 
-      final hardChallenges =
-          activeSession.challenges.where((c) => c.type == TaskType.hard).toList();
+      final hardChallenges = activeSession.challenges
+          .where((c) => c.type == TaskType.hard)
+          .toList();
 
       final missedTasks = <String>[];
       for (final challenge in hardChallenges) {

@@ -35,15 +35,16 @@ class ProgressStats extends StatelessWidget {
                   children: [
                     Text(
                       'Day $currentDay of $totalDays',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                     Text(
                       'Started: ${_formatDate(session.startDate)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                            color: Colors.grey[600],
+                          ),
                     ),
                   ],
                 ),
@@ -76,8 +77,8 @@ class ProgressStats extends StatelessWidget {
                 Text(
                   '${progressPercentage.toStringAsFixed(1)}%',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
               ],
             ),
@@ -120,9 +121,12 @@ class ProgressStats extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem('Current Streak', '$currentStreak days', Icons.local_fire_department),
-        _buildStatItem('Best Streak', '$longestStreak days', Icons.emoji_events),
-        _buildStatItem('Remaining', '${totalDays - currentDay + 1} days', Icons.schedule),
+        _buildStatItem('Current Streak', '$currentStreak days',
+            Icons.local_fire_department),
+        _buildStatItem(
+            'Best Streak', '$longestStreak days', Icons.emoji_events),
+        _buildStatItem(
+            'Remaining', '${totalDays - currentDay + 1} days', Icons.schedule),
       ],
     );
   }

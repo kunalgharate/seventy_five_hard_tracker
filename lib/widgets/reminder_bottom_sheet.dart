@@ -89,7 +89,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
       child: Column(
         children: [
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             margin: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               color: Colors.grey[300],
@@ -103,8 +104,10 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                 Icon(Icons.notifications, color: Colors.orange[600]),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Set Reminder',
-                    style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                  child: Text(
+                    'Set Reminder',
+                    style: GoogleFonts.poppins(
+                        fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                 ),
                 IconButton(
@@ -123,26 +126,40 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                   _buildToggle(),
                   if (_enabled) ...[
                     const SizedBox(height: 20),
-                    Text('Reminder Type',
-                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+                    Text(
+                      'Reminder Type',
+                      style: GoogleFonts.poppins(
+                          fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 12),
-                    _buildTypeOption('once', 'Once', 'Single reminder at specific time', Icons.schedule_outlined),
-                    _buildTypeOption('multiple', 'Multiple Times', 'Several reminders throughout the day', Icons.schedule),
-                    _buildTypeOption('hourly', 'Every Hour', 'Hourly reminders during active hours', Icons.access_time),
-                    _buildTypeOption('interval', 'Every X Hours', 'Regular intervals (15 min - 12 hours)', Icons.timer),
-                    _buildTypeOption('custom', 'Custom Schedule', 'Flexible timing for any pattern', Icons.tune),
+                    _buildTypeOption(
+                        'once',
+                        'Once',
+                        'Single reminder at specific time',
+                        Icons.schedule_outlined),
+                    _buildTypeOption('multiple', 'Multiple Times',
+                        'Several reminders throughout the day', Icons.schedule),
+                    _buildTypeOption(
+                        'hourly',
+                        'Every Hour',
+                        'Hourly reminders during active hours',
+                        Icons.access_time),
+                    _buildTypeOption('interval', 'Every X Hours',
+                        'Regular intervals (15 min - 12 hours)', Icons.timer),
+                    _buildTypeOption('custom', 'Custom Schedule',
+                        'Flexible timing for any pattern', Icons.tune),
                     const SizedBox(height: 20),
                     if (_type == 'once')
-                      _buildTimeSelector('Reminder Time', _time, (t) => setState(() => _time = t)),
+                      _buildTimeSelector('Reminder Time', _time,
+                          (t) => setState(() => _time = t)),
                     if (_type == 'multiple')
-                      _buildMultipleTimeSelector('Reminder Times', _customTimes, (t) => setState(() => _customTimes = t)),
-                    if (_type == 'hourly')
-                      _buildHourlyConfig(),
-                    if (_type == 'interval')
-                      _buildIntervalConfig(),
+                      _buildMultipleTimeSelector('Reminder Times', _customTimes,
+                          (t) => setState(() => _customTimes = t)),
+                    if (_type == 'hourly') _buildHourlyConfig(),
+                    if (_type == 'interval') _buildIntervalConfig(),
                     if (_type == 'custom')
-                      _buildMultipleTimeSelector('Custom Times', _customTimes, (t) => setState(() => _customTimes = t)),
+                      _buildMultipleTimeSelector('Custom Times', _customTimes,
+                          (t) => setState(() => _customTimes = t)),
                   ] else ...[
                     const SizedBox(height: 20),
                     Container(
@@ -153,10 +170,13 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
+                          Icon(Icons.info_outline,
+                              color: Colors.grey[600], size: 20),
                           const SizedBox(width: 8),
-                          Text('Enable reminders to configure settings',
-                            style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
+                          Text(
+                            'Enable reminders to configure settings',
+                            style: GoogleFonts.inter(
+                                color: Colors.grey[600], fontSize: 14),
                           ),
                         ],
                       ),
@@ -175,11 +195,15 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                 onPressed: _save,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange[600],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: Text(
                   _enabled ? 'Save Reminder Settings' : 'Disable Reminder',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
                 ),
               ),
             ),
@@ -205,10 +229,13 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Enable Reminders',
-                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+                Text(
+                  'Enable Reminders',
+                  style: GoogleFonts.poppins(
+                      fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                Text('Get notified for this task',
+                Text(
+                  'Get notified for this task',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
@@ -220,14 +247,15 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               _enabled = v;
               if (v && _time.isEmpty) _time = '09:00';
             }),
-            activeColor: Colors.orange[600],
+            activeThumbColor: Colors.orange[600],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTypeOption(String value, String title, String subtitle, IconData icon) {
+  Widget _buildTypeOption(
+      String value, String title, String subtitle, IconData icon) {
     final isSelected = _type == value;
     return GestureDetector(
       onTap: () => setState(() {
@@ -249,37 +277,46 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? Colors.orange[600] : Colors.grey[600]),
+            Icon(icon,
+                color: isSelected ? Colors.orange[600] : Colors.grey[600]),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
+                  Text(
+                    title,
                     style: GoogleFonts.inter(
-                      fontSize: 14, fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                       color: isSelected ? Colors.orange[700] : Colors.black87,
                     ),
                   ),
-                  Text(subtitle,
-                    style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
             ),
-            if (isSelected) Icon(Icons.check_circle, color: Colors.orange[600], size: 20),
+            if (isSelected)
+              Icon(Icons.check_circle, color: Colors.orange[600], size: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTimeSelector(String title, String currentTime, Function(String) onChanged) {
+  Widget _buildTimeSelector(
+      String title, String currentTime, Function(String) onChanged) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (title.isNotEmpty) ...[
-          Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(title,
+              style: GoogleFonts.poppins(
+                  fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
         ],
         InkWell(
@@ -287,10 +324,12 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             final parts = currentTime.split(':');
             final picked = await showTimePicker(
               context: context,
-              initialTime: TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1])),
+              initialTime: TimeOfDay(
+                  hour: int.parse(parts[0]), minute: int.parse(parts[1])),
             );
             if (picked != null) {
-              onChanged('${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
+              onChanged(
+                  '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
             }
           },
           borderRadius: BorderRadius.circular(12),
@@ -305,10 +344,14 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               children: [
                 Icon(Icons.access_time, color: Colors.orange[600]),
                 const SizedBox(width: 12),
-                Expanded(child: Text(_formatTime(currentTime),
-                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+                Expanded(
+                    child: Text(
+                  _formatTime(currentTime),
+                  style: GoogleFonts.inter(
+                      fontSize: 14, fontWeight: FontWeight.w500),
                 )),
-                Icon(Icons.arrow_forward_ios, color: Colors.grey[400], size: 16),
+                Icon(Icons.arrow_forward_ios,
+                    color: Colors.grey[400], size: 16),
               ],
             ),
           ),
@@ -317,24 +360,33 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
     );
   }
 
-  Widget _buildMultipleTimeSelector(String title, List<String> times, Function(List<String>) onChanged) {
+  Widget _buildMultipleTimeSelector(
+      String title, List<String> times, Function(List<String>) onChanged) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+            Text(title,
+                style: GoogleFonts.poppins(
+                    fontSize: 14, fontWeight: FontWeight.w600)),
             TextButton.icon(
               onPressed: () async {
-                final picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                final picked = await showTimePicker(
+                    context: context, initialTime: TimeOfDay.now());
                 if (picked != null) {
-                  final t = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                  final t =
+                      '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                   if (!times.contains(t)) onChanged([...times, t]..sort());
                 }
               },
               icon: Icon(Icons.add, size: 16, color: Colors.orange[600]),
-              label: Text('Add Time', style: GoogleFonts.inter(fontSize: 12, color: Colors.orange[600], fontWeight: FontWeight.w500)),
+              label: Text('Add Time',
+                  style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: Colors.orange[600],
+                      fontWeight: FontWeight.w500)),
             ),
           ],
         ),
@@ -353,17 +405,25 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               children: [
                 Icon(Icons.schedule, color: Colors.orange[600], size: 16),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_formatTime(timeStr),
-                  style: GoogleFonts.inter(fontSize: 14, color: Colors.orange[700], fontWeight: FontWeight.w500),
+                Expanded(
+                    child: Text(
+                  _formatTime(timeStr),
+                  style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.w500),
                 )),
                 GestureDetector(
                   onTap: () async {
                     final picked = await showTimePicker(
                       context: context,
-                      initialTime: TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1])),
+                      initialTime: TimeOfDay(
+                          hour: int.parse(parts[0]),
+                          minute: int.parse(parts[1])),
                     );
                     if (picked != null) {
-                      final t = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                      final t =
+                          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                       final newTimes = [...times];
                       newTimes[times.indexOf(timeStr)] = t;
                       onChanged(newTimes..sort());
@@ -390,7 +450,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTimeSelector('Start Time', _time, (t) => setState(() => _time = t)),
+        _buildTimeSelector(
+            'Start Time', _time, (t) => setState(() => _time = t)),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(12),
@@ -403,7 +464,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             children: [
               Icon(Icons.info, color: Colors.blue[600], size: 16),
               const SizedBox(width: 8),
-              Expanded(child: Text(
+              Expanded(
+                  child: Text(
                 'Hourly reminders will continue until 10:00 PM or when you mark the task as complete',
                 style: GoogleFonts.inter(fontSize: 12, color: Colors.blue[700]),
               )),
@@ -418,10 +480,13 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Interval', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('Interval',
+            style:
+                GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 8, runSpacing: 8,
+          spacing: 8,
+          runSpacing: 8,
           children: [
             _buildIntervalChip('15 min', 15),
             _buildIntervalChip('30 min', 30),
@@ -435,7 +500,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
           ],
         ),
         const SizedBox(height: 16),
-        _buildTimeSelector('Start Time', _time, (t) => setState(() => _time = t)),
+        _buildTimeSelector(
+            'Start Time', _time, (t) => setState(() => _time = t)),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(12),
@@ -448,7 +514,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             children: [
               Icon(Icons.info, color: Colors.blue[600], size: 16),
               const SizedBox(width: 8),
-              Expanded(child: Text(
+              Expanded(
+                  child: Text(
                 _intervalMinutes < 60
                     ? 'Reminder every $_intervalMinutes minutes until task is completed'
                     : 'Reminder every ${(_intervalMinutes / 60).round()} hour${_intervalMinutes > 60 ? 's' : ''} until task is completed',
@@ -470,11 +537,14 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
         decoration: BoxDecoration(
           color: isSelected ? Colors.orange[600] : Colors.white,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isSelected ? Colors.orange[600]! : Colors.grey[300]!),
+          border: Border.all(
+              color: isSelected ? Colors.orange[600]! : Colors.grey[300]!),
         ),
-        child: Text(label,
+        child: Text(
+          label,
           style: GoogleFonts.inter(
-            fontSize: 12, fontWeight: FontWeight.w500,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
             color: isSelected ? Colors.white : Colors.black87,
           ),
         ),

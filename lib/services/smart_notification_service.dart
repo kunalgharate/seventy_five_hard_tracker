@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tzData;
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/challenge.dart';
@@ -23,42 +23,42 @@ class SmartNotificationService {
   // ── Initialization ──────────────────────────────────────────────
 
   Future<void> initialize() async {
-    tzData.initializeTimeZones();
+    tz_data.initializeTimeZones();
 
     // Map device UTC offset to a known timezone
     final offset = DateTime.now().timeZoneOffset.inMinutes;
     const offsetToTz = {
-      -720: 'Pacific/Kwajalein',   // UTC-12
-      -660: 'Pacific/Midway',      // UTC-11
-      -600: 'Pacific/Honolulu',    // UTC-10 (HST)
-      -540: 'America/Anchorage',   // UTC-9 (AKST)
+      -720: 'Pacific/Kwajalein', // UTC-12
+      -660: 'Pacific/Midway', // UTC-11
+      -600: 'Pacific/Honolulu', // UTC-10 (HST)
+      -540: 'America/Anchorage', // UTC-9 (AKST)
       -480: 'America/Los_Angeles', // UTC-8 (PST)
-      -420: 'America/Denver',      // UTC-7 (MST)
-      -360: 'America/Chicago',     // UTC-6 (CST)
-      -300: 'America/New_York',    // UTC-5 (EST)
-      -240: 'America/Halifax',     // UTC-4 (AST)
-      -210: 'America/St_Johns',    // UTC-3:30
-      -180: 'America/Sao_Paulo',   // UTC-3
+      -420: 'America/Denver', // UTC-7 (MST)
+      -360: 'America/Chicago', // UTC-6 (CST)
+      -300: 'America/New_York', // UTC-5 (EST)
+      -240: 'America/Halifax', // UTC-4 (AST)
+      -210: 'America/St_Johns', // UTC-3:30
+      -180: 'America/Sao_Paulo', // UTC-3
       -120: 'Atlantic/South_Georgia', // UTC-2
-       -60: 'Atlantic/Azores',     // UTC-1
-         0: 'Europe/London',       // UTC+0
-        60: 'Europe/Paris',        // UTC+1 (CET)
-       120: 'Europe/Helsinki',     // UTC+2 (EET)
-       180: 'Europe/Moscow',       // UTC+3
-       210: 'Asia/Tehran',         // UTC+3:30
-       240: 'Asia/Dubai',          // UTC+4
-       270: 'Asia/Kabul',          // UTC+4:30
-       300: 'Asia/Karachi',        // UTC+5
-       330: 'Asia/Kolkata',        // UTC+5:30 (IST)
-       345: 'Asia/Kathmandu',      // UTC+5:45
-       360: 'Asia/Dhaka',          // UTC+6
-       420: 'Asia/Bangkok',        // UTC+7
-       480: 'Asia/Shanghai',       // UTC+8
-       540: 'Asia/Tokyo',          // UTC+9
-       570: 'Australia/Darwin',    // UTC+9:30
-       600: 'Australia/Sydney',    // UTC+10
-       660: 'Pacific/Noumea',      // UTC+11
-       720: 'Pacific/Auckland',    // UTC+12
+      -60: 'Atlantic/Azores', // UTC-1
+      0: 'Europe/London', // UTC+0
+      60: 'Europe/Paris', // UTC+1 (CET)
+      120: 'Europe/Helsinki', // UTC+2 (EET)
+      180: 'Europe/Moscow', // UTC+3
+      210: 'Asia/Tehran', // UTC+3:30
+      240: 'Asia/Dubai', // UTC+4
+      270: 'Asia/Kabul', // UTC+4:30
+      300: 'Asia/Karachi', // UTC+5
+      330: 'Asia/Kolkata', // UTC+5:30 (IST)
+      345: 'Asia/Kathmandu', // UTC+5:45
+      360: 'Asia/Dhaka', // UTC+6
+      420: 'Asia/Bangkok', // UTC+7
+      480: 'Asia/Shanghai', // UTC+8
+      540: 'Asia/Tokyo', // UTC+9
+      570: 'Australia/Darwin', // UTC+9:30
+      600: 'Australia/Sydney', // UTC+10
+      660: 'Pacific/Noumea', // UTC+11
+      720: 'Pacific/Auckland', // UTC+12
     };
     try {
       final tzName = offsetToTz[offset] ?? 'UTC';
@@ -84,9 +84,8 @@ class SmartNotificationService {
   }
 
   Future<void> _createNotificationChannels() async {
-    final androidPlugin = _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin == null) return;
 
     const channels = [
@@ -133,9 +132,8 @@ class SmartNotificationService {
   }
 
   Future<void> _requestPermissions() async {
-    final androidPlugin = _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       await androidPlugin.requestNotificationsPermission();
       await androidPlugin.requestExactAlarmsPermission();
@@ -159,8 +157,7 @@ class SmartNotificationService {
       if (!challenge.isReminderEnabled) continue;
       if (challenge.reminderTime == null) continue;
 
-      final isCompleted =
-          progress?.challengeCompletions[challenge.id] ?? false;
+      final isCompleted = progress?.challengeCompletions[challenge.id] ?? false;
       if (isCompleted) continue;
 
       final data = challenge.reminderTime!;
@@ -176,8 +173,10 @@ class SmartNotificationService {
       } else if (data.startsWith('interval:')) {
         final parts = data.substring(9).split(':');
         final intervalMin = int.tryParse(parts[0]) ?? 120;
-        final startTime = parts.length >= 3 ? '${parts[1]}:${parts[2]}' : '09:00';
-        await _scheduleIntervalReminders(challenge, date, intervalMin, startTime);
+        final startTime =
+            parts.length >= 3 ? '${parts[1]}:${parts[2]}' : '09:00';
+        await _scheduleIntervalReminders(
+            challenge, date, intervalMin, startTime);
       } else if (data.startsWith('custom:')) {
         final times = data.substring(7).split(',');
         for (final t in times) {
@@ -200,8 +199,8 @@ class SmartNotificationService {
 
     if (!_isWithinTimeWindow(hour, challenge)) return;
 
-    final scheduledDate = tz.TZDateTime(
-        tz.local, date.year, date.month, date.day, hour, minute);
+    final scheduledDate =
+        tz.TZDateTime(tz.local, date.year, date.month, date.day, hour, minute);
 
     if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) return;
     if (!_canScheduleMore()) return;
@@ -213,7 +212,6 @@ class SmartNotificationService {
       scheduledDate,
       _taskNotificationDetails(),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
     );
     _scheduledCount++;
   }
@@ -226,7 +224,8 @@ class SmartNotificationService {
     if (!targetDate.isAtSameMomentAs(today)) return;
 
     final startParts = startTime.split(':');
-    final startHour = int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
+    final startHour =
+        int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
 
     for (int hour = startHour; hour <= challenge.reminderEndHour; hour++) {
       if (!_isWithinTimeWindow(hour, challenge)) continue;
@@ -249,18 +248,21 @@ class SmartNotificationService {
     }
   }
 
-  Future<void> _scheduleIntervalReminders(
-      Challenge challenge, DateTime date, int intervalMinutes, String startTime) async {
+  Future<void> _scheduleIntervalReminders(Challenge challenge, DateTime date,
+      int intervalMinutes, String startTime) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDate = DateTime(date.year, date.month, date.day);
     if (!targetDate.isAtSameMomentAs(today)) return;
 
     final startParts = startTime.split(':');
-    final startHour = int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
-    final startMinute = (startParts.length >= 2) ? (int.tryParse(startParts[1]) ?? 0) : 0;
+    final startHour =
+        int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
+    final startMinute =
+        (startParts.length >= 2) ? (int.tryParse(startParts[1]) ?? 0) : 0;
 
-    DateTime current = DateTime(date.year, date.month, date.day, startHour, startMinute);
+    DateTime current =
+        DateTime(date.year, date.month, date.day, startHour, startMinute);
     final end = DateTime(
         date.year, date.month, date.day, challenge.reminderEndHour, 59);
 
@@ -394,8 +396,7 @@ class SmartNotificationService {
     final targetDate = DateTime(date.year, date.month, date.day);
     if (!targetDate.isAtSameMomentAs(today)) return;
 
-    final taskList =
-        pendingChallenges.map((c) => '• ${c.title}').join('\n');
+    final taskList = pendingChallenges.map((c) => '• ${c.title}').join('\n');
     final count = pendingChallenges.length;
 
     // Schedule at 10:00 PM, 11:00 PM, and 11:45 PM
@@ -406,8 +407,8 @@ class SmartNotificationService {
     ];
 
     for (final (hour, minute, subtitle) in times) {
-      final scheduledDate =
-          tz.TZDateTime(tz.local, date.year, date.month, date.day, hour, minute);
+      final scheduledDate = tz.TZDateTime(
+          tz.local, date.year, date.month, date.day, hour, minute);
       if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) continue;
 
       await _notifications.zonedSchedule(
@@ -530,7 +531,7 @@ class SmartNotificationService {
 
   int _getNotificationId(String challengeId, int hour, int minute) {
     // Use a wider hash space and combine with time to avoid collisions
-    final hash = challengeId.hashCode.abs() % 10000;
+    final hash = challengeId.hashCode.abs() % 100000;
     return (hash * 10000) + (hour * 100) + minute;
   }
 

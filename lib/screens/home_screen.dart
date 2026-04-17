@@ -9,7 +9,6 @@ import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
 import '../models/challenge_session.dart';
 import '../models/daily_progress.dart';
-import '../models/challenge.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -48,167 +47,176 @@ class _HomeScreenState extends State<HomeScreen> {
         appBar: CustomAppBar(
           title: '75 Hard Challenge',
           actions: [
-          // Test notification button (only in debug mode)
-          if (kDebugMode)
+            // Test notification button (only in debug mode)
+            if (kDebugMode)
+              IconButton(
+                icon: const Icon(Icons.notifications_active,
+                    color: Colors.orange),
+                onPressed: () async {
+                  final notificationService = SmartNotificationService();
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Test Notifications'),
+                      content: const Text('Choose a test type:'),
+                      actions: [
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await notificationService.sendTestNotification();
+                            if (mounted) {
+                              scaffoldMessenger.showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Immediate test notification sent')),
+                              );
+                            }
+                          },
+                          child: const Text('Immediate'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await notificationService
+                                .scheduleTestNotification();
+                            if (mounted) {
+                              scaffoldMessenger.showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Test notification scheduled for 10 seconds')),
+                              );
+                            }
+                          },
+                          child: const Text('10 Seconds'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                tooltip: 'Test Notifications',
+              ),
             IconButton(
-              icon: const Icon(Icons.notifications_active, color: Colors.orange),
-              onPressed: () async {
-                final notificationService = SmartNotificationService();
-                
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Test Notifications'),
-                    content: const Text('Choose a test type:'),
-                    actions: [
-                      TextButton(
-                        onPressed: () async {
-                          Navigator.pop(context);
-                          await notificationService.sendTestNotification();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Immediate test notification sent')),
-                            );
-                          }
-                        },
-                        child: const Text('Immediate'),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          Navigator.pop(context);
-                          await notificationService.scheduleTestNotification();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Test notification scheduled for 10 seconds')),
-                            );
-                          }
-                        },
-                        child: const Text('10 Seconds'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                    ],
-                  ),
+              icon: const Icon(Icons.history),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const HistoryScreen()),
                 );
               },
-              tooltip: 'Test Notifications',
             ),
-          IconButton(
-            icon: const Icon(Icons.history),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HistoryScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: BlocConsumer<ChallengeBloc, ChallengeState>(
-        listener: (context, state) {
-          // Use addPostFrameCallback to avoid setState during build
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return; // Safety check
-            
-            if (state is ChallengeError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: Colors.red,
-                  behavior: SnackBarBehavior.fixed, // Show at bottom
-                  margin: null, // Remove margin to ensure bottom positioning
-                ),
-              );
-            } else if (state is ChallengeReset) {
-              _showResetDialog(state);
-            } else if (state is ChallengeCompleted) {
-              _showCompletionDialog(state.completedSession);
-            }
-          });
-        },
-        builder: (context, state) {
-          if (state is ChallengeLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (state is ChallengeLoaded) {
-            if (!state.hasActiveSession) {
-              return _buildNoActiveSession();
-            }
-
-            return _buildActiveSession(state);
-          }
-
-          return _buildNoActiveSession();
-        },
-      ),
-      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is ChallengeLoaded) {
-            if (!state.hasActiveSession) {
-              return FloatingActionButton.extended(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/onboarding');
-                },
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text(
-                  'Start Challenge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
-            } else {
-              // Show journal FAB for active session
-              final selectedProgress = state.currentProgress
-                  .where((p) => _isSameDay(p.date, _selectedDay))
-                  .firstOrNull;
-              final hasNote = selectedProgress?.journalNote != null &&
-                  selectedProgress!.journalNote!.isNotEmpty;
-
-              return FloatingActionButton.extended(
-                onPressed: () => _showJournalBottomSheet(
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () {
+                Navigator.push(
                   context,
-                  state,
-                  selectedProgress,
-                ),
-                icon: Icon(
-                  hasNote ? Icons.book : Icons.book_outlined,
-                  size: 20,
-                ),
-                label: Text(
-                  hasNote ? 'View Journal' : 'Add Journal',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                  MaterialPageRoute(
+                      builder: (context) => const SettingsScreen()),
+                );
+              },
+            ),
+          ],
+        ),
+        body: BlocConsumer<ChallengeBloc, ChallengeState>(
+          listener: (context, state) {
+            // Use addPostFrameCallback to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return; // Safety check
+
+              if (state is ChallengeError) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.fixed, // Show at bottom
+                    margin: null, // Remove margin to ensure bottom positioning
                   ),
-                ),
-                backgroundColor: Colors.orange,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
+                );
+              } else if (state is ChallengeReset) {
+                _showResetDialog(state);
+              } else if (state is ChallengeCompleted) {
+                _showCompletionDialog(state.completedSession);
+              }
+            });
+          },
+          builder: (context, state) {
+            if (state is ChallengeLoading) {
+              return const Center(child: CircularProgressIndicator());
             }
-          }
-          return const SizedBox.shrink();
-        },
-      ),
+
+            if (state is ChallengeLoaded) {
+              if (!state.hasActiveSession) {
+                return _buildNoActiveSession();
+              }
+
+              return _buildActiveSession(state);
+            }
+
+            return _buildNoActiveSession();
+          },
+        ),
+        floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            if (state is ChallengeLoaded) {
+              if (!state.hasActiveSession) {
+                return FloatingActionButton.extended(
+                  onPressed: () {
+                    Navigator.pushReplacementNamed(context, '/onboarding');
+                  },
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text(
+                    'Start Challenge',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                );
+              } else {
+                // Show journal FAB for active session
+                final selectedProgress = state.currentProgress
+                    .where((p) => _isSameDay(p.date, _selectedDay))
+                    .firstOrNull;
+                final hasNote = selectedProgress?.journalNote != null &&
+                    selectedProgress!.journalNote!.isNotEmpty;
+
+                return FloatingActionButton.extended(
+                  onPressed: () => _showJournalBottomSheet(
+                    context,
+                    state,
+                    selectedProgress,
+                  ),
+                  icon: Icon(
+                    hasNote ? Icons.book : Icons.book_outlined,
+                    size: 20,
+                  ),
+                  label: Text(
+                    hasNote ? 'View Journal' : 'Add Journal',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  backgroundColor: Colors.orange,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                );
+              }
+            }
+            return const SizedBox.shrink();
+          },
+        ),
       ),
     );
   }
@@ -227,15 +235,15 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'No Active Challenge',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
           ),
           const SizedBox(height: 8),
           Text(
             'Start your 75 Hard Challenge journey!',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
@@ -246,8 +254,10 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: const Color(0xFFFFA726),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              textStyle:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -257,7 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActiveSession(ChallengeLoaded state) {
     final session = state.activeSession!;
-    final daysSinceStart = DateTime.now().difference(session.startDate).inDays + 1;
+    final daysSinceStart =
+        DateTime.now().difference(session.startDate).inDays + 1;
     final currentDay = daysSinceStart > 75 ? 75 : daysSinceStart;
 
     return Column(
@@ -269,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
           session: session,
           progress: state.currentProgress,
         ),
-        
+
         // Calendar
         Expanded(
           child: SingleChildScrollView(
@@ -285,16 +296,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           'Select Date',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFFFFA726),
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFFFFA726),
+                                  ),
                         ),
                         const SizedBox(height: 12),
                         HorizontalDatePicker(
                           selectedDate: _selectedDay,
                           startDate: session.startDate,
-                          endDate: session.startDate.add(const Duration(days: 74)),
+                          endDate:
+                              session.startDate.add(const Duration(days: 74)),
                           onDateSelected: (selectedDate) {
                             setState(() {
                               _selectedDay = selectedDate;
@@ -316,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                
+
                 // Daily Tasks for Selected Day
                 _buildDailyTasks(session, state.currentProgress),
               ],
@@ -327,10 +340,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDailyTasks(ChallengeSession session, List<DailyProgress> allProgress) {
-    final selectedProgress = allProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
+  Widget _buildDailyTasks(
+      ChallengeSession session, List<DailyProgress> allProgress) {
+    final selectedProgress =
+        allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
 
     final isToday = _isSameDay(_selectedDay, DateTime.now());
     final isFutureDate = _selectedDay.isAfter(DateTime.now());
@@ -349,15 +362,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   DateFormat('EEEE, MMM d').format(_selectedDay),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 if (selectedProgress?.isCompleted == true)
                   const Icon(Icons.check_circle, color: Colors.green, size: 32),
               ],
             ),
             const SizedBox(height: 16),
-            
+
             if (isBeforeStart)
               const Text(
                 'Challenge hasn\'t started yet',
@@ -370,11 +383,20 @@ class _HomeScreenState extends State<HomeScreen> {
               ).animate().fadeIn(duration: 400.ms)
             else
               // Animated task cards with staggered entrance
-              ...session.challenges.where((c) => c.taskType != 'regular').toList().asMap().entries.map((entry) {
+              ...session.challenges
+                  .where((c) => c.taskType != 'regular')
+                  .toList()
+                  .asMap()
+                  .entries
+                  .map((entry) {
                 final index = entry.key;
                 final challenge = entry.value;
-                final isCompleted = selectedProgress?.challengeCompletions[challenge.id] ?? false;
-                final totalNonRegular = session.challenges.where((c) => c.taskType != 'regular').length;
+                final isCompleted =
+                    selectedProgress?.challengeCompletions[challenge.id] ??
+                        false;
+                final totalNonRegular = session.challenges
+                    .where((c) => c.taskType != 'regular')
+                    .length;
                 return AnimationConfiguration.staggeredList(
                   position: index,
                   duration: const Duration(milliseconds: 500),
@@ -392,18 +414,18 @@ class _HomeScreenState extends State<HomeScreen> {
                             isEditable: isToday,
                             onToggle: (completed) {
                               context.read<ChallengeBloc>().add(
-                                UpdateDailyProgress(
-                                  date: _selectedDay,
-                                  challengeId: challenge.id,
-                                  isCompleted: completed,
-                                ),
-                              );
+                                    UpdateDailyProgress(
+                                      date: _selectedDay,
+                                      challengeId: challenge.id,
+                                      isCompleted: completed,
+                                    ),
+                                  );
                             },
                             onReminderUpdate: (updatedChallenge) {
                               // Update the challenge with new reminder settings
                               context.read<ChallengeBloc>().add(
-                                UpdateChallenge(updatedChallenge),
-                              );
+                                    UpdateChallenge(updatedChallenge),
+                                  );
                             },
                           ),
                         ),
@@ -412,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 );
               }),
-            
+
             const SizedBox(height: 80), // Space for FAB
           ],
         ),
@@ -424,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final progress = state.currentProgress
         .where((p) => _isSameDay(p.date, _selectedDay))
         .firstOrNull;
-    
+
     if (progress == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -466,8 +488,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 8),
           Text(
-            progress.isCompleted 
-                ? 'All tasks completed!' 
+            progress.isCompleted
+                ? 'All tasks completed!'
                 : 'Some tasks incomplete',
             style: TextStyle(
               color: progress.isCompleted ? Colors.green[700] : Colors.red[700],

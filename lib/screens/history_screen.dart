@@ -106,9 +106,11 @@ class HistoryScreen extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Started: ${DateFormat('MMM d, yyyy').format(session.startDate)}'),
+            Text(
+                'Started: ${DateFormat('MMM d, yyyy').format(session.startDate)}'),
             if (session.endDate != null)
-              Text('Ended: ${DateFormat('MMM d, yyyy').format(session.endDate!)}'),
+              Text(
+                  'Ended: ${DateFormat('MMM d, yyyy').format(session.endDate!)}'),
             Text('Duration: $duration days'),
           ],
         ),
@@ -127,16 +129,15 @@ class HistoryScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 ...session.challenges.map((challenge) => Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 4),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.check_box_outline_blank, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(challenge.title)),
-                    ],
-                  ),
-                )),
-                
+                      padding: const EdgeInsets.only(left: 16, bottom: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_box_outline_blank, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(challenge.title)),
+                        ],
+                      ),
+                    )),
                 if (!isCompleted) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -161,7 +162,7 @@ class HistoryScreen extends StatelessWidget {
                           session.failureReason ?? 'Unknown reason',
                           style: TextStyle(color: Colors.red[700]),
                         ),
-                        if (session.failedChallenges != null && 
+                        if (session.failedChallenges != null &&
                             session.failedChallenges!.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Text(
@@ -206,7 +207,6 @@ class HistoryScreen extends StatelessWidget {
                     ),
                   ),
                 ],
-                
                 const SizedBox(height: 16),
                 _buildSessionStats(session, duration),
               ],
@@ -233,7 +233,9 @@ class HistoryScreen extends StatelessWidget {
         ),
         _buildStatColumn(
           'Success Rate',
-          session.isCompleted ? '100%' : '${((duration / 75) * 100).toStringAsFixed(1)}%',
+          session.isCompleted
+              ? '100%'
+              : '${((duration / 75) * 100).toStringAsFixed(1)}%',
           Icons.trending_up,
         ),
       ],

@@ -41,8 +41,8 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final hasExistingNote = widget.existingNote != null && 
-                           widget.existingNote!.isNotEmpty;
+    final hasExistingNote =
+        widget.existingNote != null && widget.existingNote!.isNotEmpty;
 
     return Container(
       decoration: const BoxDecoration(

@@ -22,7 +22,6 @@ class DailyJournalWidget extends StatefulWidget {
 
 class _DailyJournalWidgetState extends State<DailyJournalWidget> {
   late TextEditingController _controller;
-  bool _isExpanded = false;
   bool _hasUnsavedChanges = false;
 
   @override
@@ -30,20 +29,12 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
     super.initState();
     _controller = TextEditingController(text: widget.existingNote ?? '');
     _controller.addListener(_onTextChanged);
-    
-    // Always expand all journal entries (both current and previous days)
-    _isExpanded = true;
   }
 
   @override
   void didUpdateWidget(DailyJournalWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
-    // Keep all journal entries expanded when date changes
-    if (widget.selectedDate != oldWidget.selectedDate) {
-      _isExpanded = true; // Always expanded for all days
-    }
-    
+
     if (widget.existingNote != oldWidget.existingNote) {
       _controller.text = widget.existingNote ?? '';
       _hasUnsavedChanges = false;
@@ -51,7 +42,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
   }
 
   void _onTextChanged() {
-    final hasChanges = _controller.text.trim() != (widget.existingNote ?? '').trim();
+    final hasChanges =
+        _controller.text.trim() != (widget.existingNote ?? '').trim();
     if (hasChanges != _hasUnsavedChanges) {
       setState(() {
         _hasUnsavedChanges = hasChanges;
@@ -200,11 +192,12 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFFFFA726).withOpacity(0.1),
-                  const Color(0xFFFF7043).withOpacity(0.05),
+                  const Color(0xFFFFA726).withValues(alpha: 0.1),
+                  const Color(0xFFFF7043).withValues(alpha: 0.05),
                 ],
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Row(
               children: [
@@ -234,7 +227,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                         ),
                       ),
                       Text(
-                        DateFormat('EEEE, MMMM d, y').format(widget.selectedDate),
+                        DateFormat('EEEE, MMMM d, y')
+                            .format(widget.selectedDate),
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -245,7 +239,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                 ),
                 if (widget.existingNote?.isNotEmpty == true)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green[100],
                       borderRadius: BorderRadius.circular(12),
@@ -261,9 +256,11 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                   ),
                 // Show edit/view indicator instead of expand/collapse
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: widget.isEditable ? Colors.blue[100] : Colors.grey[100],
+                    color:
+                        widget.isEditable ? Colors.blue[100] : Colors.grey[100],
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -271,14 +268,16 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                     style: GoogleFonts.inter(
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
-                      color: widget.isEditable ? Colors.blue[700] : Colors.grey[700],
+                      color: widget.isEditable
+                          ? Colors.blue[700]
+                          : Colors.grey[700],
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          
+
           // Content - Always visible
           Container(
             padding: const EdgeInsets.all(16),
@@ -294,7 +293,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
+                        Icon(Icons.info_outline,
+                            color: Colors.grey[600], size: 20),
                         const SizedBox(width: 8),
                         Text(
                           'No journal entry for this date',
@@ -329,7 +329,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isToday 
+                        isToday
                             ? 'How was your day? What did you learn?'
                             : 'Journal entry for ${DateFormat('MMM d').format(widget.selectedDate)}',
                         style: GoogleFonts.inter(
@@ -360,7 +360,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFFFA726), width: 2),
+                            borderSide: const BorderSide(
+                                color: Color(0xFFFFA726), width: 2),
                           ),
                           contentPadding: const EdgeInsets.all(16),
                         ),
@@ -374,16 +375,18 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                               icon: const Icon(Icons.save, size: 18),
                               label: Text(
                                 'Save Entry',
-                                style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                                style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w500),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _hasUnsavedChanges 
+                                backgroundColor: _hasUnsavedChanges
                                     ? const Color(0xFFFFA726)
                                     : Colors.grey[300],
-                                foregroundColor: _hasUnsavedChanges 
+                                foregroundColor: _hasUnsavedChanges
                                     ? Colors.white
                                     : Colors.grey[600],
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
@@ -392,22 +395,25 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                           ),
                           const SizedBox(width: 12),
                           OutlinedButton.icon(
-                            onPressed: _controller.text.isNotEmpty ? _clearNote : null,
+                            onPressed:
+                                _controller.text.isNotEmpty ? _clearNote : null,
                             icon: const Icon(Icons.clear, size: 18),
                             label: Text(
                               'Clear',
-                              style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                              style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w500),
                             ),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: _controller.text.isNotEmpty 
+                              foregroundColor: _controller.text.isNotEmpty
                                   ? Colors.red[600]
                                   : Colors.grey[400],
                               side: BorderSide(
-                                color: _controller.text.isNotEmpty 
+                                color: _controller.text.isNotEmpty
                                     ? Colors.red[300]!
                                     : Colors.grey[300]!,
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
