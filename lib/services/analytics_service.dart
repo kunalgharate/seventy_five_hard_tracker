@@ -83,7 +83,11 @@ class AnalyticsService {
 
   Future<void> logError(dynamic error, StackTrace? stack) async {
     if (!_isFirebaseReady) return;
-    await FirebaseCrashlytics.instance.recordError(error, stack);
+    try {
+      await FirebaseCrashlytics.instance.recordError(error, stack);
+    } catch (_) {
+      // Swallow — error logging must never prevent error state emission
+    }
   }
 
   Future<void> setCustomKey(String key, dynamic value) async {

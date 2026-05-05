@@ -89,12 +89,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (!isSignedIn)
+                  Tooltip(
+                    message: 'Your data is stored only on this device',
+                    child: Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Colors.grey[500],
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Text(
                   isSignedIn
                       ? 'Your data is backed up securely'
-                      : 'Sign in to backup your progress',
+                      : 'Your data is stored only on this device. Sign in to backup your progress.',
                   style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 if (!isSignedIn)
@@ -310,8 +320,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         SnackBar(
           content: Text(user != null
               ? 'Cloud backup enabled!'
-              : 'Sign-in failed. Try again.'),
+              : 'Sign-in failed. Please check your connection and try again.'),
           backgroundColor: user != null ? Colors.green : Colors.red,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 4),
+          action: user == null
+              ? SnackBarAction(
+                  label: 'Retry',
+                  textColor: Colors.white,
+                  onPressed: _signIn,
+                )
+              : null,
         ),
       );
     }

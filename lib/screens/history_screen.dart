@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../bloc/challenge_bloc.dart';
+import '../bloc/challenge_event.dart';
 import '../bloc/challenge_state.dart';
 import '../models/challenge_session.dart';
+import '../models/challenge.dart';
 import '../widgets/custom_app_bar.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  bool _isRestarting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -15,26 +24,39 @@ class HistoryScreen extends StatelessWidget {
       appBar: const CustomAppBar(
         title: 'Challenge History',
       ),
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is ChallengeLoading) {
-            return const Center(child: CircularProgressIndicator());
+      body: BlocListener<ChallengeBloc, ChallengeState>(
+        listener: (context, state) {
+          if (_isRestarting && state is ChallengeLoaded) {
+            _isRestarting = false;
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          } else if (_isRestarting && state is ChallengeError) {
+            _isRestarting = false;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
           }
-
-          if (state is ChallengeLoaded) {
-            final completedSessions = state.allSessions
-                .where((session) => !session.isActive)
-                .toList();
-
-            if (completedSessions.isEmpty) {
-              return _buildEmptyHistory();
+        },
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            if (state is ChallengeLoading) {
+              return const Center(child: CircularProgressIndicator());
             }
 
-            return _buildHistoryList(completedSessions);
-          }
+            if (state is ChallengeLoaded) {
+              final completedSessions = state.allSessions
+                  .where((session) => !session.isActive)
+                  .toList();
 
-          return _buildEmptyHistory();
-        },
+              if (completedSessions.isEmpty) {
+                return _buildEmptyHistory();
+              }
+
+              return _buildHistoryList(completedSessions, state);
+            }
+
+            return _buildEmptyHistory();
+          },
+        ),
       ),
     );
   }
@@ -71,22 +93,24 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHistoryList(List<ChallengeSession> sessions) {
+  Widget _buildHistoryList(
+      List<ChallengeSession> sessions, ChallengeLoaded state) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: sessions.length,
       itemBuilder: (context, index) {
         final session = sessions[index];
-        return _buildSessionCard(session);
+        return _buildSessionCard(session, state);
       },
     );
   }
 
-  Widget _buildSessionCard(ChallengeSession session) {
+  Widget _buildSessionCard(ChallengeSession session, ChallengeLoaded state) {
     final isCompleted = session.isCompleted;
     final duration = session.endDate != null
         ? session.endDate!.difference(session.startDate).inDays + 1
         : 0;
+    final resetModeLabel = session.resetMode == 'soft' ? 'Soft' : 'Hard';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -112,6 +136,8 @@ class HistoryScreen extends StatelessWidget {
               Text(
                   'Ended: ${DateFormat('MMM d, yyyy').format(session.endDate!)}'),
             Text('Duration: $duration days'),
+            Text(
+                'Mode: $resetModeLabel • Target: ${session.totalDaysTarget} days'),
           ],
         ),
         children: [
@@ -128,93 +154,261 @@ class HistoryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...session.challenges.map((challenge) => Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_box_outline_blank, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(challenge.title)),
-                        ],
-                      ),
-                    )),
+                ...session.challenges
+                    .map((challenge) => _buildChallengeDetail(challenge)),
                 if (!isCompleted) ...[
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red[200]!),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Reset Reason:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red[700],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          session.failureReason ?? 'Unknown reason',
-                          style: TextStyle(color: Colors.red[700]),
-                        ),
-                        if (session.failedChallenges != null &&
-                            session.failedChallenges!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Failed Tasks:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red[700],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            session.failedChallenges!.join(', '),
-                            style: TextStyle(color: Colors.red[700]),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                  _buildResetInfo(session),
                 ] else ...[
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.celebration, color: Colors.green[700]),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Congratulations! You completed all 75 days!',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green[700],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildCompletionInfo(session),
                 ],
                 const SizedBox(height: 16),
                 _buildSessionStats(session, duration),
+                const SizedBox(height: 16),
+                _buildRestartButton(session, state),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildChallengeDetail(Challenge challenge) {
+    final taskTypeLabel = challenge.taskType == 'hard'
+        ? 'Hard'
+        : challenge.taskType == 'soft'
+            ? 'Soft'
+            : 'Regular';
+    final taskTypeColor = challenge.taskType == 'hard'
+        ? Colors.red
+        : challenge.taskType == 'soft'
+            ? Colors.orange
+            : Colors.blue;
+
+    String reminderSummary;
+    if (challenge.isReminderEnabled && challenge.reminderTime != null) {
+      reminderSummary =
+          'Reminder: ${challenge.reminderTime} (${challenge.reminderType})';
+    } else {
+      reminderSummary = 'No reminder';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: taskTypeColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              taskTypeLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: taskTypeColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  challenge.title,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  '${challenge.category} • $reminderSummary',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResetInfo(ChallengeSession session) {
+    final resetDay = session.currentDay > 0 ? session.currentDay : null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reset Reason:',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.red[700],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            session.failureReason ?? 'Unknown reason',
+            style: TextStyle(color: Colors.red[700]),
+          ),
+          if (resetDay != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Reset on Day: $resetDay',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.red[700],
+              ),
+            ),
+          ],
+          if (session.failedChallenges != null &&
+              session.failedChallenges!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Failed Tasks:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.red[700],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              session.failedChallenges!.join(', '),
+              style: TextStyle(color: Colors.red[700]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletionInfo(ChallengeSession session) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.celebration, color: Colors.green[700]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Challenge Completed!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[700],
+                  ),
+                ),
+                Text(
+                  'Full ${session.totalDaysTarget}-day duration completed',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.green[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.check_circle, color: Colors.green[700], size: 28),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestartButton(ChallengeSession session, ChallengeLoaded state) {
+    return SizedBox(
+      width: double.infinity,
+      child: Semantics(
+        button: true,
+        label: 'Restart Challenge',
+        hint: 'Restarts this challenge session with the same configuration',
+        child: ElevatedButton.icon(
+          onPressed: () => _onRestartTapped(session, state),
+          icon: const Icon(Icons.replay, color: Colors.white),
+          label: const Text(
+            'Restart Challenge',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFA726),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onRestartTapped(ChallengeSession session, ChallengeLoaded state) {
+    if (state.hasActiveSession) {
+      _showConfirmationDialog(session);
+    } else {
+      _dispatchRestart(session.id);
+    }
+  }
+
+  void _showConfirmationDialog(ChallengeSession session) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Active Challenge in Progress'),
+          content: const Text(
+            'You have an active challenge in progress. Ending it will mark it as incomplete. Do you want to end your current challenge and restart this one?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _dispatchRestart(session.id);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFA726),
+              ),
+              child: const Text(
+                'End & Restart',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _dispatchRestart(String sessionId) {
+    setState(() {
+      _isRestarting = true;
+    });
+    context.read<ChallengeBloc>().add(RestartFromHistory(sessionId));
   }
 
   Widget _buildSessionStats(ChallengeSession session, int duration) {

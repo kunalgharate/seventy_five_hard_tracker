@@ -8,7 +8,8 @@ import 'fcm_service.dart';
 import 'simple_background_check_service.dart';
 
 /// Manages internet connectivity and lazy Firebase initialization.
-/// Firebase services are initialized when internet becomes available.
+/// Firebase services are initialized ONLY when internet is available.
+/// The app works fully offline without Firebase.
 class ConnectivityService {
   static final ConnectivityService _instance = ConnectivityService._internal();
   factory ConnectivityService() => _instance;
@@ -20,24 +21,39 @@ class ConnectivityService {
 
   bool get isFirebaseReady => _firebaseInitialized;
 
-  /// Try to init Firebase now. Returns true if successful.
-  /// Times out after 5 seconds to avoid blocking app startup.
+  /// Check if device currently has internet connectivity.
+  Future<bool> _hasInternet() async {
+    try {
+      final result = await _connectivity.checkConnectivity();
+      return result.any((r) => r != ConnectivityResult.none);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Try to init Firebase. Only attempts if internet is available.
+  /// Returns true if successful, false otherwise.
   Future<bool> initFirebase() async {
     if (_firebaseInitialized) return true;
+
+    // Don't even try if there's no internet
+    final hasNet = await _hasInternet();
+    if (!hasNet) {
+      if (kDebugMode) print('🌐 No internet — skipping Firebase init');
+      return false;
+    }
+
     try {
       await Firebase.initializeApp(
               options: DefaultFirebaseOptions.currentPlatform)
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 3));
       FlutterError.onError =
           FirebaseCrashlytics.instance.recordFlutterFatalError;
       _firebaseInitialized = true;
-      // Init dependent services
-      try {
-        await FcmService.instance.init();
-      } catch (_) {}
-      try {
-        unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
-      } catch (_) {}
+
+      // Init dependent services in background — never block
+      unawaited(_initDependentServices());
+
       if (kDebugMode) print('🌐 Firebase initialized successfully');
       return true;
     } catch (e) {
@@ -45,6 +61,20 @@ class ConnectivityService {
         print('🌐 Firebase init failed (will retry when online): $e');
       }
       return false;
+    }
+  }
+
+  /// Initialize FCM and background check — all wrapped in try-catch.
+  Future<void> _initDependentServices() async {
+    try {
+      await FcmService.instance.init().timeout(const Duration(seconds: 5));
+    } catch (e) {
+      if (kDebugMode) print('🌐 FCM init failed (non-critical): $e');
+    }
+    try {
+      await SimpleBackgroundCheckService().checkOnAppOpen();
+    } catch (e) {
+      if (kDebugMode) print('🌐 Background check failed (non-critical): $e');
     }
   }
 

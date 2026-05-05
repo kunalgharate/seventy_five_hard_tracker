@@ -36,187 +36,183 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<ChallengeBloc, ChallengeState>(
-      listener: (context, state) {
-        // Force rebuild when state changes
-        if (state is ChallengeLoaded) {
-          setState(() {});
-        }
-      },
-      child: Scaffold(
-        appBar: CustomAppBar(
-          title: '75 Hard Challenge',
-          actions: [
-            // Test notification button (only in debug mode)
-            if (kDebugMode)
-              IconButton(
-                icon: const Icon(Icons.notifications_active,
-                    color: Colors.orange),
-                onPressed: () async {
-                  final notificationService = SmartNotificationService();
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+    return Scaffold(
+      appBar: CustomAppBar(
+        title: '75 Hard Challenge',
+        actions: [
+          // Test notification button (only in debug mode)
+          if (kDebugMode)
+            IconButton(
+              icon:
+                  const Icon(Icons.notifications_active, color: Colors.orange),
+              onPressed: () async {
+                final notificationService = SmartNotificationService();
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
 
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Test Notifications'),
-                      content: const Text('Choose a test type:'),
-                      actions: [
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(context);
-                            await notificationService.sendTestNotification();
-                            if (mounted) {
-                              scaffoldMessenger.showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Immediate test notification sent')),
-                              );
-                            }
-                          },
-                          child: const Text('Immediate'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(context);
-                            await notificationService
-                                .scheduleTestNotification();
-                            if (mounted) {
-                              scaffoldMessenger.showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Test notification scheduled for 10 seconds')),
-                              );
-                            }
-                          },
-                          child: const Text('10 Seconds'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
-                    ),
-                  );
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Test Notifications'),
+                    content: const Text('Choose a test type:'),
+                    actions: [
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await notificationService.sendTestNotification();
+                          if (mounted) {
+                            scaffoldMessenger.showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('Immediate test notification sent')),
+                            );
+                          }
+                        },
+                        child: const Text('Immediate'),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await notificationService.scheduleTestNotification();
+                          if (mounted) {
+                            scaffoldMessenger.showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'Test notification scheduled for 10 seconds')),
+                            );
+                          }
+                        },
+                        child: const Text('10 Seconds'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              tooltip: 'Test Notifications',
+            ),
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HistoryScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+      body: BlocConsumer<ChallengeBloc, ChallengeState>(
+        listener: (context, state) {
+          // Use addPostFrameCallback to avoid setState during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return; // Safety check
+
+            if (state is ChallengeLoaded && state.hasActiveSession) {
+              // Reset selected day to today when a new session becomes active
+              // (e.g. after restarting from history)
+              final today = DateTime.now();
+              if (!_isSameDay(_selectedDay, today)) {
+                setState(() {
+                  _selectedDay = today;
+                });
+              }
+            } else if (state is ChallengeError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.message),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            } else if (state is ChallengeReset) {
+              _showResetDialog(state);
+            } else if (state is ChallengeCompleted) {
+              _showCompletionDialog(state.completedSession);
+            }
+          });
+        },
+        builder: (context, state) {
+          if (state is ChallengeLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (state is ChallengeLoaded) {
+            if (!state.hasActiveSession) {
+              return _buildNoActiveSession();
+            }
+
+            return _buildActiveSession(state);
+          }
+
+          return _buildNoActiveSession();
+        },
+      ),
+      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
+        builder: (context, state) {
+          if (state is ChallengeLoaded) {
+            if (!state.hasActiveSession) {
+              return FloatingActionButton.extended(
+                onPressed: () {
+                  Navigator.pushReplacementNamed(context, '/onboarding');
                 },
-                tooltip: 'Test Notifications',
-              ),
-            IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () {
-                Navigator.push(
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text(
+                  'Start Challenge',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            } else {
+              // Show journal FAB for active session
+              final selectedProgress = state.currentProgress
+                  .where((p) => _isSameDay(p.date, _selectedDay))
+                  .firstOrNull;
+              final hasNote = selectedProgress?.journalNote != null &&
+                  selectedProgress!.journalNote!.isNotEmpty;
+
+              return FloatingActionButton.extended(
+                onPressed: () => _showJournalBottomSheet(
                   context,
-                  MaterialPageRoute(
-                      builder: (context) => const HistoryScreen()),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const SettingsScreen()),
-                );
-              },
-            ),
-          ],
-        ),
-        body: BlocConsumer<ChallengeBloc, ChallengeState>(
-          listener: (context, state) {
-            // Use addPostFrameCallback to avoid setState during build
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return; // Safety check
-
-              if (state is ChallengeError) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(state.message),
-                    backgroundColor: Colors.red,
-                    behavior: SnackBarBehavior.fixed, // Show at bottom
-                    margin: null, // Remove margin to ensure bottom positioning
+                  state,
+                  selectedProgress,
+                ),
+                icon: Icon(
+                  hasNote ? Icons.book : Icons.book_outlined,
+                  size: 20,
+                ),
+                label: Text(
+                  hasNote ? 'View Journal' : 'Add Journal',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                );
-              } else if (state is ChallengeReset) {
-                _showResetDialog(state);
-              } else if (state is ChallengeCompleted) {
-                _showCompletionDialog(state.completedSession);
-              }
-            });
-          },
-          builder: (context, state) {
-            if (state is ChallengeLoading) {
-              return const Center(child: CircularProgressIndicator());
+                ),
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
             }
-
-            if (state is ChallengeLoaded) {
-              if (!state.hasActiveSession) {
-                return _buildNoActiveSession();
-              }
-
-              return _buildActiveSession(state);
-            }
-
-            return _buildNoActiveSession();
-          },
-        ),
-        floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
-          builder: (context, state) {
-            if (state is ChallengeLoaded) {
-              if (!state.hasActiveSession) {
-                return FloatingActionButton.extended(
-                  onPressed: () {
-                    Navigator.pushReplacementNamed(context, '/onboarding');
-                  },
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text(
-                    'Start Challenge',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                );
-              } else {
-                // Show journal FAB for active session
-                final selectedProgress = state.currentProgress
-                    .where((p) => _isSameDay(p.date, _selectedDay))
-                    .firstOrNull;
-                final hasNote = selectedProgress?.journalNote != null &&
-                    selectedProgress!.journalNote!.isNotEmpty;
-
-                return FloatingActionButton.extended(
-                  onPressed: () => _showJournalBottomSheet(
-                    context,
-                    state,
-                    selectedProgress,
-                  ),
-                  icon: Icon(
-                    hasNote ? Icons.book : Icons.book_outlined,
-                    size: 20,
-                  ),
-                  label: Text(
-                    hasNote ? 'View Journal' : 'Add Journal',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                );
-              }
-            }
-            return const SizedBox.shrink();
-          },
-        ),
+          }
+          return const SizedBox.shrink();
+        },
       ),
     );
   }
@@ -435,7 +431,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               }),
 
-            const SizedBox(height: 80), // Space for FAB
+            const SizedBox(
+                height: 120), // Space for FAB to avoid covering content
           ],
         ),
       ),

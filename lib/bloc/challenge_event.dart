@@ -124,3 +124,12 @@ class AddTaskPhoto extends ChallengeEvent {
   @override
   List<Object> get props => [date, challengeId, photoPath];
 }
+
+class RestartFromHistory extends ChallengeEvent {
+  final String sessionId;
+
+  const RestartFromHistory(this.sessionId);
+
+  @override
+  List<Object> get props => [sessionId];
+}

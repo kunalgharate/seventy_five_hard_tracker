@@ -34,16 +34,19 @@ class DatabaseRepository {
     await _sessionBox!.put(session.id, session);
   }
 
-  ChallengeSession? getActiveSession() {
+  Future<ChallengeSession?> getActiveSession() async {
+    await _ensureInitialized();
     try {
-      return _sessionBox?.values.firstWhere((session) => session.isActive);
-    } catch (e) {
+      return _sessionBox!.values.firstWhere((session) => session.isActive);
+    } on StateError {
+      // No active session found — expected case
       return null;
     }
   }
 
   List<ChallengeSession> getAllSessions() {
-    return (_sessionBox?.values.toList() ?? [])
+    if (_sessionBox == null) return [];
+    return (_sessionBox!.values.toList())
       ..sort((a, b) => b.startDate.compareTo(a.startDate));
   }
 

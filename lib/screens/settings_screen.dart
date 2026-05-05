@@ -4,7 +4,6 @@ import 'dart:convert';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
-import '../models/challenge.dart';
 import '../services/quotes_service.dart';
 import '../widgets/custom_app_bar.dart';
 
@@ -36,39 +35,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildActiveSessionSettings(ChallengeLoaded state) {
-    final session = state.activeSession!;
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Challenge Reminders Section
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Task Reminders',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Set custom reminder times for each of your challenges',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                ...session.challenges
-                    .map((challenge) => _buildReminderTile(challenge)),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
         // Motivational Quotes Section
         Card(
           child: Padding(
@@ -318,62 +287,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
-  }
-
-  Widget _buildReminderTile(Challenge challenge) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(challenge.title),
-        subtitle: challenge.isReminderEnabled && challenge.reminderTime != null
-            ? Text('Reminder at ${challenge.reminderTime}')
-            : const Text('No reminder set'),
-        trailing: Switch(
-          value: challenge.isReminderEnabled,
-          onChanged: (enabled) {
-            if (enabled) {
-              _showTimePickerDialog(challenge);
-            } else {
-              context.read<ChallengeBloc>().add(
-                    UpdateChallengeReminder(
-                      challengeId: challenge.id,
-                      isEnabled: false,
-                    ),
-                  );
-            }
-          },
-        ),
-        onTap: challenge.isReminderEnabled
-            ? () => _showTimePickerDialog(challenge)
-            : null,
-      ),
-    );
-  }
-
-  void _showTimePickerDialog(Challenge challenge) {
-    final currentTime = challenge.reminderTime != null
-        ? TimeOfDay(
-            hour: int.parse(challenge.reminderTime!.split(':')[0]),
-            minute: int.parse(challenge.reminderTime!.split(':')[1]),
-          )
-        : const TimeOfDay(hour: 9, minute: 0);
-
-    showTimePicker(
-      context: context,
-      initialTime: currentTime,
-    ).then((selectedTime) {
-      if (selectedTime != null && mounted) {
-        final timeString =
-            '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
-        context.read<ChallengeBloc>().add(
-              UpdateChallengeReminder(
-                challengeId: challenge.id,
-                reminderTime: timeString,
-                isEnabled: true,
-              ),
-            );
-      }
-    });
   }
 
   void _showRandomQuote() async {

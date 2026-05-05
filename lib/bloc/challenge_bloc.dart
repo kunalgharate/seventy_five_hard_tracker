@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/challenge.dart';
 import '../models/challenge_session.dart';
@@ -8,6 +9,21 @@ import '../services/smart_notification_service.dart';
 import '../services/analytics_service.dart';
 import 'challenge_event.dart';
 import 'challenge_state.dart';
+
+/// Creates a new [ChallengeSession] from a historical session, preserving
+/// the challenge configuration while resetting progress-related fields.
+ChallengeSession createRestartedSession(ChallengeSession historicalSession) {
+  return ChallengeSession(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    challenges: historicalSession.challenges,
+    startDate: DateTime.now(),
+    isActive: true,
+    isCompleted: false,
+    currentDay: 1,
+    resetMode: historicalSession.resetMode,
+    totalDaysTarget: historicalSession.totalDaysTarget,
+  );
+}
 
 class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   final DatabaseRepository _repository;
@@ -38,6 +54,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<UpdateChallengeReminder>(_onUpdateChallengeReminder);
     on<AddTaskPhoto>(_onAddTaskPhoto);
     on<AddChallengeToSession>(_onAddChallengeToSession);
+    on<RestartFromHistory>(_onRestartFromHistory);
 
     _startMidnightTimer();
   }
@@ -60,8 +77,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     });
   }
 
-  void _performMidnightCheck() {
-    final activeSession = _repository.getActiveSession();
+  void _performMidnightCheck() async {
+    final activeSession = await _repository.getActiveSession();
     if (activeSession != null) {
       _checkForMissedDays(activeSession);
     }
@@ -76,7 +93,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     emit(ChallengeLoading());
 
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       final allSessions = _repository.getAllSessions();
       final currentProgress = activeSession != null
           ? _repository.getProgressForSession(activeSession.startDate)
@@ -124,7 +141,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     try {
       await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
 
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession != null) {
         final endedSession = activeSession.copyWith(
           isActive: false,
@@ -145,10 +162,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       );
 
       await _repository.saveSession(newSession);
-      await _analytics.logSessionStart(event.challenges.length);
-      await _analytics.logChallengeSelection(
+      unawaited(_analytics.logSessionStart(event.challenges.length));
+      unawaited(_analytics.logChallengeSelection(
         event.challenges.map((c) => c.title).toList(),
-      );
+      ));
 
       await _smartNotifications.scheduleSmartReminders(
         DateTime.now(),
@@ -158,8 +175,65 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       add(LoadChallengeData());
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to start new session: $e'));
+    }
+  }
+
+  Future<void> _onRestartFromHistory(
+    RestartFromHistory event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
+
+      // Look up historical session by ID
+      final allSessions = _repository.getAllSessions();
+      final historicalSession = allSessions
+          .where((session) => session.id == event.sessionId)
+          .firstOrNull;
+
+      if (historicalSession == null) {
+        emit(const ChallengeError('Failed to restart: session not found'));
+        return;
+      }
+
+      // Deactivate any active session
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession != null) {
+        final endedSession = activeSession.copyWith(
+          isActive: false,
+          endDate: DateTime.now(),
+        );
+        await _repository.updateSession(endedSession);
+      }
+
+      await _repository.clearAllDailyProgress();
+
+      final newSession = createRestartedSession(historicalSession);
+      await _repository.saveSession(newSession);
+
+      // Analytics — non-critical, fire-and-forget
+      unawaited(_analytics.logSessionStart(newSession.challenges.length));
+      unawaited(_analytics.logChallengeSelection(
+        newSession.challenges.map((c) => c.title).toList(),
+      ));
+
+      // Notifications — non-critical
+      try {
+        await _smartNotifications.scheduleSmartReminders(
+          DateTime.now(),
+          newSession.challenges,
+          null,
+        );
+      } catch (_) {
+        // Notification failures should not block the restart
+      }
+
+      add(LoadChallengeData());
+    } catch (e, stack) {
+      unawaited(_analytics.logError(e, stack));
+      emit(ChallengeError('Failed to restart challenge: $e'));
     }
   }
 
@@ -168,7 +242,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
       var dailyProgress = _repository.getDailyProgress(event.date);
@@ -199,40 +273,58 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       await _repository.saveDailyProgress(updatedProgress);
 
-      if (event.isCompleted) {
-        await _smartNotifications
-            .cancelCompletedTaskReminders(event.challengeId);
+      // Emit updated state IMMEDIATELY so the UI responds instantly.
+      final currentProgress =
+          _repository.getProgressForSession(activeSession.startDate);
+      final allSessions = _repository.getAllSessions();
+      emit(ChallengeLoaded(
+        activeSession: activeSession,
+        currentProgress: currentProgress,
+        allSessions: allSessions,
+        hasActiveSession: true,
+      ));
 
-        final challenge = activeSession.challenges
-            .firstWhere((c) => c.id == event.challengeId);
-        await _analytics.logTaskComplete(
-          challenge.title,
-          _computeCurrentDay(activeSession),
-        );
-      }
+      // Notification and analytics calls are non-critical — run after emit
+      // so the toggle always feels instant.
+      try {
+        if (event.isCompleted) {
+          await _smartNotifications
+              .cancelCompletedTaskReminders(event.challengeId);
 
-      await _smartNotifications.scheduleSmartReminders(
-        event.date,
-        activeSession.challenges,
-        updatedProgress,
-      );
+          final challenge = activeSession.challenges
+              .where((c) => c.id == event.challengeId)
+              .firstOrNull;
+          if (challenge != null) {
+            unawaited(_analytics.logTaskComplete(
+              challenge.title,
+              _computeCurrentDay(activeSession),
+            ));
+          }
+        }
 
-      final pendingChallenges =
-          _getPendingChallenges(activeSession.challenges, updatedProgress);
-
-      if (pendingChallenges.isNotEmpty) {
-        await _smartNotifications.scheduleNightSummary(
+        await _smartNotifications.scheduleSmartReminders(
           event.date,
-          pendingChallenges,
+          activeSession.challenges,
+          updatedProgress,
         );
-      } else {
-        // All tasks done — cancel night summaries
-        await _smartNotifications.cancelNightSummaries();
-      }
 
-      add(LoadChallengeData());
+        final pendingChallenges =
+            _getPendingChallenges(activeSession.challenges, updatedProgress);
+
+        if (pendingChallenges.isNotEmpty) {
+          await _smartNotifications.scheduleNightSummary(
+            event.date,
+            pendingChallenges,
+          );
+        } else {
+          await _smartNotifications.cancelNightSummaries();
+        }
+      } catch (notifError, notifStack) {
+        // Log but don't fail the toggle — data is already saved
+        unawaited(_analytics.logError(notifError, notifStack));
+      }
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to update daily progress: $e'));
     }
   }
@@ -252,14 +344,27 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      final activeSession = await _repository.getActiveSession();
       var dailyProgress = _repository.getDailyProgress(event.date);
+      if (dailyProgress == null && activeSession != null) {
+        // Create a fresh DailyProgress entry if none exists yet
+        final challengeCompletions = <String, bool>{};
+        for (final challenge in activeSession.challenges) {
+          challengeCompletions[challenge.id] = false;
+        }
+        dailyProgress = DailyProgress(
+          date: event.date,
+          challengeCompletions: challengeCompletions,
+          isCompleted: false,
+        );
+      }
       if (dailyProgress != null) {
         final updatedProgress = dailyProgress.copyWith(journalNote: event.note);
         await _repository.saveDailyProgress(updatedProgress);
         add(LoadChallengeData());
       }
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to add journal note: $e'));
     }
   }
@@ -269,7 +374,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      final activeSession = await _repository.getActiveSession();
       var dailyProgress = _repository.getDailyProgress(event.date);
+      if (dailyProgress == null && activeSession != null) {
+        final challengeCompletions = <String, bool>{};
+        for (final challenge in activeSession.challenges) {
+          challengeCompletions[challenge.id] = false;
+        }
+        dailyProgress = DailyProgress(
+          date: event.date,
+          challengeCompletions: challengeCompletions,
+          isCompleted: false,
+        );
+      }
       if (dailyProgress != null) {
         final updatedNotes = Map<String, String>.from(
           dailyProgress.taskNotes ?? {},
@@ -280,7 +397,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         add(LoadChallengeData());
       }
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to add task note: $e'));
     }
   }
@@ -302,7 +419,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         add(LoadChallengeData());
       }
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to add task photo: $e'));
     }
   }
@@ -312,7 +429,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
       await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
@@ -331,10 +448,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         );
 
         await _repository.updateSession(failedSession);
-        await _analytics.logSessionReset(
+        unawaited(_analytics.logSessionReset(
           activeSession.currentDay,
           event.reason,
-        );
+        ));
 
         emit(ChallengeReset(
           reason: event.reason,
@@ -348,7 +465,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         add(LoadChallengeData());
       }
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to reset challenge: $e'));
     }
   }
@@ -358,7 +475,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
       await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
@@ -372,14 +489,14 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       );
 
       await _repository.updateSession(completedSession);
-      await _analytics.logSessionComplete(75);
+      unawaited(_analytics.logSessionComplete(75));
 
       emit(ChallengeCompleted(completedSession));
 
       await Future.delayed(const Duration(seconds: 3));
       add(LoadChallengeData());
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to complete challenge: $e'));
     }
   }
@@ -389,7 +506,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
       final updatedChallenges = activeSession.challenges.map((challenge) {
@@ -431,24 +548,91 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
-      if (activeSession == null) return;
+      debugPrint('🟢 [BLoC] _onAddChallengeToSession called');
+      debugPrint('🟢 [BLoC] challenge.id: ${event.challenge.id}');
+      debugPrint('🟢 [BLoC] challenge.title: ${event.challenge.title}');
+      debugPrint('🟢 [BLoC] challenge.taskType: ${event.challenge.taskType}');
+      debugPrint(
+          '🟢 [BLoC] challenge.showInRegularTab: ${event.challenge.showInRegularTab}');
+
+      // Debug: log all sessions in the database
+      final allSessionsDebug = _repository.getAllSessions();
+      debugPrint('🟢 [BLoC] Total sessions in DB: ${allSessionsDebug.length}');
+      for (final s in allSessionsDebug) {
+        debugPrint(
+            '🟢 [BLoC]   Session ${s.id}: isActive=${s.isActive}, isCompleted=${s.isCompleted}, mode=${s.resetMode}, challenges=${s.challenges.length}');
+      }
+
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) {
+        debugPrint(
+            '🔴 [BLoC] No active session found after checking ${allSessionsDebug.length} sessions');
+        return;
+      }
+      debugPrint('🟢 [BLoC] Active session found: ${activeSession.id}');
+      debugPrint(
+          '🟢 [BLoC] Current challenges count: ${activeSession.challenges.length}');
 
       final updatedChallenges = [...activeSession.challenges, event.challenge];
       final updatedSession =
           activeSession.copyWith(challenges: updatedChallenges);
       await _repository.saveSession(updatedSession);
+      debugPrint(
+          '🟢 [BLoC] Session saved with ${updatedChallenges.length} challenges');
+
+      // Initialize the new challenge in today's DailyProgress so it shows immediately
+      final today = DateTime.now();
+      var todayProgress = _repository.getDailyProgress(today);
+      debugPrint('🟢 [BLoC] Today progress exists: ${todayProgress != null}');
+
+      if (todayProgress != null) {
+        final updatedCompletions =
+            Map<String, bool>.from(todayProgress.challengeCompletions);
+        updatedCompletions[event.challenge.id] = false;
+        todayProgress = todayProgress.copyWith(
+          challengeCompletions: updatedCompletions,
+        );
+      } else {
+        final challengeCompletions = <String, bool>{};
+        for (final challenge in updatedChallenges) {
+          challengeCompletions[challenge.id] = false;
+        }
+        todayProgress = DailyProgress(
+          date: today,
+          challengeCompletions: challengeCompletions,
+          isCompleted: false,
+        );
+      }
+      await _repository.saveDailyProgress(todayProgress);
+      debugPrint(
+          '🟢 [BLoC] DailyProgress saved with completions: ${todayProgress.challengeCompletions.keys.toList()}');
 
       final currentProgress =
           _repository.getProgressForSession(activeSession.startDate);
       final allSessions = _repository.getAllSessions();
+      debugPrint(
+          '🟢 [BLoC] Emitting ChallengeLoaded with ${updatedSession.challenges.length} challenges');
+
+      // Log regular tasks specifically
+      final regularTasks = updatedSession.challenges
+          .where((c) => c.taskType == 'regular')
+          .toList();
+      debugPrint('🟢 [BLoC] Regular tasks in session: ${regularTasks.length}');
+      for (final rt in regularTasks) {
+        debugPrint(
+            '🟢 [BLoC]   - ${rt.title} (showInRegularTab: ${rt.showInRegularTab})');
+      }
+
       emit(ChallengeLoaded(
         activeSession: updatedSession,
         currentProgress: currentProgress,
         allSessions: allSessions,
         hasActiveSession: true,
       ));
-    } catch (e) {
+      debugPrint('🟢 [BLoC] ChallengeLoaded emitted successfully');
+    } catch (e, stack) {
+      debugPrint('🔴 [BLoC] Error adding task: $e');
+      debugPrint('🔴 [BLoC] Stack: $stack');
       emit(ChallengeError('Failed to add task: $e'));
     }
   }
@@ -458,7 +642,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = _repository.getActiveSession();
+      final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
       final updatedChallenges = activeSession.challenges.map((challenge) {
@@ -475,9 +659,13 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           activeSession.copyWith(challenges: updatedChallenges);
       await _repository.updateSession(updatedSession);
 
-      final updatedChallenge = updatedChallenges.firstWhere(
-        (c) => c.id == event.challengeId,
-      );
+      final updatedChallenge =
+          updatedChallenges.where((c) => c.id == event.challengeId).firstOrNull;
+
+      if (updatedChallenge == null) {
+        add(LoadChallengeData());
+        return;
+      }
 
       if (event.isEnabled && event.reminderTime != null) {
         await _smartNotifications.scheduleSmartReminders(
@@ -485,10 +673,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           [updatedChallenge],
           null,
         );
-        await _analytics.logReminderSet(
+        unawaited(_analytics.logReminderSet(
           updatedChallenge.title,
           event.reminderTime!,
-        );
+        ));
       } else {
         await _smartNotifications
             .cancelCompletedTaskReminders(event.challengeId);
@@ -496,7 +684,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       add(LoadChallengeData());
     } catch (e, stack) {
-      await _analytics.logError(e, stack);
+      unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to update reminder: $e'));
     }
   }

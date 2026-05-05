@@ -71,7 +71,7 @@ class ProgressStats extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '$completedDays days completed',
+                  '$completedDays ${completedDays == 1 ? 'day' : 'days'} completed',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 Text(
@@ -121,12 +121,18 @@ class ProgressStats extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem('Current Streak', '$currentStreak days',
+        _buildStatItem(
+            'Current Streak',
+            '$currentStreak ${currentStreak == 1 ? 'day' : 'days'}',
             Icons.local_fire_department),
         _buildStatItem(
-            'Best Streak', '$longestStreak days', Icons.emoji_events),
+            'Best Streak',
+            '$longestStreak ${longestStreak == 1 ? 'day' : 'days'}',
+            Icons.emoji_events),
         _buildStatItem(
-            'Remaining', '${totalDays - currentDay + 1} days', Icons.schedule),
+            'Remaining',
+            '${totalDays - currentDay} ${totalDays - currentDay == 1 ? 'day' : 'days'}',
+            Icons.schedule),
       ],
     );
   }

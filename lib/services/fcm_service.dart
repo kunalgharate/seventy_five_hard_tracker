@@ -64,13 +64,13 @@ class FcmService {
     // Handle notification tap when app was in background
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-    // Subscribe to default topic for broadcast messages
-    await _messaging.subscribeToTopic('all_users');
+    // Subscribe to default topic for broadcast messages (non-blocking)
+    _messaging.subscribeToTopic('all_users').catchError((_) {});
 
-    // Log FCM token for testing
-    final token = await _messaging.getToken();
-    // ignore: avoid_print
-    if (kDebugMode) print('🔔 FCM Token: $token');
+    // Log FCM token for testing (non-blocking)
+    _messaging.getToken().then((token) {
+      if (kDebugMode) print('🔔 FCM Token: $token');
+    }).catchError((_) {});
   }
 
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
