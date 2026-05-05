@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App Name -->
-    <string name="app_name">75 Hard Challenge - Daily Habit Tracker</string>
+    <string name="app_name">DailyMettle: Habit &amp; Challenge</string>
     
     <!-- App Description -->
     <string name="app_description">Transform your life with the ultimate 75-day mental toughness challenge. Track daily habits, build discipline, and achieve your goals with automatic accountability.</string>

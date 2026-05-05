@@ -33,7 +33,9 @@ class _TaskNoteBottomSheetState extends State<TaskNoteBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -100,6 +102,6 @@ class _TaskNoteBottomSheetState extends State<TaskNoteBottomSheet> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

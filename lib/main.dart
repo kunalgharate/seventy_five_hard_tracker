@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +9,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'models/challenge.dart';
 import 'models/daily_progress.dart';
 import 'models/challenge_session.dart';
+import 'models/regular_task.dart';
+import 'models/regular_task_completion.dart';
 import 'repositories/database_repository.dart';
+import 'repositories/regular_task_repository.dart';
 import 'bloc/challenge_bloc.dart';
 import 'bloc/challenge_event.dart';
+import 'bloc/regular_task_bloc.dart';
+import 'bloc/regular_task_event.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
@@ -42,13 +48,20 @@ void main() async {
   if (!Hive.isAdapterRegistered(2)) {
     Hive.registerAdapter(ChallengeSessionAdapter());
   }
+  if (!Hive.isAdapterRegistered(3)) {
+    Hive.registerAdapter(RegularTaskAdapter());
+  }
+  if (!Hive.isAdapterRegistered(4)) {
+    Hive.registerAdapter(RegularTaskCompletionAdapter());
+  }
 
   final smartNotifications = SmartNotificationService();
   await smartNotifications.initialize();
 
-  // ── Internet-aware Firebase init ──
+  // ── Internet-aware Firebase init (non-blocking) ──
   final connectivity = ConnectivityService();
-  await connectivity.initFirebase(); // tries now, fails silently if offline
+  // Don't await — let Firebase init in the background so the app starts instantly
+  unawaited(connectivity.initFirebase());
   connectivity.startListening(); // retries when internet comes back
 
   SystemChrome.setSystemUIOverlayStyle(
@@ -77,13 +90,23 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => ChallengeBloc(
-        repository: DatabaseRepository(),
-        smartNotifications: smartNotifications,
-      )..add(LoadChallengeData()),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) => ChallengeBloc(
+            repository: DatabaseRepository(),
+            smartNotifications: smartNotifications,
+          )..add(LoadChallengeData()),
+        ),
+        BlocProvider(
+          create: (context) => RegularTaskBloc(
+            repository: RegularTaskRepository(),
+            notifications: smartNotifications,
+          )..add(LoadRegularTasks()),
+        ),
+      ],
       child: MaterialApp(
-        title: '75 Hard Challenge',
+        title: 'Daily mettle',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
         home: const InitialScreen(),
@@ -263,25 +286,21 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   void _checkInitialRoute() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
     try {
-      try {
-        await AnalyticsService().logAppOpen();
-      } catch (_) {}
-
-      if (!mounted) return;
+      await SmartNotificationService().requestPermissions();
+    } catch (_) {}
+    try {
       final bloc = context.read<ChallengeBloc>();
       await bloc.repository.init();
-
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       if (kDebugMode) print('InitialScreen error: $e');
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
+    }
+
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/home');
     }
   }
 
@@ -301,7 +320,6 @@ class _InitialScreenState extends State<InitialScreen>
             width: 150,
             height: 150,
             decoration: BoxDecoration(
-              color: Colors.white,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
@@ -311,14 +329,12 @@ class _InitialScreenState extends State<InitialScreen>
                 ),
               ],
             ),
-            child: const Center(
-              child: Text(
-                '75',
-                style: TextStyle(
-                  fontSize: 64,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/icons/logo.jpg',
+                width: 150,
+                height: 150,
+                fit: BoxFit.cover,
               ),
             ),
           ),

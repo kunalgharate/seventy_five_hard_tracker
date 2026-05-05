@@ -1,44 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../bloc/challenge_bloc.dart';
-import '../bloc/challenge_state.dart';
-import '../bloc/challenge_event.dart';
-import '../models/challenge.dart';
-import '../models/daily_progress.dart';
-import '../widgets/daily_task_card.dart';
+import '../bloc/regular_task_bloc.dart';
+import '../bloc/regular_task_event.dart';
+import '../bloc/regular_task_state.dart';
+import '../models/regular_task.dart';
+import '../models/regular_task_completion.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
 import '../services/challenge_icon_service.dart';
 import '../services/dynamic_color_service.dart';
+import '../models/challenge.dart';
+import '../utils/regular_task_stats.dart';
+import '../utils/text_helpers.dart';
 
-class RegularTasksScreen extends StatelessWidget {
+class RegularTasksScreen extends StatefulWidget {
   const RegularTasksScreen({super.key});
 
   @override
+  State<RegularTasksScreen> createState() => _RegularTasksScreenState();
+}
+
+class _RegularTasksScreenState extends State<RegularTasksScreen> {
+  @override
+  void initState() {
+    super.initState();
+    context.read<RegularTaskBloc>().add(LoadRegularTasks());
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ChallengeBloc, ChallengeState>(
+    return BlocBuilder<RegularTaskBloc, RegularTaskState>(
       builder: (context, state) {
-        final regularTasks = (state is ChallengeLoaded)
-            ? (state.activeSession?.challenges
-                    .where((c) => c.taskType == 'regular')
-                    .toList() ??
-                [])
-            : <Challenge>[];
+        final List<RegularTask> tasks;
+        final Map<String, bool> todayCompletions;
+        final List<RegularTaskCompletion> recentCompletions;
 
-        final today = DateTime.now();
-        final allProgress = (state is ChallengeLoaded)
-            ? state.currentProgress
-            : <DailyProgress>[];
-        final todayProgress = allProgress
-            .where((p) =>
-                p.date.year == today.year &&
-                p.date.month == today.month &&
-                p.date.day == today.day)
-            .firstOrNull;
-
-        final showList = regularTasks.isNotEmpty;
+        if (state is RegularTaskLoaded) {
+          tasks = state.tasks;
+          todayCompletions = state.todayCompletions;
+          recentCompletions = state.recentCompletions;
+        } else {
+          tasks = [];
+          todayCompletions = {};
+          recentCompletions = [];
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -48,47 +55,11 @@ class RegularTasksScreen extends StatelessWidget {
             elevation: 0,
             centerTitle: true,
           ),
-          body: state is ChallengeLoading
+          body: state is RegularTaskLoading
               ? const Center(child: CircularProgressIndicator())
-              : showList
-                  ? ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: regularTasks.length,
-                      itemBuilder: (context, index) {
-                        final challenge = regularTasks[index];
-                        final isCompleted =
-                            todayProgress?.challengeCompletions[challenge.id] ??
-                                false;
-                        final stats = _calcStats(challenge.id, allProgress);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Column(
-                            children: [
-                              DailyTaskCard(
-                                challenge: challenge,
-                                isCompleted: isCompleted,
-                                isEditable: true,
-                                onToggle: (completed) {
-                                  context.read<ChallengeBloc>().add(
-                                        UpdateDailyProgress(
-                                            date: today,
-                                            challengeId: challenge.id,
-                                            isCompleted: completed),
-                                      );
-                                },
-                                onReminderUpdate: (updatedChallenge) {
-                                  context
-                                      .read<ChallengeBloc>()
-                                      .add(UpdateChallenge(updatedChallenge));
-                                },
-                              ),
-                              const SizedBox(height: 8),
-                              _buildStatsRow(stats),
-                            ],
-                          ),
-                        );
-                      },
-                    )
+              : tasks.isNotEmpty
+                  ? _buildTaskList(
+                      context, tasks, todayCompletions, recentCompletions)
                   : _buildEmptyState(context),
           floatingActionButton: FloatingActionButton(
             heroTag: 'addRegularTask',
@@ -101,81 +72,257 @@ class RegularTasksScreen extends StatelessWidget {
     );
   }
 
-  _TaskStats _calcStats(String challengeId, List<DailyProgress> allProgress) {
-    // Sort progress by date ascending
-    final sorted = [...allProgress];
-    sorted.sort((a, b) => a.date.compareTo(b.date));
+  Widget _buildTaskList(
+    BuildContext context,
+    List<RegularTask> tasks,
+    Map<String, bool> todayCompletions,
+    List<RegularTaskCompletion> recentCompletions,
+  ) {
+    final completedCount =
+        todayCompletions.values.where((v) => v).length.clamp(0, tasks.length);
+    final totalCount = tasks.length;
 
-    int completed = 0;
-    int missed = 0;
-    int currentStreak = 0;
-    int bestStreak = 0;
-    int tempStreak = 0;
-
-    for (final p in sorted) {
-      final done = p.challengeCompletions[challengeId] ?? false;
-      if (done) {
-        completed++;
-        tempStreak++;
-        if (tempStreak > bestStreak) bestStreak = tempStreak;
-      } else {
-        missed++;
-        tempStreak = 0;
-      }
-    }
-    currentStreak = tempStreak;
-
-    return _TaskStats(
-      completed: completed,
-      missed: missed,
-      currentStreak: currentStreak,
-      bestStreak: bestStreak,
-      total: sorted.length,
-    );
-  }
-
-  Widget _buildStatsRow(_TaskStats stats) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _statItem('🔥', '${stats.currentStreak}', 'Streak'),
-          _divider(),
-          _statItem('🏆', '${stats.bestStreak}', 'Best'),
-          _divider(),
-          _statItem('✅', '${stats.completed}', 'Done'),
-          _divider(),
-          _statItem('❌', '${stats.missed}', 'Missed'),
-        ],
-      ),
-    );
-  }
-
-  Widget _statItem(String emoji, String value, String label) {
     return Column(
       children: [
-        Text(
-          '$emoji $value',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        // Summary header
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: completedCount == totalCount
+                  ? [Colors.green[50]!, Colors.green[100]!]
+                  : [Colors.orange[50]!, Colors.orange[100]!],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: completedCount == totalCount
+                  ? Colors.green[200]!
+                  : Colors.orange[200]!,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                completedCount == totalCount
+                    ? Icons.check_circle
+                    : Icons.pending_actions,
+                color: completedCount == totalCount
+                    ? Colors.green[600]
+                    : Colors.orange[600],
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  completedCount == totalCount
+                      ? 'All $totalCount tasks done today!'
+                      : '$completedCount of $totalCount completed today',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: completedCount == totalCount
+                        ? Colors.green[700]
+                        : Colors.orange[700],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+        // Task list
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            itemCount: tasks.length,
+            itemBuilder: (context, index) {
+              final task = tasks[index];
+              final isCompleted = todayCompletions[task.id] ?? false;
+              final stats =
+                  calculateRegularTaskStats(task.id, recentCompletions);
+              return _buildTaskItem(context, task, isCompleted, stats);
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _divider() {
-    return Container(width: 1, height: 30, color: Colors.grey[300]);
+  Widget _buildTaskItem(
+    BuildContext context,
+    RegularTask task,
+    bool isCompleted,
+    RegularTaskStats stats,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onLongPress: () => _showTaskOptions(context, task),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isCompleted ? Colors.green[200]! : Colors.grey[200]!,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Main task row
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    // Checkbox
+                    _buildCheckbox(context, task, isCompleted),
+                    const SizedBox(width: 10),
+                    // Task icon
+                    ChallengeIconWidget(
+                      challenge: task.toChallenge(),
+                      size: 40,
+                    ),
+                    const SizedBox(width: 12),
+                    // Title + streak
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: isCompleted
+                                  ? Colors.green[700]
+                                  : Colors.grey[800],
+                              decoration: isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              decorationColor: Colors.green,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                '🔥 ${stats.currentStreak}d streak',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: stats.currentStreak > 0
+                                      ? Colors.orange[600]
+                                      : Colors.grey[500],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '•',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey[400]),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '🏆 ${stats.bestStreak}d best',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[500],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Menu
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert,
+                          size: 18, color: Colors.grey[400]),
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 28, minHeight: 28),
+                      position: PopupMenuPosition.under,
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showEditTaskSheet(context, task);
+                        } else if (value == 'delete') {
+                          _showDeleteConfirmation(context, task);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, size: 18),
+                              SizedBox(width: 8),
+                              Text('Edit Task'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline,
+                                  size: 18, color: Colors.red),
+                              const SizedBox(width: 8),
+                              const Text('Delete Task',
+                                  style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCheckbox(
+      BuildContext context, RegularTask task, bool isCompleted) {
+    return GestureDetector(
+      onTap: () {
+        context.read<RegularTaskBloc>().add(
+              ToggleRegularTaskCompletion(
+                taskId: task.id,
+                date: DateTime.now(),
+                isCompleted: !isCompleted,
+              ),
+            );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: isCompleted ? Colors.green : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isCompleted ? Colors.green : Colors.grey[350]!,
+            width: 2,
+          ),
+        ),
+        child: isCompleted
+            ? const Icon(Icons.check, color: Colors.white, size: 18)
+            : null,
+      ),
+    );
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -229,13 +376,81 @@ class RegularTasksScreen extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) =>
-          _AddRegularTaskSheet(bloc: context.read<ChallengeBloc>()),
+          _AddRegularTaskSheet(bloc: context.read<RegularTaskBloc>()),
+    );
+  }
+
+  void _showTaskOptions(BuildContext context, RegularTask task) {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Edit Task'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showEditTaskSheet(context, task);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Delete Task',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showDeleteConfirmation(context, task);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditTaskSheet(BuildContext context, RegularTask task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _EditRegularTaskSheet(
+        bloc: context.read<RegularTaskBloc>(),
+        task: task,
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, RegularTask task) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Task?'),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              context.read<RegularTaskBloc>().add(DeleteRegularTask(task.id));
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _AddRegularTaskSheet extends StatefulWidget {
-  final ChallengeBloc bloc;
+  final RegularTaskBloc bloc;
   const _AddRegularTaskSheet({required this.bloc});
 
   @override
@@ -255,7 +470,8 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
       taskType: 'regular',
       category: 'general',
       reminderType: 'once',
-      isReminderEnabled: true,
+      isReminderEnabled: false,
+      showInRegularTab: true,
     );
   }
 
@@ -271,7 +487,9 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -512,26 +730,51 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _challenge.title.trim().isEmpty ? null : _createTask,
+                onPressed: _challenge.title.trim().isEmpty
+                    ? null
+                    : (!_challenge.isReminderEnabled ||
+                            _challenge.reminderTime == null)
+                        ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                    'Please set a reminder before creating the task'),
+                                backgroundColor: Colors.red[600],
+                                behavior: SnackBarBehavior.floating,
+                                margin: const EdgeInsets.all(16),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                            );
+                          }
+                        : _createTask,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange[600],
+                  backgroundColor: (_challenge.title.trim().isNotEmpty &&
+                          _challenge.isReminderEnabled &&
+                          _challenge.reminderTime != null)
+                      ? Colors.orange[600]
+                      : Colors.grey[400],
                   disabledBackgroundColor: Colors.grey[300],
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text(
+                child: Text(
                   'Create Task',
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white),
+                      color: (_challenge.title.trim().isNotEmpty &&
+                              _challenge.isReminderEnabled &&
+                              _challenge.reminderTime != null)
+                          ? Colors.white
+                          : Colors.grey[600]),
                 ),
               ),
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 
   void _showIconPicker() {
@@ -542,13 +785,25 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
       builder: (ctx) => IconPickerWidget(
         selectedIconName: _challenge.iconName,
         selectedImagePath: _challenge.imagePath,
-        selectedColor: _challenge.iconColor,
-        onSelectionChanged: (iconName, imagePath, color) {
+        onSelectionChanged: (iconName, imagePath) {
           setState(() {
-            _challenge = _challenge.copyWith(
-              iconName: iconName,
+            _challenge = Challenge(
+              id: _challenge.id,
+              title: _challenge.title,
+              reminderTime: _challenge.reminderTime,
+              isReminderEnabled: _challenge.isReminderEnabled,
               imagePath: imagePath,
-              iconColor: color,
+              iconName: iconName,
+              iconColor: _challenge.iconColor,
+              category: _challenge.category,
+              taskType: _challenge.taskType,
+              reminderType: _challenge.reminderType,
+              reminderStartHour: _challenge.reminderStartHour,
+              reminderEndHour: _challenge.reminderEndHour,
+              allowNightReminders: _challenge.allowNightReminders,
+              reminderIntervalMinutes: _challenge.reminderIntervalMinutes,
+              photoRequired: _challenge.photoRequired,
+              showInRegularTab: _challenge.showInRegularTab,
             );
           });
         },
@@ -571,23 +826,381 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
   }
 
   void _createTask() {
-    widget.bloc.add(AddChallengeToSession(_challenge));
+    // Validate task name
+    final validationError = validateTaskName(_challenge.title);
+    if (validationError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(validationError),
+          backgroundColor: Colors.red[600],
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
+    // Sanitize the title
+    final sanitizedTitle = sanitizeTaskName(_challenge.title);
+
+    // Convert the Challenge form data to a RegularTask
+    final regularTask = RegularTask(
+      id: _challenge.id,
+      title: sanitizedTitle,
+      reminderTime: _challenge.reminderTime,
+      isReminderEnabled: _challenge.isReminderEnabled,
+      imagePath: _challenge.imagePath,
+      iconName: _challenge.iconName,
+      iconColor: _challenge.iconColor,
+      category: _challenge.category,
+      reminderType: _challenge.reminderType,
+      reminderStartHour: _challenge.reminderStartHour,
+      reminderEndHour: _challenge.reminderEndHour,
+      allowNightReminders: _challenge.allowNightReminders,
+      reminderIntervalMinutes: _challenge.reminderIntervalMinutes,
+      createdAt: DateTime.now(),
+    );
+    widget.bloc.add(AddRegularTask(regularTask));
     Navigator.pop(context);
   }
 }
 
-class _TaskStats {
-  final int completed;
-  final int missed;
-  final int currentStreak;
-  final int bestStreak;
-  final int total;
+class _EditRegularTaskSheet extends StatefulWidget {
+  final RegularTaskBloc bloc;
+  final RegularTask task;
+  const _EditRegularTaskSheet({required this.bloc, required this.task});
 
-  const _TaskStats({
-    required this.completed,
-    required this.missed,
-    required this.currentStreak,
-    required this.bestStreak,
-    required this.total,
-  });
+  @override
+  State<_EditRegularTaskSheet> createState() => _EditRegularTaskSheetState();
+}
+
+class _EditRegularTaskSheetState extends State<_EditRegularTaskSheet> {
+  late TextEditingController _controller;
+  late Challenge _challenge;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.task.title);
+    _challenge = widget.task.toChallenge();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool get _hasCustomIcon =>
+      (_challenge.imagePath != null && _challenge.imagePath!.isNotEmpty) ||
+      (_challenge.iconName != null && _challenge.iconName!.isNotEmpty);
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Icon(Icons.edit, color: Colors.orange[600]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Edit Task',
+                    style: GoogleFonts.poppins(
+                        fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close)),
+              ],
+            ),
+          ),
+          const Divider(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _showIconPicker,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            gradient: _hasCustomIcon
+                                ? null
+                                : LinearGradient(colors: [
+                                    Colors.grey[100]!,
+                                    Colors.grey[200]!
+                                  ]),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _hasCustomIcon
+                                  ? Colors.blue[300]!
+                                  : Colors.grey[300]!,
+                              width: 2,
+                            ),
+                          ),
+                          child: _hasCustomIcon
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: ChallengeIconWidget(
+                                      challenge: _challenge, size: 60),
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.add_photo_alternate_outlined,
+                                        color: Colors.grey[500], size: 20),
+                                    const SizedBox(height: 2),
+                                    Text('Icon',
+                                        style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w500)),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Container(
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                          child: TextField(
+                            controller: _controller,
+                            decoration: InputDecoration(
+                              hintText: 'Task name',
+                              hintStyle: TextStyle(
+                                  color: Colors.grey[500], fontSize: 14),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 18),
+                            ),
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w500),
+                            maxLines: 1,
+                            textAlignVertical: TextAlignVertical.center,
+                            onChanged: (value) {
+                              setState(() {
+                                _challenge = _challenge.copyWith(title: value);
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: _showReminderSetup,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: (_challenge.isReminderEnabled &&
+                                _challenge.reminderTime != null)
+                            ? Colors.orange[50]
+                            : Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: (_challenge.isReminderEnabled &&
+                                  _challenge.reminderTime != null)
+                              ? Colors.orange[300]!
+                              : Colors.red[300]!,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            (_challenge.isReminderEnabled &&
+                                    _challenge.reminderTime != null)
+                                ? Icons.alarm_on
+                                : Icons.alarm_add,
+                            size: 18,
+                            color: (_challenge.isReminderEnabled &&
+                                    _challenge.reminderTime != null)
+                                ? Colors.orange[600]
+                                : Colors.red[600],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              (_challenge.isReminderEnabled &&
+                                      _challenge.reminderTime != null)
+                                  ? 'Reminder Set ✓'
+                                  : '⚠ Set Reminder',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: (_challenge.isReminderEnabled &&
+                                        _challenge.reminderTime != null)
+                                    ? Colors.orange[700]
+                                    : Colors.red[700],
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right,
+                              size: 18,
+                              color: (_challenge.isReminderEnabled &&
+                                      _challenge.reminderTime != null)
+                                  ? Colors.orange[400]
+                                  : Colors.red[400]),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed:
+                    _challenge.title.trim().isEmpty ? null : _saveChanges,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _challenge.title.trim().isNotEmpty
+                      ? Colors.orange[600]
+                      : Colors.grey[400],
+                  disabledBackgroundColor: Colors.grey[300],
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  'Save Changes',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _challenge.title.trim().isNotEmpty
+                          ? Colors.white
+                          : Colors.grey[600]),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ));
+  }
+
+  void _showIconPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => IconPickerWidget(
+        selectedIconName: _challenge.iconName,
+        selectedImagePath: _challenge.imagePath,
+        onSelectionChanged: (iconName, imagePath) {
+          setState(() {
+            _challenge = Challenge(
+              id: _challenge.id,
+              title: _challenge.title,
+              reminderTime: _challenge.reminderTime,
+              isReminderEnabled: _challenge.isReminderEnabled,
+              imagePath: imagePath,
+              iconName: iconName,
+              iconColor: _challenge.iconColor,
+              category: _challenge.category,
+              taskType: _challenge.taskType,
+              reminderType: _challenge.reminderType,
+              reminderStartHour: _challenge.reminderStartHour,
+              reminderEndHour: _challenge.reminderEndHour,
+              allowNightReminders: _challenge.allowNightReminders,
+              reminderIntervalMinutes: _challenge.reminderIntervalMinutes,
+              photoRequired: _challenge.photoRequired,
+              showInRegularTab: _challenge.showInRegularTab,
+            );
+          });
+        },
+      ),
+    );
+  }
+
+  void _showReminderSetup() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ReminderBottomSheet(
+        challenge: _challenge,
+        onSave: (updated) {
+          setState(() => _challenge = updated);
+        },
+      ),
+    );
+  }
+
+  void _saveChanges() {
+    // Validate task name
+    final validationError = validateTaskName(_challenge.title);
+    if (validationError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(validationError),
+          backgroundColor: Colors.red[600],
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
+    // Sanitize the title
+    final sanitizedTitle = sanitizeTaskName(_challenge.title);
+
+    final updatedTask = RegularTask(
+      id: widget.task.id,
+      title: sanitizedTitle,
+      reminderTime: _challenge.reminderTime,
+      isReminderEnabled: _challenge.isReminderEnabled,
+      imagePath: _challenge.imagePath,
+      iconName: _challenge.iconName,
+      iconColor: _challenge.iconColor,
+      category: _challenge.category,
+      reminderType: _challenge.reminderType,
+      reminderStartHour: _challenge.reminderStartHour,
+      reminderEndHour: _challenge.reminderEndHour,
+      allowNightReminders: _challenge.allowNightReminders,
+      reminderIntervalMinutes: _challenge.reminderIntervalMinutes,
+      createdAt: widget.task.createdAt,
+    );
+    widget.bloc.add(UpdateRegularTask(updatedTask));
+    Navigator.pop(context);
+  }
 }

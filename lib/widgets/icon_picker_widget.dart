@@ -9,15 +9,12 @@ import '../services/challenge_icon_service.dart';
 class IconPickerWidget extends StatefulWidget {
   final String? selectedIconName;
   final String? selectedImagePath;
-  final int? selectedColor;
-  final Function(String? iconName, String? imagePath, int? color)
-      onSelectionChanged;
+  final Function(String? iconName, String? imagePath) onSelectionChanged;
 
   const IconPickerWidget({
     super.key,
     this.selectedIconName,
     this.selectedImagePath,
-    this.selectedColor,
     required this.onSelectionChanged,
   });
 
@@ -30,16 +27,14 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
   late TabController _tabController;
   String? _selectedIconName;
   String? _selectedImagePath;
-  int? _selectedColor;
   final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _selectedIconName = widget.selectedIconName;
     _selectedImagePath = widget.selectedImagePath;
-    _selectedColor = widget.selectedColor;
   }
 
   @override
@@ -50,7 +45,9 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       height: 400,
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -73,13 +70,12 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
               children: [
                 _buildPredefinedIconsTab(),
                 _buildCustomImageTab(),
-                _buildColorPickerTab(),
               ],
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildHeader() {
@@ -110,7 +106,6 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
       tabs: const [
         Tab(icon: Icon(Icons.apps), text: 'Icons'),
         Tab(icon: Icon(Icons.image), text: 'Image'),
-        Tab(icon: Icon(Icons.palette), text: 'Color'),
       ],
     );
   }
@@ -174,17 +169,15 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
 
   Widget _buildIconOption(ChallengeIconData iconData) {
     final isSelected = _selectedIconName == iconData.name;
-    final color =
-        _selectedColor != null ? Color(_selectedColor!) : iconData.color;
+    final color = iconData.color;
 
     return GestureDetector(
       onTap: () {
         setState(() {
           _selectedIconName = iconData.name;
           _selectedImagePath = null; // Clear image when icon is selected
-          _selectedColor ??= iconData.color.toARGB32();
         });
-        widget.onSelectionChanged(_selectedIconName, null, _selectedColor);
+        widget.onSelectionChanged(_selectedIconName, null);
       },
       child: Container(
         decoration: BoxDecoration(
@@ -318,81 +311,6 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
     ).animate().scale(delay: 100.ms);
   }
 
-  Widget _buildColorPickerTab() {
-    final colors = [
-      Colors.red,
-      Colors.pink,
-      Colors.purple,
-      Colors.deepPurple,
-      Colors.indigo,
-      Colors.blue,
-      Colors.lightBlue,
-      Colors.cyan,
-      Colors.teal,
-      Colors.green,
-      Colors.lightGreen,
-      Colors.lime,
-      Colors.yellow,
-      Colors.amber,
-      Colors.orange,
-      Colors.deepOrange,
-      Colors.brown,
-      Colors.grey,
-      Colors.blueGrey,
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 6,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-        ),
-        itemCount: colors.length,
-        itemBuilder: (context, index) {
-          final color = colors[index];
-          final isSelected = _selectedColor == color.toARGB32();
-
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedColor = color.toARGB32();
-              });
-              widget.onSelectionChanged(
-                  _selectedIconName, _selectedImagePath, _selectedColor);
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: isSelected
-                    ? Border.all(color: Colors.white, width: 3)
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.4),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: isSelected
-                  ? const Center(
-                      child: Icon(
-                        Icons.check,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    )
-                  : null,
-            ),
-          ).animate(delay: (index * 50).ms).scale();
-        },
-      ),
-    );
-  }
-
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? image = await _imagePicker.pickImage(
@@ -407,7 +325,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
           _selectedImagePath = image.path;
           _selectedIconName = null; // Clear icon when image is selected
         });
-        widget.onSelectionChanged(null, _selectedImagePath, _selectedColor);
+        widget.onSelectionChanged(null, _selectedImagePath);
       }
     } catch (e) {
       if (!mounted) return;
@@ -421,6 +339,6 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
     setState(() {
       _selectedImagePath = null;
     });
-    widget.onSelectionChanged(_selectedIconName, null, _selectedColor);
+    widget.onSelectionChanged(_selectedIconName, null);
   }
 }

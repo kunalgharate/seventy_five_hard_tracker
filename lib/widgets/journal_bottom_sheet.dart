@@ -44,7 +44,9 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
     final hasExistingNote =
         widget.existingNote != null && widget.existingNote!.isNotEmpty;
 
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -140,6 +142,6 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

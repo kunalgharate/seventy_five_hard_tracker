@@ -80,7 +80,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SafeArea(
+      top: false,
+      child: Container(
       height: MediaQuery.of(context).size.height * 0.95,
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -98,7 +100,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
                 Icon(Icons.notifications, color: Colors.orange[600]),
@@ -119,19 +121,19 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildToggle(),
                   if (_enabled) ...[
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     Text(
                       'Reminder Type',
                       style: GoogleFonts.poppins(
                           fontSize: 16, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     _buildTypeOption(
                         'once',
                         'Once',
@@ -148,7 +150,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                         'Regular intervals (15 min - 12 hours)', Icons.timer),
                     _buildTypeOption('custom', 'Custom Schedule',
                         'Flexible timing for any pattern', Icons.tune),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     if (_type == 'once')
                       _buildTimeSelector('Reminder Time', _time,
                           (t) => setState(() => _time = t)),
@@ -161,7 +163,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                       _buildMultipleTimeSelector('Custom Times', _customTimes,
                           (t) => setState(() => _customTimes = t)),
                   ] else ...[
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -187,7 +189,12 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 12,
+              bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
+            ),
             child: SizedBox(
               width: double.infinity,
               height: 50,
@@ -210,12 +217,12 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildToggle() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
@@ -265,8 +272,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
         }
       }),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? Colors.orange[50] : Colors.white,
           borderRadius: BorderRadius.circular(12),

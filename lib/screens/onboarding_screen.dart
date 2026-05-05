@@ -12,6 +12,7 @@ import '../widgets/reminder_bottom_sheet.dart';
 import '../services/challenge_icon_service.dart';
 import '../services/dynamic_color_service.dart';
 import '../services/task_templates.dart';
+import '../utils/text_helpers.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -140,6 +141,35 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       return;
     }
 
+    // Validate task names
+    final invalidNames = <String>[];
+    for (final challenge in validChallenges) {
+      final error = validateTaskName(challenge.title);
+      if (error != null) {
+        invalidNames.add('${challenge.title}: $error');
+      }
+    }
+
+    if (invalidNames.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please fix task names:\n${invalidNames.join('\n')}',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      _pageController.animateToPage(1,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      return;
+    }
+
+    // Sanitize task names
+    final sanitizedChallenges = validChallenges
+        .map((c) => c.copyWith(title: sanitizeTaskName(c.title)))
+        .toList();
+
     // Validate that hard tasks have a reminder time set
     final hardTasksWithoutReminder = validChallenges
         .where((c) =>
@@ -164,7 +194,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       return;
     }
 
-    context.read<ChallengeBloc>().add(StartNewSession(validChallenges));
+    context.read<ChallengeBloc>().add(StartNewSession(sanitizedChallenges));
 
     await Future.delayed(const Duration(milliseconds: 100));
 
@@ -1081,14 +1111,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       builder: (context) => IconPickerWidget(
         selectedIconName: _challenges[index].iconName,
         selectedImagePath: _challenges[index].imagePath,
-        selectedColor: _challenges[index].iconColor,
-        onSelectionChanged: (iconName, imagePath, color) {
-          _updateChallenge(
-            index,
-            iconName: iconName,
+        onSelectionChanged: (iconName, imagePath) {
+          // Explicitly set fields — use empty string to clear, since copyWith
+          // treats null as "keep old value"
+          _challenges[index] = Challenge(
+            id: _challenges[index].id,
+            title: _challenges[index].title,
+            reminderTime: _challenges[index].reminderTime,
+            isReminderEnabled: _challenges[index].isReminderEnabled,
             imagePath: imagePath,
-            iconColor: color,
+            iconName: iconName,
+            iconColor: _challenges[index].iconColor,
+            category: _challenges[index].category,
+            taskType: _challenges[index].taskType,
+            reminderType: _challenges[index].reminderType,
+            reminderStartHour: _challenges[index].reminderStartHour,
+            reminderEndHour: _challenges[index].reminderEndHour,
+            allowNightReminders: _challenges[index].allowNightReminders,
+            reminderIntervalMinutes: _challenges[index].reminderIntervalMinutes,
+            photoRequired: _challenges[index].photoRequired,
+            showInRegularTab: _challenges[index].showInRegularTab,
           );
+          setState(() {});
         },
       ),
     );
@@ -1195,7 +1239,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         initialChildSize: 0.7,
         maxChildSize: 0.9,
         minChildSize: 0.4,
-        builder: (context, scrollController) => Container(
+        builder: (context, scrollController) => SafeArea(
+          top: false,
+          child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1272,7 +1318,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

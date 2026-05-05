@@ -76,7 +76,9 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -160,7 +162,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 
