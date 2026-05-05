@@ -1,0 +1,84 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Excessive Padding Causes Time Selector Below Fold
+  - **CRITICAL**: This test MUST FAIL on unfixed code — failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior — it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the layout overflow bug
+  - **Scoped PBT Approach**: Scope the property to the concrete layout values in `lib/widgets/reminder_bottom_sheet.dart` that cause the overflow
+  - Create test file `test/compact_reminder_bottom_sheet_bug_condition_test.dart`
+  - Read the source file `lib/widgets/reminder_bottom_sheet.dart` and verify the current (buggy) layout values:
+    - Sheet height factor is `0.95` (expected after fix: `0.7`)
+    - Header padding is `EdgeInsets.all(20)` (expected after fix: `EdgeInsets.symmetric(horizontal: 20, vertical: 12)`)
+    - Content area padding is `EdgeInsets.all(20)` (expected after fix: `EdgeInsets.symmetric(horizontal: 20, vertical: 8)`)
+    - Type option padding is `EdgeInsets.all(16)` (expected after fix: `EdgeInsets.symmetric(horizontal: 12, vertical: 10)`)
+    - Type option margin is `EdgeInsets.only(bottom: 8)` (expected after fix: `EdgeInsets.only(bottom: 4)`)
+    - Toggle padding is `EdgeInsets.all(16)` (expected after fix: `EdgeInsets.symmetric(horizontal: 12, vertical: 10)`)
+  - Assert that the source contains the FIXED compact values (this will FAIL on unfixed code, confirming the bug)
+  - Compute total content height using the isBugCondition formula from the design and assert it fits within the visible sheet height for standard screen sizes (812px, 667px)
+  - Run test on UNFIXED code — expect FAILURE (this confirms the bug exists)
+  - Document counterexamples found (e.g., "At 812px screen height, content height exceeds visible area of 771px")
+  - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Functional Behavior Unchanged After Layout Fix
+  - **IMPORTANT**: Follow observation-first methodology
+  - Create test file `test/compact_reminder_bottom_sheet_preservation_test.dart`
+  - Observe behavior on UNFIXED code for non-buggy functional interactions:
+    - Observe: `_save()` with type `once` and time `09:00` produces `once:09:00`
+    - Observe: `_save()` with type `multiple` and times `['09:00', '18:00']` produces `multiple:09:00,18:00`
+    - Observe: `_save()` with type `hourly` and time `08:00` produces `hourly:08:00`
+    - Observe: `_save()` with type `interval`, interval `120`, and time `07:00` produces `interval:120:07:00`
+    - Observe: `_save()` with type `custom` and times `['06:00', '12:00', '20:00']` produces `custom:06:00,12:00,20:00`
+    - Observe: When `_enabled` is false, saving produces `isReminderEnabled: false` and `reminderTime: null`
+    - Observe: Toggling the switch shows/hides the configuration section
+    - Observe: Tapping a type option selects that type and shows corresponding config
+  - Write widget tests that render `ReminderBottomSheet` with a test `Challenge` and verify:
+    - Type selection: tapping each of the 5 type options updates the UI to show the correct configuration widget
+    - Toggle: switching the enable toggle shows/hides reminder configuration options
+    - Save data format: saving with each type produces the correct data string format (`once:`, `multiple:`, `hourly:`, `interval:`, `custom:` prefixes)
+    - Dismiss: close button calls `Navigator.pop`
+    - Disabled state: when reminders are disabled, the informational message "Enable reminders to configure settings" is displayed
+  - Verify all tests PASS on UNFIXED code (confirms baseline behavior to preserve)
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 3. Fix for compact reminder bottom sheet layout
+
+  - [x] 3.1 Implement the layout compaction fix
+    - All changes in single file: `lib/widgets/reminder_bottom_sheet.dart`
+    - Reduce sheet height factor from `0.95` to `0.7` in the `build` method's outer `Container`
+    - Reduce header padding from `EdgeInsets.all(20)` to `EdgeInsets.symmetric(horizontal: 20, vertical: 12)` in the header `Padding` widget
+    - Reduce content area padding from `EdgeInsets.all(20)` to `EdgeInsets.symmetric(horizontal: 20, vertical: 8)` in the `SingleChildScrollView` padding
+    - Reduce type option padding from `EdgeInsets.all(16)` to `EdgeInsets.symmetric(horizontal: 12, vertical: 10)` in `_buildTypeOption`
+    - Reduce type option margin from `EdgeInsets.only(bottom: 8)` to `EdgeInsets.only(bottom: 4)` in `_buildTypeOption`
+    - Reduce toggle padding from `EdgeInsets.all(16)` to `EdgeInsets.symmetric(horizontal: 12, vertical: 10)` in `_buildToggle`
+    - Reduce inter-section `SizedBox(height: 20)` gaps to `SizedBox(height: 12)`
+    - Reduce "Reminder Type" title spacing `SizedBox(height: 12)` to `SizedBox(height: 8)`
+    - Reduce bottom button padding from `EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 20 + ...)` to `EdgeInsets.only(left: 20, right: 20, top: 12, bottom: 12 + ...)`
+    - _Bug_Condition: isBugCondition(input) where input.enabled = true AND totalContentHeight > visibleHeight due to 0.95 height factor and oversized padding_
+    - _Expected_Behavior: All five type options and the time selector fit within the initially visible area without scrolling_
+    - _Preservation: Type selection, toggle, save data format, dismiss, and disabled state display remain unchanged_
+    - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5_
+
+  - [x] 3.2 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Time Selector Visible Without Scrolling
+    - **IMPORTANT**: Re-run the SAME test from task 1 — do NOT write a new test
+    - The test from task 1 encodes the expected behavior (compact layout values)
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run `flutter test test/compact_reminder_bottom_sheet_bug_condition_test.dart`
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed — layout values are now compact)
+    - _Requirements: 2.1, 2.2, 2.3_
+
+  - [x] 3.3 Verify preservation tests still pass
+    - **Property 2: Preservation** - Functional Behavior Unchanged
+    - **IMPORTANT**: Re-run the SAME tests from task 2 — do NOT write new tests
+    - Run `flutter test test/compact_reminder_bottom_sheet_preservation_test.dart`
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions — all functional behavior preserved)
+    - Confirm type selection, toggle, save data format, dismiss, and disabled state all work identically after the layout fix
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Run `flutter test test/compact_reminder_bottom_sheet_bug_condition_test.dart test/compact_reminder_bottom_sheet_preservation_test.dart`
+  - Ensure both bug condition and preservation tests pass
+  - Ensure no other existing tests are broken by running `flutter test`
+  - Ask the user if any questions arise
