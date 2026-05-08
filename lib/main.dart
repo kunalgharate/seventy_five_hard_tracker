@@ -56,7 +56,11 @@ void main() async {
   }
 
   final smartNotifications = SmartNotificationService();
-  await smartNotifications.initialize();
+  try {
+    await smartNotifications.initialize();
+  } catch (e) {
+    if (kDebugMode) print('Notification init failed: $e');
+  }
 
   // ── Internet-aware Firebase init (non-blocking) ──
   final connectivity = ConnectivityService();
@@ -286,6 +290,9 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   void _checkInitialRoute() async {
+    // Capture navigator before async gap to avoid using context across awaits
+    final navigator = Navigator.of(context);
+
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
@@ -300,7 +307,7 @@ class _InitialScreenState extends State<InitialScreen>
     }
 
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/home');
+      navigator.pushReplacementNamed('/home');
     }
   }
 
