@@ -38,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(
-        title: '75 Hard Challenge',
+        title: 'Daily mettle',
         actions: [
           // Test notification button (only in debug mode)
           if (kDebugMode)

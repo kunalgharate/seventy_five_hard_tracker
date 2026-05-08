@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import '../bloc/challenge_bloc.dart';
 import '../bloc/challenge_state.dart';
 import '../bloc/challenge_event.dart';
@@ -34,13 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Profile',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-      ),
+      appBar: const CustomAppBar(title: 'Profile'),
       body: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
           return ListView(
@@ -323,7 +318,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               : 'Sign-in failed. Please check your connection and try again.'),
           backgroundColor: user != null ? Colors.green : Colors.red,
           behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           duration: const Duration(seconds: 4),

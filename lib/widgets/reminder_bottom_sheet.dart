@@ -81,143 +81,155 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      top: false,
-      child: Container(
-      height: MediaQuery.of(context).size.height * 0.95,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
+        top: false,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.95,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Row(
-              children: [
-                Icon(Icons.notifications, color: Colors.orange[600]),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Set Reminder',
-                    style: GoogleFonts.poppins(
-                        fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildToggle(),
-                  if (_enabled) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Reminder Type',
-                      style: GoogleFonts.poppins(
-                          fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.notifications, color: Colors.orange[600]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Set Reminder',
+                        style: GoogleFonts.poppins(
+                            fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    _buildTypeOption(
-                        'once',
-                        'Once',
-                        'Single reminder at specific time',
-                        Icons.schedule_outlined),
-                    _buildTypeOption('multiple', 'Multiple Times',
-                        'Several reminders throughout the day', Icons.schedule),
-                    _buildTypeOption(
-                        'hourly',
-                        'Every Hour',
-                        'Hourly reminders during active hours',
-                        Icons.access_time),
-                    _buildTypeOption('interval', 'Every X Hours',
-                        'Regular intervals (15 min - 12 hours)', Icons.timer),
-                    _buildTypeOption('custom', 'Custom Schedule',
-                        'Flexible timing for any pattern', Icons.tune),
-                    const SizedBox(height: 12),
-                    if (_type == 'once')
-                      _buildTimeSelector('Reminder Time', _time,
-                          (t) => setState(() => _time = t)),
-                    if (_type == 'multiple')
-                      _buildMultipleTimeSelector('Reminder Times', _customTimes,
-                          (t) => setState(() => _customTimes = t)),
-                    if (_type == 'hourly') _buildHourlyConfig(),
-                    if (_type == 'interval') _buildIntervalConfig(),
-                    if (_type == 'custom')
-                      _buildMultipleTimeSelector('Custom Times', _customTimes,
-                          (t) => setState(() => _customTimes = t)),
-                  ] else ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              color: Colors.grey[600], size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Enable reminders to configure settings',
-                            style: GoogleFonts.inter(
-                                color: Colors.grey[600], fontSize: 14),
-                          ),
-                        ],
-                      ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
                     ),
                   ],
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 12,
-              bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange[600],
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text(
-                  _enabled ? 'Save Reminder Settings' : 'Disable Reminder',
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white),
                 ),
               ),
-            ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildToggle(),
+                      if (_enabled) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Reminder Type',
+                          style: GoogleFonts.poppins(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildTypeOption(
+                            'once',
+                            'Once',
+                            'Single reminder at specific time',
+                            Icons.schedule_outlined),
+                        _buildTypeOption(
+                            'multiple',
+                            'Multiple Times',
+                            'Several reminders throughout the day',
+                            Icons.schedule),
+                        _buildTypeOption(
+                            'hourly',
+                            'Every Hour',
+                            'Hourly reminders during active hours',
+                            Icons.access_time),
+                        _buildTypeOption(
+                            'interval',
+                            'Every X Hours',
+                            'Regular intervals (15 min - 12 hours)',
+                            Icons.timer),
+                        _buildTypeOption('custom', 'Custom Schedule',
+                            'Flexible timing for any pattern', Icons.tune),
+                        const SizedBox(height: 12),
+                        if (_type == 'once')
+                          _buildTimeSelector('Reminder Time', _time,
+                              (t) => setState(() => _time = t)),
+                        if (_type == 'multiple')
+                          _buildMultipleTimeSelector(
+                              'Reminder Times',
+                              _customTimes,
+                              (t) => setState(() => _customTimes = t)),
+                        if (_type == 'hourly') _buildHourlyConfig(),
+                        if (_type == 'interval') _buildIntervalConfig(),
+                        if (_type == 'custom')
+                          _buildMultipleTimeSelector(
+                              'Custom Times',
+                              _customTimes,
+                              (t) => setState(() => _customTimes = t)),
+                      ] else ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Colors.grey[600], size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Enable reminders to configure settings',
+                                style: GoogleFonts.inter(
+                                    color: Colors.grey[600], fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 12,
+                  bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[600],
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                      _enabled ? 'Save Reminder Settings' : 'Disable Reminder',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ));
+        ));
   }
 
   Widget _buildToggle() {

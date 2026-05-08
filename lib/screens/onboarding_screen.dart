@@ -25,6 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
   final List<TextEditingController> _controllers = [];
   final List<Challenge> _challenges = [];
+  final Map<int, String?> _validationErrors = {};
   final PageController _pageController = PageController();
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
@@ -85,6 +86,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       _controllers[index].dispose();
       _controllers.removeAt(index);
       _challenges.removeAt(index);
+      // Rebuild validation errors map with updated indices
+      final newErrors = <int, String?>{};
+      for (final entry in _validationErrors.entries) {
+        if (entry.key < index) {
+          newErrors[entry.key] = entry.value;
+        } else if (entry.key > index) {
+          newErrors[entry.key - 1] = entry.value;
+        }
+      }
+      _validationErrors.clear();
+      _validationErrors.addAll(newErrors);
       setState(() {});
     }
   }
@@ -625,6 +637,31 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 return;
               }
 
+              // Check for validation errors before proceeding
+              bool hasErrors = false;
+              for (int i = 0; i < _challenges.length; i++) {
+                if (_challenges[i].title.trim().isNotEmpty) {
+                  final error = validateTaskName(_challenges[i].title);
+                  _validationErrors[i] = error;
+                  if (error != null) hasErrors = true;
+                }
+              }
+              if (hasErrors) {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                        'Please fix the highlighted challenge names before continuing'),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+                return;
+              }
+
               _pageController.nextPage(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
@@ -802,68 +839,103 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
                     // Challenge Input - Expanded to fill remaining space
                     Expanded(
-                      child: Container(
-                        height: 60, // Match icon height for perfect alignment
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[300]!),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height:
+                                60, // Match icon height for perfect alignment
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _validationErrors[index] != null
+                                    ? Colors.red
+                                    : Colors.grey[300]!,
+                                width:
+                                    _validationErrors[index] != null ? 1.5 : 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.02),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _controllers[index],
-                          decoration: InputDecoration(
-                            hintText: 'e.g., "Drink 3L water daily"',
-                            hintStyle: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 14,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 18, // Center the text vertically
-                            ),
-                          ),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1, // Single line for better alignment
-                          textAlignVertical: TextAlignVertical.center,
-                          onChanged: (value) {
-                            _updateChallenge(index, title: value);
+                            child: TextField(
+                              controller: _controllers[index],
+                              decoration: InputDecoration(
+                                hintText: 'e.g., "Drink 3L water daily"',
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 18, // Center the text vertically
+                                ),
+                              ),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1, // Single line for better alignment
+                              textAlignVertical: TextAlignVertical.center,
+                              onChanged: (value) {
+                                _updateChallenge(index, title: value);
 
-                            // Auto-detect category and icon only if no custom icon is set
-                            if (value.isNotEmpty &&
-                                !_hasCustomIcon(challenge)) {
-                              final iconData =
-                                  ChallengeIconService.findBestIcon(value);
-                              if (iconData != null) {
-                                // Use dynamic color instead of fixed color
-                                final dynamicColor =
-                                    DynamicColorService.getColorForText(value);
-                                _updateChallenge(
-                                  index,
-                                  iconName: iconData.name,
-                                  iconColor: dynamicColor.toARGB32(),
-                                );
-                              }
-                            }
-                          },
-                        ),
+                                // Real-time inline validation
+                                final error = value.trim().isEmpty
+                                    ? null
+                                    : validateTaskName(value);
+                                setState(() {
+                                  _validationErrors[index] = error;
+                                });
+
+                                // Auto-detect category and icon only if no custom icon is set
+                                if (value.isNotEmpty &&
+                                    !_hasCustomIcon(challenge)) {
+                                  final iconData =
+                                      ChallengeIconService.findBestIcon(value);
+                                  if (iconData != null) {
+                                    // Use dynamic color instead of fixed color
+                                    final dynamicColor =
+                                        DynamicColorService.getColorForText(
+                                            value);
+                                    _updateChallenge(
+                                      index,
+                                      iconName: iconData.name,
+                                      iconColor: dynamicColor.toARGB32(),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                          ),
+                          if (_validationErrors[index] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4, left: 4),
+                              child: Text(
+                                _validationErrors[index]!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
                 ),
 
                 // Progress indicator
-                if (challenge.title.isNotEmpty)
+                if (challenge.title.isNotEmpty &&
+                    _validationErrors[index] == null)
                   Container(
                     margin: const EdgeInsets.only(top: 16),
                     padding:
@@ -1240,85 +1312,89 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         maxChildSize: 0.9,
         minChildSize: 0.4,
         builder: (context, scrollController) => SafeArea(
-          top: false,
-          child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+            top: false,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Quick Add from Templates',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: TaskTemplates.grouped.entries.map((entry) {
-                    final category = entry.key;
-                    final templates = entry.value;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            category[0].toUpperCase() + category.substring(1),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'Quick Add from Templates',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: TaskTemplates.grouped.entries.map((entry) {
+                        final category = entry.key;
+                        final templates = entry.value;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                category[0].toUpperCase() +
+                                    category.substring(1),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        ...templates.map((t) => ListTile(
-                              leading: Icon(_getTemplateIcon(t.iconName),
-                                  color:
-                                      DynamicColorService.getColorForCategory(
-                                          t.category)),
-                              title: Text(t.title),
-                              trailing: const Icon(Icons.add_circle_outline,
-                                  color: Colors.green),
-                              onTap: () {
-                                if (_challenges.length >= 10) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('Maximum 10 challenges')),
-                                  );
-                                  return;
-                                }
-                                final challenge = TaskTemplates.toChallenge(t);
-                                final controller =
-                                    TextEditingController(text: t.title);
-                                _controllers.add(controller);
-                                _challenges.add(challenge);
-                                Navigator.pop(context);
-                                setState(() {});
-                              },
-                            )),
-                        const Divider(),
-                      ],
-                    );
-                  }).toList(),
-                ),
+                            ...templates.map((t) => ListTile(
+                                  leading: Icon(_getTemplateIcon(t.iconName),
+                                      color: DynamicColorService
+                                          .getColorForCategory(t.category)),
+                                  title: Text(t.title),
+                                  trailing: const Icon(Icons.add_circle_outline,
+                                      color: Colors.green),
+                                  onTap: () {
+                                    if (_challenges.length >= 10) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content:
+                                                Text('Maximum 10 challenges')),
+                                      );
+                                      return;
+                                    }
+                                    final challenge =
+                                        TaskTemplates.toChallenge(t);
+                                    final controller =
+                                        TextEditingController(text: t.title);
+                                    _controllers.add(controller);
+                                    _challenges.add(challenge);
+                                    Navigator.pop(context);
+                                    setState(() {});
+                                  },
+                                )),
+                            const Divider(),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        )),
+            )),
       ),
     );
   }
