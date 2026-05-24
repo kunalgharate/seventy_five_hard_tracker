@@ -29,9 +29,9 @@ import 'services/connectivity_service.dart';
 
 /// App-wide theme colors — single source of truth.
 class AppColors {
-  static const primary = Color(0xFFFFA726);
-  static const secondary = Color(0xFFFF7043);
-  static const accent = Color(0xFFEC407A);
+  static const primary = Color.fromARGB(255, 167, 60, 27);
+  static const secondary = Color.fromARGB(255, 70, 117, 9);
+  static const accent = Color.fromARGB(255, 175, 40, 168);
 }
 
 void main() async {
@@ -70,9 +70,9 @@ void main() async {
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
+      statusBarColor: Color.fromARGB(0, 46, 43, 43),
       statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
+      systemNavigationBarColor: Color.fromARGB(255, 180, 132, 132),
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
