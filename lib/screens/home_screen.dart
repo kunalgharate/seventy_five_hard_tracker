@@ -38,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(
-        title: 'Daily mettle',
+        title: 'Daily personel mettle',
         actions: [
           // Test notification button (only in debug mode)
           if (kDebugMode)
@@ -245,10 +245,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton.icon(
             onPressed: () => Navigator.pushNamed(context, '/onboarding'),
             icon: const Icon(Icons.add),
-            label: const Text('Create 75 Hard Challenge'),
+            label: const Text('Create My Daily 75 Hard Challenge'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFA726),
-              foregroundColor: Colors.white,
+              backgroundColor: const Color.fromARGB(204, 180, 76, 28),
+              foregroundColor: const Color.fromARGB(178, 245, 185, 185),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
@@ -295,7 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style:
                               Theme.of(context).textTheme.titleLarge?.copyWith(
                                     fontWeight: FontWeight.bold,
-                                    color: const Color(0xFFFFA726),
+                                    color: const Color.fromARGB(255, 245, 182, 88),
                                   ),
                         ),
                         const SizedBox(height: 12),
