@@ -441,12 +441,12 @@ void main() {
 
         // Snapshot both systems BEFORE interleaved operations
         final sessionBefore = BoxSnapshot(sessionBox);
-        final progressBefore = BoxSnapshot(progressBox);
+        //final progressBefore = BoxSnapshot(progressBox);
         final regularTasksBox = Hive.box<RegularTask>('regular_tasks');
         final regularCompletionsBox =
             Hive.box<RegularTaskCompletion>('regular_task_completions');
         final rtBefore = BoxSnapshot(regularTasksBox);
-        final rcBefore = BoxSnapshot(regularCompletionsBox);
+        //final rcBefore = BoxSnapshot(regularCompletionsBox);
 
         // Interleave: challenge op, then regular op, alternating
         final regularTaskIds = <String>['rt_seed'];
