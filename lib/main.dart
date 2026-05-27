@@ -27,7 +27,8 @@ import 'services/smart_notification_service.dart';
 import 'services/simple_background_check_service.dart';
 import 'services/analytics_service.dart';
 import 'services/connectivity_service.dart';
-import 'services/api_ninjas_quote_service.dart';
+import 'services/api_quote_service.dart';
+import 'bloc/accountability_bloc.dart';
 
 /// App-wide theme colors — single source of truth.
 class AppColors {
@@ -109,6 +110,9 @@ class MyApp extends StatelessWidget {
             repository: RegularTaskRepository(),
             notifications: smartNotifications,
           )..add(LoadRegularTasks()),
+        ),
+        BlocProvider(
+          create: (context) => AccountabilityBloc(),
         ),
       ],
       child: MaterialApp(

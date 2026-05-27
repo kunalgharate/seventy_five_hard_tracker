@@ -7,6 +7,7 @@ import '../models/daily_progress.dart';
 import '../repositories/database_repository.dart';
 import '../services/smart_notification_service.dart';
 import '../services/analytics_service.dart';
+import '../services/accountability_service.dart';
 import 'challenge_event.dart';
 import 'challenge_state.dart';
 
@@ -283,6 +284,28 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         allSessions: allSessions,
         hasActiveSession: true,
       ));
+
+      // Publish progress to Firestore so accountability partners can see it.
+      // Fire-and-forget — never block the UI.
+      unawaited(() async {
+        try {
+          final nonRegular = activeSession.challenges
+              .where((c) => c.taskType != 'regular')
+              .toList();
+          final completedCount = nonRegular
+              .where((c) => updatedProgress.challengeCompletions[c.id] == true)
+              .length;
+          final dateKey =
+              '${event.date.year}-${event.date.month.toString().padLeft(2, '0')}-${event.date.day.toString().padLeft(2, '0')}';
+          await AccountabilityService().publishDailyProgress(
+            dateKey: dateKey,
+            completedTasks: completedCount,
+            totalTasks: nonRegular.length,
+            dayCompleted: updatedProgress.isCompleted,
+            currentDay: _computeCurrentDay(activeSession),
+          );
+        } catch (_) {}
+      }());
 
       // Notification and analytics calls are non-critical — run after emit
       // so the toggle always feels instant.

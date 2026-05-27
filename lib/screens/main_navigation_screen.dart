@@ -6,6 +6,7 @@ import '../main.dart';
 import 'home_screen.dart';
 import 'regular_tasks_screen.dart';
 import 'profile_screen.dart';
+import 'accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -20,6 +21,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   static const _screens = <Widget>[
     HomeScreen(),
     RegularTasksScreen(),
+    AccountabilityScreen(),
     ProfileScreen(),
   ];
 
@@ -30,7 +32,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
-          // Reload regular tasks when switching to the Daily Tasks tab
           if (index == 1) {
             context.read<RegularTaskBloc>().add(LoadRegularTasks());
           }
@@ -38,6 +39,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         },
         selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey[600],
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.fitness_center),
@@ -46,6 +48,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.task_alt),
             label: 'Daily Tasks',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline),
+            label: 'Partners',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
