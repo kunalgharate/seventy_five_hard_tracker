@@ -6,18 +6,18 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'models/challenge.dart';
-import 'models/daily_progress.dart';
-import 'models/challenge_session.dart';
-import 'models/regular_task.dart';
-import 'models/regular_task_completion.dart';
+import 'features/challenges/data/models/challenge.dart';
+import 'features/challenges/data/models/daily_progress.dart';
+import 'features/challenges/data/models/challenge_session.dart';
+import 'features/regular_tasks/data/models/regular_task.dart';
+import 'features/regular_tasks/data/models/regular_task_completion.dart';
 import 'models/quote.dart';
 import 'repositories/database_repository.dart';
 import 'repositories/regular_task_repository.dart';
-import 'bloc/challenge_bloc.dart';
-import 'bloc/challenge_event.dart';
-import 'bloc/regular_task_bloc.dart';
-import 'bloc/regular_task_event.dart';
+import 'features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'features/challenges/presentation/bloc/challenge_event.dart';
+import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
@@ -25,10 +25,10 @@ import 'screens/settings_screen.dart';
 import 'screens/privacy_policy_screen.dart';
 import 'services/smart_notification_service.dart';
 import 'services/simple_background_check_service.dart';
-import 'services/analytics_service.dart';
-import 'services/connectivity_service.dart';
+import 'core/services/analytics_service.dart';
+import 'core/services/connectivity_service.dart';
 import 'services/api_quote_service.dart';
-import 'bloc/accountability_bloc.dart';
+import 'features/accountability/presentation/bloc/accountability_bloc.dart';
 
 /// App-wide theme colors — single source of truth.
 class AppColors {
@@ -268,8 +268,13 @@ class MyApp extends StatelessWidget {
 
 // ── Daily Quote Splash Screen ────────────────────────────────────────────────
 
-/// State for the quote fetch lifecycle.
 enum _QuoteState { loading, loaded, error }
+
+/// Total time the splash is visible before navigating to /home.
+const Duration _kSplashDuration = Duration(seconds: 2);
+
+/// Progress bar fills over the same duration.
+const Duration _kProgressDuration = Duration(seconds: 2);
 
 class InitialScreen extends StatefulWidget {
   const InitialScreen({super.key});
@@ -280,58 +285,70 @@ class InitialScreen extends StatefulWidget {
 
 class _InitialScreenState extends State<InitialScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  // ── State ──────────────────────────────────────────────────────
   _QuoteState _quoteState = _QuoteState.loading;
   Quote? _quote;
 
-  // ── Animation controllers ──────────────────────────────────────
-  late final AnimationController _logoController;
-  late final AnimationController _quoteController;
+  // Logo: elastic scale-in
+  late final AnimationController _logoCtrl;
   late final Animation<double> _logoScale;
+
+  // Quote card: fade + slide up
+  late final AnimationController _quoteCtrl;
   late final Animation<double> _quoteFade;
   late final Animation<Offset> _quoteSlide;
+
+  // Progress bar: linear fill over _kProgressDuration
+  late final AnimationController _progressCtrl;
+
+  // Page-exit: fade to white before pushing /home
+  late final AnimationController _exitCtrl;
+  late final Animation<double> _exitFade;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Logo entrance: scale from 0.6 → 1.0
-    _logoController = AnimationController(
+    _logoCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _logoScale = CurvedAnimation(
-      parent: _logoController,
-      curve: Curves.elasticOut,
-    );
+    _logoScale = CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut);
 
-    // Quote card: fade + slide up
-    _quoteController = AnimationController(
+    _quoteCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 600),
     );
-    _quoteFade = CurvedAnimation(
-      parent: _quoteController,
-      curve: Curves.easeIn,
-    );
+    _quoteFade = CurvedAnimation(parent: _quoteCtrl, curve: Curves.easeIn);
     _quoteSlide = Tween<Offset>(
-      begin: const Offset(0, 0.25),
+      begin: const Offset(0, 0.18),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _quoteController,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _quoteCtrl, curve: Curves.easeOutCubic));
 
-    _logoController.forward();
+    _progressCtrl = AnimationController(
+      vsync: this,
+      duration: _kProgressDuration,
+    );
+
+    _exitCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _exitFade = Tween<double>(begin: 1.0, end: 0.0)
+        .animate(CurvedAnimation(parent: _exitCtrl, curve: Curves.easeIn));
+
+    _logoCtrl.forward();
+    _progressCtrl.forward();
     _initApp();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _logoController.dispose();
-    _quoteController.dispose();
+    _logoCtrl.dispose();
+    _quoteCtrl.dispose();
+    _progressCtrl.dispose();
+    _exitCtrl.dispose();
     super.dispose();
   }
 
@@ -342,17 +359,17 @@ class _InitialScreenState extends State<InitialScreen>
     }
   }
 
-  // ── Initialisation ─────────────────────────────────────────────
-
   Future<void> _initApp() async {
-    // Kick off quote fetch and app init in parallel.
-    await Future.wait([
-      _fetchQuote(),
-      _prepareApp(),
-    ]);
+    // Quote fetch + app prep run in parallel
+    await Future.wait([_fetchQuote(), _prepareApp()]);
 
-    // Show the quote for at least 2 seconds so the user can read it.
-    await Future.delayed(const Duration(seconds: 2));
+    // Ensure minimum display time so user can read the quote
+    await Future.delayed(_kSplashDuration);
+
+    if (!mounted) return;
+
+    // Fade out before navigating
+    await _exitCtrl.forward();
 
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/home');
@@ -362,7 +379,6 @@ class _InitialScreenState extends State<InitialScreen>
   Future<void> _fetchQuote() async {
     final result = await ApiNinjasQuoteService().fetchQuote();
     if (!mounted) return;
-
     switch (result) {
       case QuoteSuccess(:final quote):
         setState(() {
@@ -370,16 +386,13 @@ class _InitialScreenState extends State<InitialScreen>
           _quoteState = _QuoteState.loaded;
         });
       case QuoteFailure(:final message):
-        // Use a fallback so the screen never looks broken.
         setState(() {
           _quote = ApiNinjasQuoteService().randomFallback;
           _quoteState = _QuoteState.error;
         });
-        if (kDebugMode) debugPrint('[InitialScreen] Quote error: $message');
+        if (kDebugMode) debugPrint('[Splash] Quote error: $message');
     }
-
-    // Animate the quote card in after state is set.
-    _quoteController.forward();
+    _quoteCtrl.forward();
   }
 
   Future<void> _prepareApp() async {
@@ -387,256 +400,240 @@ class _InitialScreenState extends State<InitialScreen>
       await SmartNotificationService().requestPermissions();
     } catch (_) {}
     try {
-      if (mounted) {
-        final bloc = context.read<ChallengeBloc>();
-        await bloc.repository.init();
-      }
+      if (mounted) await context.read<ChallengeBloc>().repository.init();
     } catch (e) {
-      if (kDebugMode) debugPrint('[InitialScreen] App init error: $e');
+      if (kDebugMode) debugPrint('[Splash] App init error: $e');
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.primary,
-              AppColors.secondary,
-              AppColors.accent,
-            ],
+    return FadeTransition(
+      opacity: _exitFade,
+      child: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.primary,
+                AppColors.secondary,
+                AppColors.accent
+              ],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // ── Top section: app name + tagline + logo ──────────
-              Expanded(
-                flex: 5,
-                child: _buildHeroSection(),
-              ),
-
-              // ── Bottom section: quote card ──────────────────────
-              Expanded(
-                flex: 4,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  child: _buildQuoteSection(),
-                ),
-              ),
-            ],
+          child: SafeArea(
+            child: Column(
+              children: [
+                Expanded(flex: 5, child: _buildHero()),
+                Expanded(flex: 4, child: _buildQuoteArea()),
+                _buildProgressBar(),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ── Hero (logo + title + tagline) ──────────────────────────────
+  // ── Hero ──────────────────────────────────────────────────────
 
-  Widget _buildHeroSection() {
+  Widget _buildHero() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // App name
         Text(
           'Daily Mettle',
-          style: GoogleFonts.poppins(
-            fontSize: 30,
-            fontWeight: FontWeight.w800,
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 34,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: 0.5,
             shadows: [
               Shadow(
-                color: Colors.black.withValues(alpha: 0.25),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
             ],
           ),
-        ).animate().fadeIn(duration: 600.ms).slideY(begin: -0.3, end: 0),
-
+        ).animate().fadeIn(duration: 700.ms).slideY(begin: -0.25, end: 0),
         const SizedBox(height: 4),
-
-        // Tagline
         Text(
-          'Habit & Challenge',
+          'HABIT & CHALLENGE',
           style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.85),
-            letterSpacing: 2.5,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.white.withValues(alpha: 0.75),
+            letterSpacing: 4,
           ),
-        ).animate().fadeIn(delay: 200.ms, duration: 600.ms),
-
+        ).animate().fadeIn(delay: 250.ms, duration: 600.ms),
         const SizedBox(height: 28),
-
-        // Logo
         ScaleTransition(
           scale: _logoScale,
           child: Container(
-            width: 130,
-            height: 130,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 24,
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 28,
                   offset: const Offset(0, 12),
                 ),
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: Colors.white.withValues(alpha: 0.18),
                   blurRadius: 8,
-                  offset: const Offset(0, -4),
+                  offset: const Offset(0, -3),
                 ),
               ],
             ),
             child: ClipOval(
               child: Image.asset(
                 'assets/icons/logo.jpg',
-                width: 130,
-                height: 130,
+                width: 120,
+                height: 120,
                 fit: BoxFit.cover,
               ),
             ),
           ),
         ),
-
-        const SizedBox(height: 20),
-
-        // Punch line
+        const SizedBox(height: 18),
         Text(
           'Challenge Your Body,\nStrengthen Your Mind',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.9),
-            height: 1.5,
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            color: Colors.white.withValues(alpha: 0.88),
+            height: 1.6,
+            letterSpacing: 0.2,
           ),
         )
             .animate()
-            .fadeIn(delay: 400.ms, duration: 700.ms)
-            .slideY(begin: 0.2, end: 0),
+            .fadeIn(delay: 450.ms, duration: 700.ms)
+            .slideY(begin: 0.15, end: 0),
       ],
     );
   }
 
-  // ── Quote card ─────────────────────────────────────────────────
+  // ── Quote area ────────────────────────────────────────────────
 
-  Widget _buildQuoteSection() {
-    return FadeTransition(
-      opacity: _quoteFade,
-      child: SlideTransition(
-        position: _quoteSlide,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.35),
-              width: 1.2,
+  Widget _buildQuoteArea() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      child: FadeTransition(
+        opacity: _quoteFade,
+        child: SlideTransition(
+          position: _quoteSlide,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.3),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            child: switch (_quoteState) {
+              _QuoteState.loading => _buildLoader(),
+              _QuoteState.loaded => _buildQuote(_quote!),
+              _QuoteState.error =>
+                _buildQuote(_quote ?? ApiNinjasQuoteService().randomFallback),
+            },
           ),
-          child: switch (_quoteState) {
-            _QuoteState.loading => _buildLoadingIndicator(),
-            _QuoteState.loaded => _buildQuoteContent(_quote!),
-            _QuoteState.error => _buildQuoteContent(
-                _quote ?? ApiNinjasQuoteService().randomFallback,
-              ),
-          },
         ),
       ),
     );
   }
 
-  Widget _buildLoadingIndicator() {
+  Widget _buildLoader() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const SizedBox(
-          width: 28,
-          height: 28,
+        SizedBox(
+          width: 26,
+          height: 26,
           child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.white.withValues(alpha: 0.9)),
           ),
         ),
         const SizedBox(height: 12),
         Text(
-          'Loading today\'s quote…',
+          'Fetching your daily quote…',
           style: GoogleFonts.inter(
             fontSize: 13,
-            color: Colors.white.withValues(alpha: 0.8),
+            color: Colors.white.withValues(alpha: 0.7),
+            letterSpacing: 0.2,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildQuoteContent(Quote quote) {
+  Widget _buildQuote(Quote quote) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Decorative open-quote mark
+        // Decorative quote mark
         Text(
           '\u201C',
-          style: GoogleFonts.poppins(
-            fontSize: 48,
-            fontWeight: FontWeight.w900,
-            color: Colors.white.withValues(alpha: 0.5),
-            height: 0.8,
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 52,
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: 0.35),
+            height: 0.75,
           ),
         ),
 
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
 
-        // Quote text
+        // Quote body
         Text(
           quote.quote,
-          style: GoogleFonts.inter(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w500,
+          style: GoogleFonts.lora(
+            fontSize: 15,
+            fontWeight: FontWeight.w400,
             color: Colors.white,
-            height: 1.55,
+            height: 1.65,
+            fontStyle: FontStyle.italic,
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
-        // Author
+        // Divider + author
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 28,
-              height: 1.5,
-              color: Colors.white.withValues(alpha: 0.6),
+              width: 24,
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.5),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Flexible(
               child: Text(
                 quote.author,
                 style: GoogleFonts.inter(
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.85),
-                  letterSpacing: 0.3,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  letterSpacing: 0.8,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -644,28 +641,54 @@ class _InitialScreenState extends State<InitialScreen>
           ],
         ),
 
-        // Subtle offline indicator — only shown when API failed
+        // Offline badge
         if (_quoteState == _QuoteState.error) ...[
           const SizedBox(height: 10),
           Row(
             children: [
-              Icon(
-                Icons.wifi_off_rounded,
-                size: 12,
-                color: Colors.white.withValues(alpha: 0.5),
-              ),
+              Icon(Icons.wifi_off_rounded,
+                  size: 11, color: Colors.white.withValues(alpha: 0.45)),
               const SizedBox(width: 4),
               Text(
                 'Offline quote',
                 style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.45),
                 ),
               ),
             ],
           ),
         ],
       ],
+    );
+  }
+
+  // ── Progress bar ──────────────────────────────────────────────
+
+  Widget _buildProgressBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedBuilder(
+            animation: _progressCtrl,
+            builder: (_, __) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(100),
+                child: LinearProgressIndicator(
+                  value: _progressCtrl.value,
+                  minHeight: 3,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

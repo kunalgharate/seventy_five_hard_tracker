@@ -1,6 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import '../models/daily_progress.dart';
-import '../models/challenge_session.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 
 class DatabaseRepository {
   static const String _challengeSessionBoxName = 'challenge_sessions';

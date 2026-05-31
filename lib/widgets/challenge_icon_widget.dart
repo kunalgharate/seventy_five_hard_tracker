@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../models/challenge.dart';
-import '../services/challenge_icon_service.dart';
-import '../services/dynamic_color_service.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 
 class ChallengeIconWidget extends StatelessWidget {
   final Challenge challenge;

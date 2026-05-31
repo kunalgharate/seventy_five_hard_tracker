@@ -1,4 +1,4 @@
-import '../models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 
 /// Predefined task templates for common challenge categories.
 class TaskTemplates {

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../constants/api_constants.dart';
-import '../models/quote.dart';
+import 'package:seventy_five_hard_tracker/core/constants/api_constants.dart';
+import 'package:seventy_five_hard_tracker/models/quote.dart';
 
 /// Result wrapper so callers can distinguish success from failure
 /// without relying on exceptions.

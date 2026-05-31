@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/challenge_session.dart';
-import '../models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 
 class ProgressStats extends StatelessWidget {
   final int currentDay;

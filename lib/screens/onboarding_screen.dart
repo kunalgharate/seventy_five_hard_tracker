@@ -3,16 +3,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import '../models/challenge.dart';
-import '../bloc/challenge_bloc.dart';
-import '../bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
-import '../services/challenge_icon_service.dart';
-import '../services/dynamic_color_service.dart';
-import '../services/task_templates.dart';
-import '../utils/text_helpers.dart';
+import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
+import 'package:seventy_five_hard_tracker/services/task_templates.dart';
+import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});

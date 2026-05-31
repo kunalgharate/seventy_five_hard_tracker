@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 
 /// Reusable reminder configuration bottom sheet
 /// Matches the full-featured reminder UI from daily_task_card

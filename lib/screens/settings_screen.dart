@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:convert';
-import '../bloc/challenge_bloc.dart';
-import '../bloc/challenge_state.dart';
-import '../bloc/challenge_event.dart';
-import '../services/quotes_service.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/services/quotes_service.dart';
 import '../widgets/custom_app_bar.dart';
 
 class SettingsScreen extends StatefulWidget {

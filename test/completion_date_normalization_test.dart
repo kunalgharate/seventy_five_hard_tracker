@@ -11,7 +11,7 @@ library completion_date_normalization_test;
 
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 
 /// Generates a random DateTime with arbitrary time components.
 DateTime _randomDateTime(Random rng) {

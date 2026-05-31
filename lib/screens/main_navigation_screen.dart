@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/regular_task_bloc.dart';
-import '../bloc/regular_task_event.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import '../main.dart';
 import 'home_screen.dart';
 import 'regular_tasks_screen.dart';
 import 'profile_screen.dart';
-import 'accountability_screen.dart';
+import 'package:seventy_five_hard_tracker/features/accountability/presentation/pages/accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
