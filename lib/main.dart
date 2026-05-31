@@ -28,6 +28,9 @@ import 'services/smart_notification_service.dart';
 import 'services/simple_background_check_service.dart';
 import 'services/analytics_service.dart';
 import 'services/connectivity_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// App-wide theme colors — single source of truth.
 class AppColors {
@@ -371,9 +374,9 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   void _checkInitialRoute() async {
-    // Capture navigator before async gap to avoid using context across awaits
     final navigator = Navigator.of(context);
 
+    // 1. Give the splash screen 3 seconds to show off the logo
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
@@ -408,16 +411,21 @@ class _InitialScreenState extends State<InitialScreen>
     try {
       // 2. Initialize your local database & permissions
       await SmartNotificationService().requestPermissions();
-    } catch (_) {}
-    try {
       final bloc = context.read<ChallengeBloc>();
       await bloc.repository.init();
-    } catch (e) {
-      if (kDebugMode) print('InitialScreen error: $e');
-    }
+    } catch (_) {}
+
+    // 3. THE DECISION POINT: Check Firebase session
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     if (mounted) {
-      navigator.pushReplacementNamed('/home');
+      if (currentUser != null) {
+        // User is already logged in, go to Dashboard
+        navigator.pushReplacementNamed('/home');
+      } else {
+        // User is new or logged out, go to Welcome gate
+        navigator.pushReplacementNamed('/onboarding');
+      }
     }
   }
 
