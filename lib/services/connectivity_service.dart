@@ -47,8 +47,13 @@ class ConnectivityService {
       await Firebase.initializeApp(
               options: DefaultFirebaseOptions.currentPlatform)
           .timeout(const Duration(seconds: 3));
-      FlutterError.onError =
-          FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+      // Only initialize Crashlytics if the app is NOT running on a browser
+      if (!kIsWeb) {
+        FlutterError.onError =
+            FirebaseCrashlytics.instance.recordFlutterFatalError;
+      }
+      
       _firebaseInitialized = true;
 
       // Init dependent services in background — never block

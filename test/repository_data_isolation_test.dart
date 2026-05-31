@@ -137,10 +137,10 @@ void main() {
         // Seed challenge system boxes with realistic data
         final seedSession = ChallengeSession(
           id: 'session_1',
-          challenges: [
-            const Challenge(id: 'c1', title: 'Read 30 pages', taskType: 'hard'),
-            const Challenge(id: 'c2', title: 'Workout', taskType: 'hard'),
-            const Challenge(id: 'c3', title: 'Drink water', taskType: 'soft'),
+          challenges: const [
+            Challenge(id: 'c1', title: 'Read 30 pages', taskType: 'hard'),
+            Challenge(id: 'c2', title: 'Workout', taskType: 'hard'),
+            Challenge(id: 'c3', title: 'Drink water', taskType: 'soft'),
           ],
           startDate: DateTime(2024, 1, 1),
           isActive: true,
@@ -151,7 +151,7 @@ void main() {
 
         final seedProgress = DailyProgress(
           date: DateTime(2024, 1, 5),
-          challengeCompletions: {'c1': true, 'c2': false, 'c3': true},
+          challengeCompletions: const {'c1': true, 'c2': false, 'c3': true},
           isCompleted: false,
         );
         await progressBox.put('2024-01-05', seedProgress);
@@ -283,7 +283,7 @@ void main() {
 
         final completion = RegularTaskCompletion(
           date: DateTime(2024, 6, 1),
-          taskCompletions: {'isolation_test_task': true},
+          taskCompletions: const {'isolation_test_task': true},
         );
         await repo.saveCompletion(completion);
 

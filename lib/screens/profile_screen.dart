@@ -309,28 +309,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signIn() async {
-    final user = await _syncService.signInAnonymously();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(user != null
-              ? 'Cloud backup enabled!'
-              : 'Sign-in failed. Please check your connection and try again.'),
-          backgroundColor: user != null ? Colors.green : Colors.red,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          duration: const Duration(seconds: 4),
-          action: user == null
-              ? SnackBarAction(
-                  label: 'Retry',
-                  textColor: Colors.white,
-                  onPressed: _signIn,
-                )
-              : null,
+    // 1. Show an immediate non-dismissible loading spinner over the UI
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
         ),
-      );
+      ),
+    );
+
+    try {
+      final user = await _syncService.signInAnonymously();
+
+      if (mounted) {
+        Navigator.pop(context); // 2. Dismiss the loading dialog safely
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(user != null
+                ? 'Cloud backup enabled!'
+                : 'Sign-in failed. Please check your connection and try again.'),
+            backgroundColor: user != null ? Colors.green : Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 4),
+            action: user == null
+                ? SnackBarAction(
+                    label: 'Retry',
+                    textColor: Colors.white,
+                    onPressed: _signIn,
+                  )
+                : null,
+          ),
+        );
+      }
+    } catch (e) {
+      // 3. Robust error catching prevents app freezing on connection timeout
+      if (mounted) {
+        Navigator.pop(context); // Dismiss spinner
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Connection Error: Unable to reach authentication server.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.fromLTRB(16, 0, 16, 100),
+          ),
+        );
+      }
     }
   }
 
@@ -348,23 +378,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final repo = context.read<ChallengeBloc>().repository;
     if (!_syncService.isSignedIn) {
       await _signIn();
-      if (!_syncService.isSignedIn) return;
+      if (!_syncService.isSignedIn) {
+        return; // Halt execution if registration dropped
+      }
     }
 
+    // Safely wrap state adjustments and API actions inside a structured try-finally block
     setState(() => _isSyncing = true);
-    final success = await _syncService.syncToCloud(repo);
-    await _loadLastSync();
-    setState(() => _isSyncing = false);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? 'Backup complete!'
-              : 'Backup failed. Check connection.'),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
+    try {
+      final success = await _syncService.syncToCloud(repo);
+      await _loadLastSync();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Backup complete!'
+                : 'Backup failed. Check connection.'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sync Error: Process interrupted by local network.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      // This guarantees the spinner turns off and resets the button state no matter what
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
     }
   }
 

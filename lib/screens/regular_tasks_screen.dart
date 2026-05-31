@@ -265,14 +265,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                             ],
                           ),
                         ),
-                        PopupMenuItem(
+                        const PopupMenuItem(
                           value: 'delete',
                           child: Row(
                             children: [
                               Icon(Icons.delete_outline,
                                   size: 18, color: Colors.red),
-                              const SizedBox(width: 8),
-                              const Text('Delete Task',
+                              SizedBox(width: 8),
+                              Text('Delete Task',
                                   style: TextStyle(color: Colors.red)),
                             ],
                           ),
