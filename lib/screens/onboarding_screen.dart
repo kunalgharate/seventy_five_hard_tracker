@@ -3,16 +3,18 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import '../models/challenge.dart';
-import '../bloc/challenge_bloc.dart';
-import '../bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
-import '../services/challenge_icon_service.dart';
-import '../services/dynamic_color_service.dart';
-import '../services/task_templates.dart';
-import '../utils/text_helpers.dart';
+import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
+import 'package:seventy_five_hard_tracker/services/task_templates.dart';
+import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
+
+bool _isLoggingIn = false;
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -201,6 +203,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
       // Go back to setup page
+      PageView(
+        controller: _pageController,
+        // This line ensures users can't swipe manually past the login gate
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: (page) => setState(() {}),
+        children: [
+          _buildWelcomePage(),
+          _buildChallengeSetupPage(),
+          _buildReviewPage(),
+        ],
+      );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
       return;
@@ -212,6 +225,31 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
+    }
+  }
+
+  Future<void> handleInitialLogin() async {
+    setState(() => _isLoggingIn = true);
+
+    // Simulation of the authentication handshake for your internship
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    setState(() => _isLoggingIn = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Login Successful! Your progress will now sync to the cloud.'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      // Move user to the next step (Challenge Creation)
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
@@ -334,23 +372,45 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           const Spacer(),
 
           // Continue Button with Scale and Glow
-          _buildAnimatedButton(
-            text: 'Start Setup',
-            onPressed: () => _pageController.nextPage(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            ),
-            gradient:
-                const LinearGradient(colors: [Colors.blue, Colors.purple]),
-          )
-              .animate()
-              .fadeIn(delay: 1500.ms, duration: 400.ms)
-              .scale(
-                  delay: 1500.ms,
-                  duration: 400.ms,
-                  begin: const Offset(0.8, 0.8))
-              .then()
-              .shimmer(delay: 500.ms, duration: 1500.ms),
+          _isLoggingIn
+              ? const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
+              : Column(
+                  children: [
+                    // The new Login Button
+                    _buildAnimatedButton(
+                      text: 'Sign In & Start Setup',
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/login'), 
+                      gradient: const LinearGradient(
+                          colors: [Colors.orange, Colors.red]),
+                    ),
+                    const SizedBox(height: 12),
+                    // The Guest/Local option
+                    TextButton(
+                      onPressed: () => _pageController.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      ),
+                      child: Text(
+                        'Continue as Guest (Local Only)',
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+                  .animate()
+                  .fadeIn(delay: 1500.ms, duration: 400.ms)
+                  .scale(
+                      delay: 1500.ms,
+                      duration: 400.ms,
+                      begin: const Offset(0.8, 0.8))
+                  .then()
+                  .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
     );

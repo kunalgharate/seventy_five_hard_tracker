@@ -4,8 +4,8 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../models/challenge.dart';
-import '../models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 
 /// Single, consolidated notification service for the entire app.
 class SmartNotificationService {

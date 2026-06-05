@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
-import '../bloc/challenge_bloc.dart';
-import '../bloc/challenge_event.dart';
-import '../bloc/challenge_state.dart';
-import '../models/challenge_session.dart';
-import '../models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import '../widgets/custom_app_bar.dart';
 
 class HistoryScreen extends StatefulWidget {

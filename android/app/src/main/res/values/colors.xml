@@ -2,4 +2,6 @@
 <resources>
     <color name="ic_launcher_background">#FFA726</color>
     <color name="notification_color">#FFA726</color>
+    <!-- Matches the Daily Mettle splash gradient start — eliminates white flash -->
+    <color name="splashBackground">#FFA726</color>
 </resources>

@@ -3,7 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'apple_checkbox.dart';
 import 'challenge_icon_widget.dart';
 import 'reminder_bottom_sheet.dart';

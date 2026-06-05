@@ -1,7 +1,7 @@
-import '../models/regular_task.dart';
-import '../models/regular_task_completion.dart';
-import '../repositories/database_repository.dart';
-import '../repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
+import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 
 /// One-time migration service to move existing regular tasks from ChallengeSession
 /// into the new independent RegularTask storage.

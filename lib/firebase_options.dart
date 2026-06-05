@@ -60,4 +60,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'dailymettle.firebasestorage.app',
     measurementId: 'G-3W6RV0E71F',
   );
+
 }

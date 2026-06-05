@@ -4,7 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/challenge_icon_service.dart';
+import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
 
 class IconPickerWidget extends StatefulWidget {
   final String? selectedIconName;

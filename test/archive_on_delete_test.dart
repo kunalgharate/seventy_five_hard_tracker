@@ -11,8 +11,8 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 
 /// Generates a random non-empty string.
