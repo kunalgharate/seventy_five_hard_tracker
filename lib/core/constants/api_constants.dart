@@ -10,16 +10,29 @@ class ApiConstants {
   /// API-Ninjas quotes endpoint (plural — /quote returns 404)
   static const String quotesEndpoint = 'https://api.api-ninjas.com/v1/quotes';
 
-  /// API-Ninjas key — inject via `--dart-define=API_NINJAS_KEY=<value>`
-  /// at build time, or replace the fallback string for local development.
+  /// API-Ninjas key
   static const String apiNinjasKey = String.fromEnvironment(
     'API_NINJAS_KEY',
     defaultValue: 'HzzXv9PYL0eEgXwPF9aTC2hZUQKgZpWumHx4rvbZ',
   );
 
   // NOTE: The `category` query param requires a premium API-Ninjas subscription.
-  // The free tier returns a random quote from any category, which works fine.
 
   /// HTTP timeout for quote requests
   static const Duration quoteRequestTimeout = Duration(seconds: 6);
+
+  // ── Gemini AI ──────────────────────────────────────────────────
+
+  /// Gemini API key
+  static const String geminiApiKey = String.fromEnvironment(
+    'GEMINI_API_KEY',
+    defaultValue: 'AQ.Ab8RN6J3arJ8kmRH3qJr1UnzMmMTRbIMcBBNEC1mMzfAqXfQNg',
+  );
+
+  /// Gemini model — use gemini-2.5-flash as primary
+  static const String geminiModel = 'gemini-2.5-flash';
+
+  /// Gemini base URL
+  static const String geminiBaseUrl =
+      'https://generativelanguage.googleapis.com/v1/models';
 }

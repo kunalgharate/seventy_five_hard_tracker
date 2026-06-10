@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -29,6 +32,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final List<Challenge> _challenges = [];
   final Map<int, String?> _validationErrors = {};
   final PageController _pageController = PageController();
+  // partnerUid selected per challenge index (null = no partner)
+  final Map<int, AccountabilityPartner?> _selectedPartners = {};
+  List<AccountabilityPartner> _availablePartners = [];
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
 
@@ -49,6 +55,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     // Start with 2 empty challenges
     _addNewChallenge();
     _addNewChallenge();
+
+    // Load accepted accountability partners
+    _loadPartners();
+  }
+
+  Future<void> _loadPartners() async {
+    final partners = await AccountabilityService().fetchMyPartnerships();
+    if (mounted) {
+      setState(() {
+        _availablePartners = partners
+            .where((p) => p.status == PartnershipStatus.accepted)
+            .toList();
+      });
+    }
   }
 
   @override
@@ -221,6 +241,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     context.read<ChallengeBloc>().add(StartNewSession(sanitizedChallenges));
 
+    // Create accountability task requests for challenges with assigned partners
+    final svc = AccountabilityService();
+    final myUid = svc.currentUid;
+    for (int i = 0; i < _challenges.length; i++) {
+      final challenge = _challenges[i];
+      if (challenge.title.trim().isEmpty) continue;
+      final partner = _selectedPartners[i];
+      if (partner == null || partner.id == '__ai__') continue;
+      // Always assign to the OTHER person
+      final otherUid =
+          partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
+      if (otherUid == null) continue;
+
+      // Fire-and-forget — don't block navigation
+      svc.createAccountabilityTask(
+        accountableUid: otherUid,
+        accountableName: partner.partnerName,
+        partnershipId: partner.id,
+        title: challenge.title.trim(),
+        description: 'Daily challenge task from 75 Hard',
+        challengeId: challenge.id,
+      );
+    }
+
     await Future.delayed(const Duration(milliseconds: 100));
 
     if (mounted) {
@@ -375,34 +419,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _isLoggingIn
               ? const CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
-              : Column(
-                  children: [
-                    // The new Login Button
-                    _buildAnimatedButton(
-                      text: 'Sign In & Start Setup',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/login'), 
-                      gradient: const LinearGradient(
-                          colors: [Colors.orange, Colors.red]),
-                    ),
-                    const SizedBox(height: 12),
-                    // The Guest/Local option
-                    TextButton(
-                      onPressed: () => _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      ),
-                      child: Text(
-                        'Continue as Guest (Local Only)',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
+              : _buildWelcomeActions()
                   .animate()
                   .fadeIn(delay: 1500.ms, duration: 400.ms)
                   .scale(
@@ -413,6 +430,49 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   .shimmer(delay: 500.ms, duration: 1500.ms),
         ],
       ),
+    );
+  }
+
+  /// Shows "Start Setup" if already signed in, otherwise shows sign-in + guest options.
+  Widget _buildWelcomeActions() {
+    final isSignedIn = FirebaseAuth.instance.currentUser != null;
+
+    if (isSignedIn) {
+      // Already signed in — go straight to challenge setup
+      return _buildAnimatedButton(
+        text: 'Start Setup',
+        onPressed: () => _pageController.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        ),
+        gradient: const LinearGradient(colors: [Colors.blue, Colors.purple]),
+      );
+    }
+
+    // Not signed in — show sign-in + guest options
+    return Column(
+      children: [
+        _buildAnimatedButton(
+          text: 'Sign In & Start Setup',
+          onPressed: () => Navigator.pushNamed(context, '/login'),
+          gradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => _pageController.nextPage(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          ),
+          child: Text(
+            'Continue as Guest (Local Only)',
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w600,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -591,88 +651,51 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
           ),
 
-          // Add Challenge Button with pulse animation
+          // Add Challenge & Templates row
           if (_challenges.length < 10)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
+                  // + Add challenge button
                   Expanded(
-                    child: GestureDetector(
-                      onTap: _addNewChallenge,
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.green[400]!, Colors.teal[500]!],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.green.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.add_circle_outline,
-                                color: Colors.white, size: 20),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Add (${_challenges.length}/10)',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
+                    child: OutlinedButton.icon(
+                      onPressed: _addNewChallenge,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text('Add Challenge (${_challenges.length}/10)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green[700],
+                        side: BorderSide(color: Colors.green[400]!),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _showTemplatePicker,
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.blue[400]!, Colors.indigo[500]!],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.blue.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.auto_awesome,
-                                color: Colors.white, size: 20),
-                            SizedBox(width: 6),
-                            Text(
-                              'Templates',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
+                  // Templates icon button
+                  OutlinedButton(
+                    onPressed: _showTemplatePicker,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue[700],
+                      side: BorderSide(color: Colors.blue[300]!),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 18),
+                        SizedBox(width: 4),
+                        Text('Templates'),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.3, end: 0),
+            ),
 
           // Continue Button with enhanced animation
           _buildAnimatedButton(
@@ -810,20 +833,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ),
                     if (_challenges.length > 1)
-                      GestureDetector(
-                        onTap: () => _removeChallenge(index),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            shape: BoxShape.circle,
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert,
+                            color: Colors.grey[600], size: 22),
+                        onSelected: (v) {
+                          if (v == 'remove') _removeChallenge(index);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'remove',
+                            child: Row(children: [
+                              Icon(Icons.delete_outline,
+                                  size: 18, color: Colors.red),
+                              SizedBox(width: 10),
+                              Text('Remove Challenge',
+                                  style: TextStyle(color: Colors.red)),
+                            ]),
                           ),
-                          child: Icon(
-                            Icons.close,
-                            color: Colors.red[600],
-                            size: 20,
-                          ),
-                        ),
+                        ],
                       ),
                   ],
                 ),
@@ -1043,6 +1070,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ),
                   ],
+                  // Partner selector
+                  const SizedBox(height: 8),
+                  _buildPartnerSelector(index),
                 ],
               ],
             ),
@@ -1266,6 +1296,153 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           );
           setState(() {});
         },
+      ),
+    );
+  }
+
+  Widget _buildPartnerSelector(int index) {
+    final selected = _selectedPartners[index];
+    final hasPartners = _availablePartners.isNotEmpty;
+
+    return GestureDetector(
+      onTap: !hasPartners ? null : () => _showPartnerPicker(index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected != null
+              ? Colors.blue.withValues(alpha: 0.08)
+              : Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected != null
+                ? Colors.blue.withValues(alpha: 0.4)
+                : Colors.grey[300]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 16,
+              color: selected != null ? Colors.blue[700] : Colors.grey[500],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                selected != null
+                    ? '👤 ${selected.partnerName} (${selected.role.label})'
+                    : hasPartners
+                        ? 'Assign accountability partner (optional)'
+                        : 'No partners yet — invite one first',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: selected != null ? Colors.blue[700] : Colors.grey[500],
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (selected != null)
+              GestureDetector(
+                onTap: () => setState(() => _selectedPartners[index] = null),
+                child: Icon(Icons.close, size: 14, color: Colors.blue[400]),
+              )
+            else if (hasPartners)
+              Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPartnerPicker(int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Assign Accountability Partner',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'This partner will be responsible for verifying this task.',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            // No partner
+            ListTile(
+              leading:
+                  const Icon(Icons.person_off_outlined, color: Colors.grey),
+              title: const Text('No partner (self-tracked)'),
+              onTap: () {
+                setState(() => _selectedPartners[index] = null);
+                Navigator.pop(context);
+              },
+            ),
+            const Divider(height: 1),
+            // AI option
+            ListTile(
+              leading: const Text('🤖', style: TextStyle(fontSize: 22)),
+              title: const Text('AI Accountability',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('AI will track and motivate you'),
+              trailing: _selectedPartners[index]?.id == '__ai__'
+                  ? const Icon(Icons.check_circle, color: Colors.blue)
+                  : null,
+              onTap: () {
+                setState(() => _selectedPartners[index] = AccountabilityPartner(
+                      id: '__ai__',
+                      ownerUid: '',
+                      partnerName: 'AI',
+                      role: PartnerRole.mentorCoach,
+                      status: PartnershipStatus.accepted,
+                      inviteCode: '',
+                      createdAt: DateTime.now(),
+                    ));
+                Navigator.pop(context);
+              },
+            ),
+            if (_availablePartners.isNotEmpty) ...[
+              const Divider(height: 1),
+              ..._availablePartners.map((p) => ListTile(
+                    leading: Text(p.role.emoji,
+                        style: const TextStyle(fontSize: 22)),
+                    title: Text(p.partnerName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(p.role.label),
+                    trailing: _selectedPartners[index]?.id == p.id
+                        ? const Icon(Icons.check_circle, color: Colors.blue)
+                        : null,
+                    onTap: () {
+                      setState(() => _selectedPartners[index] = p);
+                      Navigator.pop(context);
+                    },
+                  )),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

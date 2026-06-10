@@ -3,7 +3,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:seventy_five_hard_tracker/features/ai_accountability/presentation/screens/ai_companion_screen.dart';
 import 'apple_checkbox.dart';
 import 'challenge_icon_widget.dart';
 import 'reminder_bottom_sheet.dart';
@@ -16,6 +20,19 @@ class DailyTaskCard extends StatefulWidget {
   final Function(Challenge)? onReminderUpdate;
   final int? dayNumber;
 
+  /// UID of the accountability partner assigned to this task.
+  /// When set, only that person can check it — owner sees a lock icon instead.
+  final String? accountablePartnerUid;
+
+  /// Optional callback to remove this challenge from the active session.
+  final VoidCallback? onRemove;
+
+  /// Called after a partner is successfully assigned to this task.
+  final VoidCallback? onPartnerAssigned;
+
+  /// Display name of the accountability partner assigned to this task.
+  final String? partnerName;
+
   const DailyTaskCard({
     super.key,
     required this.challenge,
@@ -24,6 +41,10 @@ class DailyTaskCard extends StatefulWidget {
     required this.onToggle,
     this.onReminderUpdate,
     this.dayNumber,
+    this.accountablePartnerUid,
+    this.onRemove,
+    this.onPartnerAssigned,
+    this.partnerName,
   });
 
   @override
@@ -98,6 +119,139 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     _completionController.dispose();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  void _onMenuSelected(String value) {
+    if (value == 'ai') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AiCompanionScreen(
+            taskName: widget.challenge.title,
+            taskCompleted: widget.isCompleted,
+          ),
+        ),
+      );
+    } else if (value == 'human') {
+      _showHumanPartnerPicker();
+    } else if (value == 'remove') {
+      if (widget.onRemove == null) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Remove Task?'),
+          content: Text(
+              'Remove "${widget.challenge.title}" from your active challenge?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onRemove!();
+              },
+              child:
+                  const Text('Remove', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _showHumanPartnerPicker() async {
+    final partners = await AccountabilityService().fetchMyPartnerships();
+    final accepted =
+        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
+
+    if (!mounted) return;
+
+    if (accepted.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No accepted partners yet. Invite someone first.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Assign to Partner',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+                'Who should be held accountable for "${widget.challenge.title}"?',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            const SizedBox(height: 16),
+            ...accepted.map((p) => ListTile(
+                  leading:
+                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
+                  title: Text(p.partnerName,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(p.role.label),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    // The accountable person is whoever is NOT the current user
+                    final myUid = AccountabilityService().currentUid;
+                    final otherUid =
+                        p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
+                    if (otherUid == null) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    final taskTitle = widget.challenge.title;
+                    final partnerName = p.partnerName;
+
+                    // Create the accountability task in Firestore
+                    final task =
+                        await AccountabilityService().createAccountabilityTask(
+                      accountableUid: otherUid,
+                      accountableName: partnerName,
+                      partnershipId: p.id,
+                      title: taskTitle,
+                      description: 'Daily challenge task from 75 Hard',
+                      challengeId: widget.challenge.id,
+                    );
+
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(task != null
+                          ? '👥 "$taskTitle" assigned to $partnerName'
+                          : 'Failed to assign task. Try again.'),
+                      backgroundColor: task != null ? Colors.green : Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                    if (task != null) widget.onPartnerAssigned?.call();
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showGenericReminderSetup() {
@@ -328,9 +482,35 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 size: 20,
               ),
               padding: const EdgeInsets.all(6),
-              constraints:
-                  const BoxConstraints(minWidth: 32, minHeight: 32),
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               tooltip: 'Set Reminder',
+            ),
+
+          // ⋮ menu
+          if (widget.isEditable)
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: Colors.grey[500], size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onSelected: _onMenuSelected,
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'ai',
+                  child: Row(children: [
+                    Text('🤖', style: TextStyle(fontSize: 18)),
+                    SizedBox(width: 10),
+                    Text('AI Accountability'),
+                  ]),
+                ),
+                const PopupMenuItem(
+                  value: 'human',
+                  child: Row(children: [
+                    Text('👥', style: TextStyle(fontSize: 18)),
+                    SizedBox(width: 10),
+                    Text('Human Partner'),
+                  ]),
+                ),
+              ],
             ),
         ],
       ),
@@ -338,6 +518,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   Widget _buildCompletionWidget() {
+    // If a partner is assigned, only they can check it
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final hasPartner = widget.accountablePartnerUid != null &&
+        widget.accountablePartnerUid!.isNotEmpty;
+    final iAmAccountable = !hasPartner || widget.accountablePartnerUid == myUid;
+
     if (!widget.isEditable) {
       // Show status icon for non-editable cards
       return Container(
@@ -362,10 +548,23 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       );
     }
 
-    // Interactive completion toggle for editable cards - Apple-style checkbox
+    // If partner is assigned and current user is NOT the partner — show lock
+    if (hasPartner && !iAmAccountable) {
+      return Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.lock_outline, size: 16, color: Colors.grey[500]),
+      );
+    }
+
+    // Interactive completion toggle — Apple-style checkbox
     return AppleCheckbox(
       isChecked: widget.isCompleted,
-      isEnabled: widget.isEditable,
+      isEnabled: widget.isEditable && iAmAccountable,
       onChanged: (value) => widget.onToggle(value),
     );
   }
@@ -379,7 +578,14 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
     if (widget.challenge.reminderTime != null &&
         widget.challenge.isReminderEnabled) {
+      final p = widget.partnerName;
+      if (p != null && p.isNotEmpty) {
+        return '👥 $p';
+      }
       return 'Reminder: ${widget.challenge.reminderTime}';
+    }
+    if (widget.partnerName != null && widget.partnerName!.isNotEmpty) {
+      return '👥 ${widget.partnerName}';
     }
     return 'Tap to complete';
   }

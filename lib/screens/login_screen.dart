@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import '../main.dart'; // To access AppColors
 
 class LoginScreen extends StatefulWidget {
@@ -40,6 +41,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      // Register / refresh user profile in Firestore for email-based partner lookup
+      AccountabilityService().registerUser();
     } on FirebaseAuthException catch (e) {
       _showError(e.message ?? 'Auth failed');
     } finally {

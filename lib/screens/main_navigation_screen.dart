@@ -6,7 +6,7 @@ import '../main.dart';
 import 'home_screen.dart';
 import 'regular_tasks_screen.dart';
 import 'profile_screen.dart';
-import 'package:seventy_five_hard_tracker/features/accountability/presentation/pages/accountability_screen.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
