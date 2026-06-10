@@ -1,6 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import '../models/regular_task.dart';
-import '../models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 
 class RegularTaskRepository {
   static const String _tasksBoxName = 'regular_tasks';

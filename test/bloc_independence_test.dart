@@ -13,11 +13,11 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:seventy_five_hard_tracker/models/challenge.dart';
-import 'package:seventy_five_hard_tracker/models/challenge_session.dart';
-import 'package:seventy_five_hard_tracker/models/daily_progress.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 
@@ -441,12 +441,12 @@ void main() {
 
         // Snapshot both systems BEFORE interleaved operations
         final sessionBefore = BoxSnapshot(sessionBox);
-        final progressBefore = BoxSnapshot(progressBox);
+        //final progressBefore = BoxSnapshot(progressBox);
         final regularTasksBox = Hive.box<RegularTask>('regular_tasks');
         final regularCompletionsBox =
             Hive.box<RegularTaskCompletion>('regular_task_completions');
         final rtBefore = BoxSnapshot(regularTasksBox);
-        final rcBefore = BoxSnapshot(regularCompletionsBox);
+        //final rcBefore = BoxSnapshot(regularCompletionsBox);
 
         // Interleave: challenge op, then regular op, alternating
         final regularTaskIds = <String>['rt_seed'];

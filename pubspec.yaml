@@ -95,6 +95,7 @@ dependencies:
 
   # Native splash screen (runtime preserve/remove)
   flutter_native_splash: ^2.4.1
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:
@@ -140,5 +141,9 @@ flutter_launcher_icons:
 flutter_native_splash:
   color: "#FFA726"
   color_dark: "#FFA726"
-  android: false
-  ios: false
+  android: true
+  ios: true
+  android_12:
+    color: "#FFA726"
+    color_dark: "#FFA726"
+    image: null

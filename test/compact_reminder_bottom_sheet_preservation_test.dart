@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:seventy_five_hard_tracker/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/widgets/reminder_bottom_sheet.dart';
 
 void main() {

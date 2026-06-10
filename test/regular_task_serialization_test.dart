@@ -9,7 +9,7 @@ library regular_task_serialization_test;
 
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 
 /// Generates a random non-empty string of given max length.
 String _randomString(Random rng, {int maxLength = 20}) {

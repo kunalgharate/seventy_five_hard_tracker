@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:seventy_five_hard_tracker/utils/text_helpers.dart';
+import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 
 void main() {
   group('Bug #1: Days remaining calculation', () {

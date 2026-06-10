@@ -14,8 +14,8 @@ library streak_statistics_test;
 
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:seventy_five_hard_tracker/models/regular_task_completion.dart';
-import 'package:seventy_five_hard_tracker/utils/regular_task_stats.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/core/utils/regular_task_stats.dart';
 
 /// Generates a random list of booleans representing a completion history.
 List<bool> _randomBoolSequence(Random rng, {int maxLength = 50}) {
