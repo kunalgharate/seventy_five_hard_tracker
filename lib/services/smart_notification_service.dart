@@ -15,6 +15,8 @@ class SmartNotificationService {
   static const String _channelId = 'smart_reminders_v2';
   static const String _channelName = 'Smart Task Reminders';
   static const String _nightSummaryChannelId = 'night_summary_v2';
+  static const String _followUpChannelId = 'followup_reminders_v1';
+  static const String _penaltyChannelId = 'penalty_warnings_v1';
 
   /// Tracks scheduled count to stay under Samsung's 500-alarm limit.
   int _scheduledCount = 0;
@@ -135,6 +137,24 @@ class SmartNotificationService {
         playSound: true,
         enableVibration: true,
       ),
+      AndroidNotificationChannel(
+        _followUpChannelId,
+        'Follow-up Reminders',
+        description: 'Reminder 1 hour after your task was due',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        sound: RawResourceAndroidNotificationSound('notification'),
+      ),
+      AndroidNotificationChannel(
+        _penaltyChannelId,
+        'Penalty Warnings',
+        description: 'Final warning before discipline score penalty',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        sound: RawResourceAndroidNotificationSound('notification'),
+      ),
     ];
 
     for (final channel in channels) {
@@ -201,21 +221,88 @@ class SmartNotificationService {
 
     if (!_isWithinTimeWindow(hour, challenge)) return;
 
-    final scheduledDate =
+    var scheduledDate =
         tz.TZDateTime(tz.local, date.year, date.month, date.day, hour, minute);
 
-    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) return;
+    // If the scheduled time has already passed today, push to the next day.
+    if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
     if (!_canScheduleMore()) return;
 
+    // ── Notification 1: Initial reminder ──────────────────────────
     await _notifications.zonedSchedule(
       _getNotificationId(challenge.id, hour, minute),
-      challenge.title,
-      'Time to complete your task!',
+      '⏰ ${challenge.title}',
+      'Time to complete your task! Tap to mark done.',
       scheduledDate,
       _taskNotificationDetails(),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
     );
     _scheduledCount++;
+
+    // ── Notification 2: Follow-up +1 hour ─────────────────────────
+    final followUpDate = scheduledDate.add(const Duration(hours: 1));
+    if (_canScheduleMore()) {
+      await _notifications.zonedSchedule(
+        _getNotificationId(challenge.id, hour, minute) + 1,
+        '❓ Still pending: ${challenge.title}',
+        'Did you complete this? If not, a penalty warning is coming in 30 min.',
+        followUpDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _followUpChannelId,
+            'Follow-up Reminders',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('notification'),
+            enableVibration: true,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      _scheduledCount++;
+    }
+
+    // ── Notification 3: Penalty warning +1h30m ────────────────────
+    final penaltyDate =
+        scheduledDate.add(const Duration(hours: 1, minutes: 30));
+    if (_canScheduleMore()) {
+      await _notifications.zonedSchedule(
+        _getNotificationId(challenge.id, hour, minute) + 2,
+        '⚠️ Penalty: ${challenge.title}',
+        'Task still not done! Your discipline score will drop. Open the app to complete it now.',
+        penaltyDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _penaltyChannelId,
+            'Penalty Warnings',
+            importance: Importance.max,
+            priority: Priority.max,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('notification'),
+            enableVibration: true,
+            styleInformation: BigTextStyleInformation(
+              'Task still incomplete! Your discipline score will drop when the app recalculates. Complete it now to avoid the penalty.',
+            ),
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      _scheduledCount++;
+    }
   }
 
   Future<void> _scheduleHourlyReminders(
@@ -515,19 +602,18 @@ class SmartNotificationService {
 
   Future<void> cancelCompletedTaskReminders(String challengeId) async {
     try {
-      // Batch cancel calls per hour using Future.wait instead of
-      // 1,440 sequential awaits. This is ~24x faster.
       for (int hour = 0; hour < 24; hour++) {
         final futures = <Future>[];
         for (int minute = 0; minute < 60; minute++) {
-          futures.add(_notifications
-              .cancel(_getNotificationId(challengeId, hour, minute)));
+          final baseId = _getNotificationId(challengeId, hour, minute);
+          // Cancel initial + follow-up (+1) + penalty (+2)
+          futures.add(_notifications.cancel(baseId));
+          futures.add(_notifications.cancel(baseId + 1));
+          futures.add(_notifications.cancel(baseId + 2));
         }
         await Future.wait(futures);
       }
-    } catch (_) {
-      // Swallow — cancellation failure is non-critical
-    }
+    } catch (_) {}
   }
 
   Future<void> cancelAllRemindersForDate(DateTime date) async {

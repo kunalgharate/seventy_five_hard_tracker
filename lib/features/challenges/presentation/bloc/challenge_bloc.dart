@@ -7,7 +7,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
-import 'package:seventy_five_hard_tracker/features/accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'challenge_event.dart';
 import 'challenge_state.dart';
 
@@ -56,6 +56,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<AddTaskPhoto>(_onAddTaskPhoto);
     on<AddChallengeToSession>(_onAddChallengeToSession);
     on<RestartFromHistory>(_onRestartFromHistory);
+    on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
 
     _startMidnightTimer();
   }
@@ -122,6 +123,22 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         currentProgress: currentProgress,
         hasActiveSession: activeSession != null,
       ));
+
+      // Publish challenge names to Firestore so partners see task names
+      if (activeSession != null && activeSession.isActive) {
+        unawaited(() async {
+          try {
+            final names = activeSession.challenges
+                .where((c) => c.taskType != 'regular')
+                .map((c) => c.title)
+                .toList();
+            await AccountabilityService().publishChallengeMeta(
+              challengeNames: names,
+              currentDay: activeSession.currentDay,
+            );
+          } catch (_) {}
+        }());
+      }
 
       // Check for missed days only on first load (app open)
       if (activeSession != null &&
@@ -303,6 +320,14 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             totalTasks: nonRegular.length,
             dayCompleted: updatedProgress.isCompleted,
             currentDay: _computeCurrentDay(activeSession),
+            taskDetails: nonRegular
+                .map((c) => {
+                      'name': c.title,
+                      'completed':
+                          updatedProgress.challengeCompletions[c.id] == true,
+                      'type': c.taskType,
+                    })
+                .toList(),
           );
         } catch (_) {}
       }());
@@ -713,6 +738,36 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
+
+  Future<void> _onRemoveChallengeFromSession(
+    RemoveChallengeFromSession event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      final updatedChallenges = activeSession.challenges
+          .where((c) => c.id != event.challengeId)
+          .toList();
+
+      if (updatedChallenges.isEmpty) {
+        emit(const ChallengeError('Cannot remove the last challenge.'));
+        return;
+      }
+
+      final updatedSession =
+          activeSession.copyWith(challenges: updatedChallenges);
+      await _repository.saveSession(updatedSession);
+
+      // Cancel any pending reminders for the removed challenge
+      await _smartNotifications.cancelCompletedTaskReminders(event.challengeId);
+
+      add(LoadChallengeData());
+    } catch (e) {
+      emit(ChallengeError('Failed to remove challenge: $e'));
+    }
+  }
 
   int _computeCurrentDay(ChallengeSession session) {
     final now = DateTime.now();

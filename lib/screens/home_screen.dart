@@ -9,6 +9,11 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -27,11 +32,58 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
+  Map<String, String> _assignedChallengeMap =
+      {}; // challengeId → accountableUid
+  List<AccountabilityTask> _tasksAssignedToMe = [];
+  Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
 
   @override
   void initState() {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
+    _loadAssignedChallenges();
+    // One-time cleanup: remove tasks accidentally assigned to self
+    AccountabilityService().cleanupSelfAssignedTasks();
+  }
+
+  Future<void> _loadAssignedChallenges() async {
+    final svc = AccountabilityService();
+    final results = await Future.wait([
+      svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
+      svc.fetchTasksAssignedToMe(),
+      svc.fetchMyPartnerships(),
+      svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me)
+    ]);
+    final challengeMap = results[0] as Map<String, String>;
+    final tasksToMe = results[1] as List<AccountabilityTask>;
+    final partnerships = results[2] as List<AccountabilityPartner>;
+    final accountableForMap = results[3] as Map<String, String>;
+
+    // Build challengeId → partnerName for tasks I ASSIGNED
+    final myUid = svc.currentUid;
+    final uidToName = <String, String>{};
+    for (final p in partnerships) {
+      if (p.partnerUid != null) uidToName[p.partnerUid!] = p.partnerName;
+      if (p.ownerUid != myUid) uidToName[p.ownerUid] = p.partnerName;
+    }
+    final partnerNames = <String, String>{};
+    // From tasks I assigned — show the accountable person's name
+    challengeMap.forEach((cid, uid) {
+      final name = uidToName[uid];
+      if (name != null) partnerNames[cid] = name;
+    });
+    // From tasks assigned TO me — show the assigner's name on my card
+    accountableForMap.forEach((cid, assignerName) {
+      partnerNames.putIfAbsent(cid, () => assignerName);
+    });
+
+    if (mounted) {
+      setState(() {
+        _assignedChallengeMap = challengeMap;
+        _tasksAssignedToMe = tasksToMe;
+        _assignedPartnerNames = partnerNames;
+      });
+    }
   }
 
   @override
@@ -180,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             } else {
-              // Show journal FAB for active session
+              // Journal FAB for active session
               final selectedProgress = state.currentProgress
                   .where((p) => _isSameDay(p.date, _selectedDay))
                   .firstOrNull;
@@ -188,6 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedProgress!.journalNote!.isNotEmpty;
 
               return FloatingActionButton.extended(
+                heroTag: 'journal',
                 onPressed: () => _showJournalBottomSheet(
                   context,
                   state,
@@ -266,6 +319,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final daysSinceStart =
         DateTime.now().difference(session.startDate).inDays + 1;
     final currentDay = daysSinceStart > 75 ? 75 : daysSinceStart;
+
+    // Trigger discipline score calculation whenever session data changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
+              session: session,
+              progress: state.currentProgress,
+            ));
+      }
+    });
 
     return Column(
       children: [
@@ -408,6 +471,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             challenge: challenge,
                             isCompleted: isCompleted,
                             isEditable: isToday,
+                            accountablePartnerUid:
+                                _assignedChallengeMap[challenge.id],
+                            partnerName: _assignedPartnerNames[challenge.id],
+                            onPartnerAssigned: _loadAssignedChallenges,
                             onToggle: (completed) {
                               context.read<ChallengeBloc>().add(
                                     UpdateDailyProgress(
@@ -418,9 +485,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                             },
                             onReminderUpdate: (updatedChallenge) {
-                              // Update the challenge with new reminder settings
                               context.read<ChallengeBloc>().add(
                                     UpdateChallenge(updatedChallenge),
+                                  );
+                            },
+                            onRemove: () {
+                              context.read<ChallengeBloc>().add(
+                                    RemoveChallengeFromSession(challenge.id),
                                   );
                             },
                           ),
@@ -591,6 +662,380 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
               }
             : null,
+      ),
+    );
+  }
+}
+
+// ── Discipline Score Card ────────────────────────────────────────────────────
+
+class _DisciplineScoreCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<DisciplineScoreBloc, DisciplineScoreState>(
+      builder: (context, state) {
+        if (state is! DisciplineScoreLoaded) {
+          return const SizedBox.shrink();
+        }
+        final s = state;
+        return Card(
+          elevation: 3,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFFFFA726).withValues(alpha: 0.08),
+                  const Color(0xFFFF7043).withValues(alpha: 0.05),
+                ],
+              ),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header row
+                Row(
+                  children: [
+                    const Icon(Icons.local_fire_department,
+                        color: Color(0xFFFFA726), size: 20),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Discipline Score',
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    const Spacer(),
+                    // Grade badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _gradeColor(s.grade).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border:
+                            Border.all(color: _gradeColor(s.grade), width: 1.2),
+                      ),
+                      child: Text(
+                        s.grade,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: _gradeColor(s.grade),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Score + tier
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      s.disciplineScore.toStringAsFixed(0),
+                      style: GoogleFonts.poppins(
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                        color: _gradeColor(s.grade),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text('/100',
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[500])),
+                    ),
+                    const Spacer(),
+                    Text(
+                      s.tier,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _gradeColor(s.grade),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(100),
+                  child: LinearProgressIndicator(
+                    value: s.disciplineScore / 100,
+                    minHeight: 6,
+                    backgroundColor: Colors.grey[200],
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(_gradeColor(s.grade)),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // Warning banner — shown when consecutive misses exist
+                if (s.hasActiveWarnings) ...[
+                  Container(
+                    width: double.infinity,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: s.onFinalWarning
+                          ? Colors.red.withValues(alpha: 0.12)
+                          : Colors.orange.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: s.onFinalWarning ? Colors.red : Colors.orange,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          s.onFinalWarning
+                              ? Icons.dangerous_outlined
+                              : Icons.warning_amber_rounded,
+                          size: 16,
+                          color: s.onFinalWarning ? Colors.red : Colors.orange,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            s.onFinalWarning
+                                ? '${s.warningLabel} — Next miss breaks your streak! (-15 pts)'
+                                : '${s.warningLabel} — Complete today to avoid penalty',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: s.onFinalWarning
+                                  ? Colors.red[700]
+                                  : Colors.orange[800],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Stats row
+                Row(
+                  children: [
+                    _StatPill(
+                      icon: Icons.local_fire_department,
+                      label: 'Streak',
+                      value: '${s.currentStreak}d',
+                      color: Colors.orange,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatPill(
+                      icon: Icons.emoji_events_outlined,
+                      label: 'Best',
+                      value: '${s.longestStreak}d',
+                      color: Colors.amber,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatPill(
+                      icon: Icons.calendar_today_outlined,
+                      label: '7-day',
+                      value: '${s.weeklyConsistency.toStringAsFixed(0)}%',
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatPill(
+                      icon: Icons.trending_up,
+                      label: 'Breaks',
+                      value: '${s.streakBreaks}',
+                      color: s.streakBreaks > 0 ? Colors.red : Colors.blue,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0);
+      },
+    );
+  }
+
+  Color _gradeColor(String grade) {
+    switch (grade) {
+      case 'S':
+        return const Color(0xFF6C3FC5); // purple
+      case 'A':
+        return const Color(0xFF2E7D32); // dark green
+      case 'B':
+        return const Color(0xFF1565C0); // blue
+      case 'C':
+        return const Color(0xFFFFA726); // orange
+      case 'D':
+        return const Color(0xFFE65100); // deep orange
+      default:
+        return const Color(0xFFB71C1C); // red
+    }
+  }
+}
+
+class _StatPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: color),
+            ),
+            Text(
+              label,
+              style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Partner-assigned task card ────────────────────────────────────────────────
+
+class _PartnerAssignedTaskCard extends StatefulWidget {
+  final AccountabilityTask task;
+  final VoidCallback onComplete;
+
+  const _PartnerAssignedTaskCard({
+    required this.task,
+    required this.onComplete,
+  });
+
+  @override
+  State<_PartnerAssignedTaskCard> createState() =>
+      _PartnerAssignedTaskCardState();
+}
+
+class _PartnerAssignedTaskCardState extends State<_PartnerAssignedTaskCard> {
+  bool _completing = false;
+
+  Future<void> _markDone() async {
+    setState(() => _completing = true);
+    final ok = await AccountabilityService()
+        .completeAccountabilityTask(widget.task.id);
+    if (!mounted) return;
+    setState(() => _completing = false);
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ "${widget.task.title}" marked complete!'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ));
+      widget.onComplete();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not complete task. Try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          // Completion button
+          GestureDetector(
+            onTap: _completing ? null : _markDone,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.withValues(alpha: 0.1),
+                border: Border.all(
+                    color: Colors.blue.withValues(alpha: 0.4), width: 1.5),
+              ),
+              child: _completing
+                  ? const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.blue))
+                  : const Icon(Icons.check, size: 16, color: Colors.blue),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Task info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'From: ${task.assignedByName}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+          // Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Partner Task',
+              style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.blue,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }

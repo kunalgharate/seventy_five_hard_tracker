@@ -1,0 +1,166 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:equatable/equatable.dart';
+
+enum AccountabilityTaskStatus { requested, pending, completed, declined }
+
+extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
+  String get label {
+    switch (this) {
+      case AccountabilityTaskStatus.requested:
+        return 'Requested';
+      case AccountabilityTaskStatus.pending:
+        return 'Pending';
+      case AccountabilityTaskStatus.completed:
+        return 'Completed';
+      case AccountabilityTaskStatus.declined:
+        return 'Declined';
+    }
+  }
+
+  static AccountabilityTaskStatus fromString(String v) =>
+      AccountabilityTaskStatus.values.firstWhere(
+        (e) => e.name == v,
+        orElse: () => AccountabilityTaskStatus.pending,
+      );
+}
+
+/// A task assigned by one user to an accountability partner.
+/// Stored in Firestore `accountability_tasks/{id}`.
+class AccountabilityTask extends Equatable {
+  final String id;
+
+  /// UID of the user who created/assigned this task.
+  final String assignedByUid;
+
+  /// Display name of the assigner.
+  final String assignedByName;
+
+  /// UID of the user who is accountable for completing it.
+  final String accountableUid;
+
+  /// Display name of the accountable person.
+  final String accountableName;
+
+  /// The partnership this task belongs to.
+  final String partnershipId;
+
+  /// The challenge ID this task was created from (links back to the daily task card).
+  /// Null for manually created tasks.
+  final String? challengeId;
+
+  final String title;
+  final String? description;
+  final AccountabilityTaskStatus status;
+  final DateTime? dueDate;
+  final DateTime assignedAt;
+  final DateTime? completedAt;
+
+  const AccountabilityTask({
+    required this.id,
+    required this.assignedByUid,
+    required this.assignedByName,
+    required this.accountableUid,
+    required this.accountableName,
+    required this.partnershipId,
+    this.challengeId,
+    required this.title,
+    this.description,
+    required this.status,
+    this.dueDate,
+    required this.assignedAt,
+    this.completedAt,
+  });
+
+  bool get isCompleted => status == AccountabilityTaskStatus.completed;
+  bool get isPending => status == AccountabilityTaskStatus.pending;
+  bool get isRequested => status == AccountabilityTaskStatus.requested;
+  bool get isDeclined => status == AccountabilityTaskStatus.declined;
+
+  AccountabilityTask copyWith({
+    AccountabilityTaskStatus? status,
+    DateTime? completedAt,
+    String? title,
+    String? description,
+    DateTime? dueDate,
+    String? challengeId,
+  }) =>
+      AccountabilityTask(
+        id: id,
+        assignedByUid: assignedByUid,
+        assignedByName: assignedByName,
+        accountableUid: accountableUid,
+        accountableName: accountableName,
+        partnershipId: partnershipId,
+        challengeId: challengeId ?? this.challengeId,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        status: status ?? this.status,
+        dueDate: dueDate ?? this.dueDate,
+        assignedAt: assignedAt,
+        completedAt: completedAt ?? this.completedAt,
+      );
+
+  static DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is String) return DateTime.parse(v);
+    return null;
+  }
+
+  static DateTime _parseDateRequired(dynamic v) {
+    if (v is Timestamp) return v.toDate();
+    if (v is String) return DateTime.parse(v);
+    return DateTime.now();
+  }
+
+  factory AccountabilityTask.fromFirestore(Map<String, dynamic> d,
+          {String? id}) =>
+      AccountabilityTask(
+        id: id ?? d['id'] as String,
+        assignedByUid: d['assignedByUid'] as String,
+        assignedByName: d['assignedByName'] as String? ?? 'Partner',
+        accountableUid: d['accountableUid'] as String,
+        accountableName: d['accountableName'] as String? ?? 'Partner',
+        partnershipId: d['partnershipId'] as String,
+        challengeId: d['challengeId'] as String?,
+        title: d['title'] as String,
+        description: d['description'] as String?,
+        status: AccountabilityTaskStatusExtension.fromString(
+            d['status'] as String? ?? 'pending'),
+        dueDate: _parseDate(d['dueDate']),
+        assignedAt: _parseDateRequired(d['assignedAt']),
+        completedAt: _parseDate(d['completedAt']),
+      );
+
+  Map<String, dynamic> toFirestore() => {
+        'id': id,
+        'assignedByUid': assignedByUid,
+        'assignedByName': assignedByName,
+        'accountableUid': accountableUid,
+        'accountableName': accountableName,
+        'partnershipId': partnershipId,
+        'challengeId': challengeId,
+        'title': title,
+        'description': description,
+        'status': status.name,
+        'dueDate': dueDate != null ? Timestamp.fromDate(dueDate!) : null,
+        'assignedAt': FieldValue.serverTimestamp(),
+        'completedAt':
+            completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      };
+
+  @override
+  List<Object?> get props => [
+        id,
+        assignedByUid,
+        accountableUid,
+        partnershipId,
+        challengeId,
+        title,
+        description,
+        status,
+        dueDate,
+        assignedAt,
+        completedAt,
+      ];
+}

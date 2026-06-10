@@ -24,6 +24,8 @@ import 'features/challenges/presentation/bloc/challenge_event.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/accountability/presentation/bloc/accountability_bloc.dart';
+import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'features/discipline_score/discipline_score.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
@@ -31,7 +33,8 @@ import 'screens/settings_screen.dart';
 import 'screens/privacy_policy_screen.dart';
 import 'services/smart_notification_service.dart';
 import 'services/simple_background_check_service.dart';
-import 'core/services/analytics_service.dart';
+import 'services/analytics_service.dart';
+import 'services/connectivity_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -78,23 +81,28 @@ void main() async {
     if (kDebugMode) print('Notification init failed: $e');
   }
 
-  // ── Internet-aware Firebase & Google Sign-In init ──
+  // ── Internet-aware Firebase init ──
+  // Initialize Firebase before runApp so AccountabilityService._isReady
+  // is true by the time any screen tries to use Firestore.
   final connectivity = ConnectivityService();
 
-  // Initialize Firebase and Google Sign-In before starting the app.
-  // Wrapped in try/catch so offline launches still work.
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    await GoogleSignIn.instance.initialize(
-      serverClientId:
-          '496007025535-vcfvp99s1kva06b042i74rnb8cg6fhrc.apps.googleusercontent.com',
-    );
+  unawaited(() async {
+    try {
+      // 1. Initialize Firebase
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      // 2. NEW: Initialize Google Sign-In (ONLY ONCE HERE)
+      // Replace YOUR_WEB_CLIENT_ID with the ID from your Firebase Console
+      await GoogleSignIn.instance.initialize(
+        serverClientId: '496007025535-vcfvp99s1kva06b042i74rnb8cg6fhrc.apps.googleusercontent.com',
+      );
+    } catch (e) {
+      if (kDebugMode) print('Initialization failed: $e');
+    }
     await connectivity.initFirebase();
-  } catch (e) {
-    if (kDebugMode) print('Firebase/GoogleSignIn init failed: $e');
-  }
+  }());
 
   connectivity.startListening();
 
@@ -138,6 +146,9 @@ class MyApp extends StatelessWidget {
         ),
         BlocProvider(
           create: (context) => AccountabilityBloc(),
+        ),
+        BlocProvider(
+          create: (context) => DisciplineScoreBloc(),
         ),
       ],
       child: MaterialApp(
@@ -318,7 +329,8 @@ class _InitialScreenState extends State<InitialScreen>
   late final AnimationController _logoCtrl;
   late final Animation<double> _logoScale;
 
-  // Quote card: fade + slide up
+  // Quote card: fade + s
+  //lide up
   late final AnimationController _quoteCtrl;
   late final Animation<double> _quoteFade;
   late final Animation<Offset> _quoteSlide;
@@ -400,19 +412,10 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   void _checkInitialRoute() async {
-    // 1. Give the splash screen time to show the logo & quote
-    await Future.delayed(_kSplashDuration);
-    if (!mounted) return;
+    final navigator = Navigator.of(context);
 
-    // 2. Initialize local database & permissions
-    try {
-      await SmartNotificationService().requestPermissions();
-      if (mounted) {
-        final bloc = context.read<ChallengeBloc>();
-        await bloc.repository.init();
-      }
-    } catch (_) {}
-
+    // 1. Give the splash screen 3 seconds to show off the logo
+    await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
     // 3. Fade out before navigating
@@ -422,12 +425,8 @@ class _InitialScreenState extends State<InitialScreen>
     // 4. Check Firebase session to decide route
     final currentUser = FirebaseAuth.instance.currentUser;
 
-    if (currentUser != null) {
-      // User is already logged in, go to Dashboard
+    if (mounted) {
       Navigator.of(context).pushReplacementNamed('/home');
-    } else {
-      // User is new or logged out, go to Welcome gate
-      Navigator.of(context).pushReplacementNamed('/onboarding');
     }
   }
 
@@ -448,6 +447,28 @@ class _InitialScreenState extends State<InitialScreen>
         if (kDebugMode) debugPrint('[Splash] Quote error: $message');
     }
     _quoteCtrl.forward();
+  }
+
+  Future<void> _prepareApp() async {
+    try {
+      // 2. Initialize your local database & permissions
+      await SmartNotificationService().requestPermissions();
+      final bloc = context.read<ChallengeBloc>();
+      await bloc.repository.init();
+    } catch (_) {}
+
+    // 3. THE DECISION POINT: Check Firebase session
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (mounted) {
+      if (currentUser != null) {
+        // User is already logged in, go to Dashboard
+        navigator.pushReplacementNamed('/home');
+      } else {
+        // User is new or logged out, go to Welcome gate
+        navigator.pushReplacementNamed('/onboarding');
+      }
+    }
   }
 
   @override
