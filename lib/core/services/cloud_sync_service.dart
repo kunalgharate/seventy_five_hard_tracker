@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
@@ -16,9 +17,8 @@ class CloudSyncService {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
 
-  // 32-char key derived from UID (set after sign-in)
+  // 32-char AES key derived from UID
   encrypt.Key? _encryptionKey;
-  final _iv = encrypt.IV.fromLength(16);
 
   User? get currentUser => _auth.currentUser;
   bool get isSignedIn => _auth.currentUser != null;
@@ -31,15 +31,50 @@ class CloudSyncService {
     }
   }
 
-  // ── Auth ─────────────────────────────────────────────────────────
+  void _initEncryption(String uid) {
+    // Derive a stable 32-byte key from the UID
+    final keyStr = (uid * 3).substring(0, 32);
+    _encryptionKey = encrypt.Key.fromUtf8(keyStr);
+  }
 
-  Future<User?> signInAnonymously() async {
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  /// Sign in with Google and save user profile to Firestore.
+  Future<User?> signInWithGoogle() async {
     try {
-      final result = await _auth.signInAnonymously();
-      _initEncryption(result.user!.uid);
-      return result.user;
+      final googleSignIn = GoogleSignIn.instance;
+      final googleUser = await googleSignIn.authenticate(
+        scopeHint: ['email', 'profile'],
+      );
+
+      final idToken = googleUser.authentication.idToken;
+      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
+        'email',
+        'profile',
+      ]);
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: clientAuth.accessToken,
+        idToken: idToken,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user != null) {
+        _initEncryption(user.uid);
+        await _saveUserToFirestore(user);
+      }
+      return user;
+    } on GoogleSignInException catch (e) {
+      // User cancelled — not an error
+      if (e.code == GoogleSignInExceptionCode.canceled ||
+          e.code == GoogleSignInExceptionCode.interrupted) {
+        return null;
+      }
+      if (kDebugMode) print('Google sign-in failed: ${e.description}');
+      return null;
     } catch (e) {
-      if (kDebugMode) print('Anonymous sign-in failed: $e');
+      if (kDebugMode) print('Sign-in error: $e');
       return null;
     }
   }
@@ -49,15 +84,30 @@ class CloudSyncService {
     _encryptionKey = null;
   }
 
-  void _initEncryption(String uid) {
-    // Derive a 32-byte key from UID (padded/truncated)
-    final keyStr = (uid * 2).substring(0, 32);
-    _encryptionKey = encrypt.Key.fromUtf8(keyStr);
+  /// Saves user profile to Firestore on first login only.
+  Future<void> _saveUserToFirestore(User user) async {
+    final docRef = _firestore.collection('users').doc(user.uid);
+    final snapshot = await docRef.get();
+    if (!snapshot.exists) {
+      await docRef.set({
+        'id': user.uid,
+        'name': user.displayName ?? '',
+        'email': user.email ?? '',
+        'photoUrl': user.photoURL ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await docRef.set(
+        {'lastLoginAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+    }
   }
 
-  // ── Sync ─────────────────────────────────────────────────────────
+  // ── Sync ──────────────────────────────────────────────────────────────────
 
-  /// Upload all local data to Firestore (encrypted).
+  /// Upload all local data to Firestore (AES encrypted).
   Future<bool> syncToCloud(DatabaseRepository repository) async {
     _ensureEncryptionKey();
     if (!isSignedIn || _encryptionKey == null) return false;
@@ -80,10 +130,11 @@ class CloudSyncService {
         'syncedAt': DateTime.now().toIso8601String(),
       });
 
-      final encrypted = _encrypt(payload);
+      final encryptedResult = _encrypt(payload);
 
       await _firestore.collection('user_data').doc(uid).set({
-        'data': encrypted,
+        'data': encryptedResult['cipher'],
+        'iv': encryptedResult['iv'],
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -108,7 +159,12 @@ class CloudSyncService {
 
       if (!doc.exists || doc.data()?['data'] == null) return null;
 
-      final decrypted = _decrypt(doc.data()!['data'] as String);
+      final docData = doc.data()!;
+      final cipher = docData['data'] as String;
+      // Support both new (random IV stored) and old (fixed IV) backups
+      final ivBase64 = docData['iv'] as String?;
+
+      final decrypted = _decrypt(cipher, ivBase64: ivBase64);
       return jsonDecode(decrypted) as Map<String, dynamic>;
     } catch (e) {
       if (kDebugMode) print('Sync from cloud failed: $e');
@@ -121,15 +177,28 @@ class CloudSyncService {
     return prefs.getString('lastSyncTime');
   }
 
-  // ── Encryption helpers ──────────────────────────────────────────
+  // ── Encryption helpers ────────────────────────────────────────────────────
 
-  String _encrypt(String plainText) {
+  /// Encrypts [plainText] with a random IV each time.
+  /// Returns a map with 'cipher' (base64) and 'iv' (base64).
+  Map<String, String> _encrypt(String plainText) {
+    final iv = encrypt.IV.fromSecureRandom(16);
     final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey!));
-    return encrypter.encrypt(plainText, iv: _iv).base64;
+    final encrypted = encrypter.encrypt(plainText, iv: iv);
+    return {
+      'cipher': encrypted.base64,
+      'iv': iv.base64,
+    };
   }
 
-  String _decrypt(String cipherText) {
+  /// Decrypts [cipherBase64].
+  /// Uses stored [ivBase64] if provided, otherwise falls back to zero IV
+  /// for backwards compatibility with old backups.
+  String _decrypt(String cipherBase64, {String? ivBase64}) {
+    final iv = ivBase64 != null
+        ? encrypt.IV.fromBase64(ivBase64)
+        : encrypt.IV.fromLength(16);
     final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey!));
-    return encrypter.decrypt64(cipherText, iv: _iv);
+    return encrypter.decrypt64(cipherBase64, iv: iv);
   }
 }

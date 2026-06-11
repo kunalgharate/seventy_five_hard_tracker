@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:google_sign_in_web/web_only.dart' as web;
 import '../main.dart'; // To access AppColors
 
 class LoginScreen extends StatefulWidget {
@@ -15,41 +14,79 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
-Future<void> _handleGoogleSignIn() async {
-  setState(() => _isLoading = true);
-  try {
-    // We already initialized in main(), so just use the instance
-    final googleSignIn = GoogleSignIn.instance;
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final googleSignIn = GoogleSignIn.instance;
 
-    // Start the sign-in flow directly
-    final GoogleSignInAccount? googleUser = await googleSignIn.authenticate();
-    
-    if (googleUser == null) {
-      setState(() => _isLoading = false);
-      return;
+      // Authenticate the user (triggers native sign-in UI)
+      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
+        scopeHint: ['email', 'profile'],
+      );
+
+      // Get the idToken from authentication
+      final idToken = googleUser.authentication.idToken;
+
+      // Get access token via authorization client
+      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
+        'email',
+        'profile',
+      ]);
+
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: clientAuth.accessToken,
+        idToken: idToken,
+      );
+
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Save user profile to Firestore on first login only.
+      // Using set with merge:true so subsequent logins never overwrite existing data.
+      await _saveUserToFirestore(userCredential.user);
+
+      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+    } on GoogleSignInException catch (e) {
+      // User cancelled or sign-in was interrupted
+      if (e.code != GoogleSignInExceptionCode.canceled &&
+          e.code != GoogleSignInExceptionCode.interrupted) {
+        _showError('Sign-in failed: ${e.description ?? e.code.name}');
+      }
+    } catch (e) {
+      _showError('Authentication error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    // Request Access Token
-    final clientAuth = await googleUser.authorizationClient.authorizeScopes([
-      'email', 
-      'profile',
-      'openid',
-    ]);
-
-    final AuthCredential credential = GoogleAuthProvider.credential(
-      accessToken: clientAuth.accessToken,
-      idToken: googleUser.authentication.idToken,
-    );
-
-    await FirebaseAuth.instance.signInWithCredential(credential);
-
-    if (mounted) Navigator.pushReplacementNamed(context, '/home');
-  } catch (e) {
-    _showError('Authentication error: $e');
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
   }
-}
+
+  /// Saves user profile to Firestore the first time they sign in.
+  /// Uses [SetOptions(merge: true)] so repeated logins never overwrite
+  /// fields that may have been updated later (e.g. a custom display name).
+  Future<void> _saveUserToFirestore(User? user) async {
+    if (user == null) return;
+
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+    final snapshot = await docRef.get();
+
+    if (!snapshot.exists) {
+      // First login — create the document
+      await docRef.set({
+        'id': user.uid,
+        'name': user.displayName ?? '',
+        'email': user.email ?? '',
+        'photoUrl': user.photoURL ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Returning user — only update last login timestamp
+      await docRef.set(
+        {'lastLoginAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+    }
+  }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -57,7 +94,7 @@ Future<void> _handleGoogleSignIn() async {
     );
   }
 
- @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
@@ -117,55 +154,36 @@ Future<void> _handleGoogleSignIn() async {
                     ),
                     const SizedBox(height: 40),
 
-                    // ──────────────────────────────────────────────────────────
-                    // GOOGLE SIGN-IN INTERACTION LAYER (CROSS-PLATFORM SAFE)
-                    // ──────────────────────────────────────────────────────────
-                    if (kIsWeb)
-                      // 🌐 WEB ROUTE: Render the mandatory Google GIS JavaScript Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: Center(
-                          child: web.renderButton(
-                            configuration: web.GSIButtonConfiguration(
-                              type: web.GSIButtonType.standard,
-                              theme: web.GSIButtonTheme.filledBlue,
-                              size: web.GSIButtonSize.large,
-                              text: web.GSIButtonText.continueWith,
-                              shape: web.GSIButtonShape.rectangular,
-                            ),
+                    // 📱 Google Sign-In Button (Native)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _handleGoogleSignIn,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                      )
-                    else
-                      // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _handleGoogleSignIn,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: _isLoading
-                              ? const SizedBox.shrink()
-                              : const Icon(Icons.login, size: 20),
-                          label: _isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
-                              : const Text(
-                                  'Continue with Google',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
+                        icon: _isLoading
+                            ? const SizedBox.shrink()
+                            : const Icon(Icons.login, size: 20),
+                        label: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
+                            : const Text(
+                                'Continue with Google',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
                                 ),
-                        ),
+                              ),
                       ),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 ),

@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -13,8 +16,6 @@ import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/services/task_templates.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
-
-bool _isLoggingIn = false;
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -31,6 +32,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final PageController _pageController = PageController();
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
+  bool _isLoggingIn = false;
 
   @override
   void initState() {
@@ -228,27 +230,92 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
+  /// Handles Google Sign-In inline within onboarding.
+  /// On success, saves user to Firestore and advances to challenge setup.
   Future<void> handleInitialLogin() async {
     setState(() => _isLoggingIn = true);
+    try {
+      final googleSignIn = GoogleSignIn.instance;
+      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
+        scopeHint: ['email', 'profile'],
+      );
 
-    // Simulation of the authentication handshake for your internship
-    await Future.delayed(const Duration(milliseconds: 1500));
+      final idToken = googleUser.authentication.idToken;
+      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
+        'email',
+        'profile',
+      ]);
 
-    setState(() => _isLoggingIn = false);
+      final credential = GoogleAuthProvider.credential(
+        accessToken: clientAuth.accessToken,
+        idToken: idToken,
+      );
 
-    if (mounted) {
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Save to Firestore — first login only
+      await _saveUserToFirestore(userCredential.user);
+
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-              'Login Successful! Your progress will now sync to the cloud.'),
+            'Welcome, ${userCredential.user?.displayName ?? 'there'}! Your progress will sync to the cloud.',
+          ),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
       );
-      // Move user to the next step (Challenge Creation)
+
+      // Advance to challenge setup page (page 1)
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
+      );
+    } on GoogleSignInException catch (e) {
+      if (!mounted) return;
+      if (e.code != GoogleSignInExceptionCode.canceled &&
+          e.code != GoogleSignInExceptionCode.interrupted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign-in failed: ${e.description ?? e.code.name}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Authentication error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoggingIn = false);
+    }
+  }
+
+  /// Saves user profile to Firestore on first login only.
+  Future<void> _saveUserToFirestore(User? user) async {
+    if (user == null) return;
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final snapshot = await docRef.get();
+    if (!snapshot.exists) {
+      await docRef.set({
+        'id': user.uid,
+        'name': user.displayName ?? '',
+        'email': user.email ?? '',
+        'photoUrl': user.photoURL ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await docRef.set(
+        {'lastLoginAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
       );
     }
   }
@@ -377,16 +444,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
               : Column(
                   children: [
-                    // The new Login Button
+                    // Sign in with Google — triggers real auth inline
                     _buildAnimatedButton(
-                      text: 'Sign In & Start Setup',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/login'), 
+                      text: 'Sign In with Google & Sync',
+                      onPressed: handleInitialLogin,
                       gradient: const LinearGradient(
                           colors: [Colors.orange, Colors.red]),
                     ),
                     const SizedBox(height: 12),
-                    // The Guest/Local option
+                    // Guest/Local option — skips auth, goes straight to setup
                     TextButton(
                       onPressed: () => _pageController.nextPage(
                         duration: const Duration(milliseconds: 300),
