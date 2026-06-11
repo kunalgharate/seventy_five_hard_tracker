@@ -4,6 +4,7 @@ import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_extension_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 
 /// Weekly accountability summary screen.
 /// Shows completion %, missed tasks, streak trend, and partner dashboard.
@@ -28,7 +29,10 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
   }
 
   Future<void> _load() async {
-    final uid = widget.partner.partnerUid;
+    final myUid = AccountabilityService().currentUid;
+    final uid = widget.partner.ownerUid == myUid
+        ? widget.partner.partnerUid
+        : widget.partner.ownerUid;
     if (uid == null) {
       setState(() => _loading = false);
       return;

@@ -456,7 +456,10 @@ class _PartnerActivityCardState extends State<_PartnerActivityCard> {
   }
 
   Future<void> _load() async {
-    final uid = widget.partner.partnerUid;
+    final myUid = AccountabilityService().currentUid;
+    final uid = widget.partner.ownerUid == myUid
+        ? widget.partner.partnerUid
+        : widget.partner.ownerUid;
     if (uid == null) {
       setState(() => _loading = false);
       return;
@@ -782,30 +785,38 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
   List<AccountabilityTask> _accountabilityTasks = [];
   bool _loading = false;
   bool _expanded = false;
-  bool _loaded = false; // tracks if we've fetched at least once
+  bool _loaded = false;
 
   Future<void> _loadTasks({bool forceRefresh = false}) async {
     if (_loading) return;
     if (_loaded && !forceRefresh) return;
-    final uid = widget.partner.partnerUid;
-    if (uid == null) {
-      debugPrint('[PartnerCard] partnerUid is null, skipping load');
-      return;
-    }
+    final myUid = AccountabilityService().currentUid;
+    // Resolve the other person's UID for progress/challenge name fetches
+    final otherUid = widget.partner.ownerUid == myUid
+        ? widget.partner.partnerUid
+        : widget.partner.ownerUid;
+
     debugPrint(
-        '[PartnerCard] loading tasks for partnershipId=${widget.partner.id}');
+        '[PartnerCard] loading tasks for partnershipId=${widget.partner.id} otherUid=$otherUid');
     setState(() {
       _loading = true;
-      if (forceRefresh) {
-        _accountabilityTasks = [];
-      }
+      if (forceRefresh) _accountabilityTasks = [];
     });
     try {
-      final results = await Future.wait([
-        AccountabilityService().fetchPartnerWeeklyProgress(uid),
-        AccountabilityService().fetchPartnerChallengeNames(uid),
-        AccountabilityService().fetchTasksForPartnership(widget.partner.id),
-      ]);
+      // fetchTasksForPartnership works for both sides — always run it
+      final tasksFuture =
+          AccountabilityService().fetchTasksForPartnership(widget.partner.id);
+
+      // Progress/challenge name fetches only work if we know the other UID
+      final progressFuture = otherUid != null
+          ? AccountabilityService().fetchPartnerWeeklyProgress(otherUid)
+          : Future.value(<Map<String, dynamic>>[]);
+      final namesFuture = otherUid != null
+          ? AccountabilityService().fetchPartnerChallengeNames(otherUid)
+          : Future.value(<String>[]);
+
+      final results =
+          await Future.wait([progressFuture, namesFuture, tasksFuture]);
       if (mounted) {
         setState(() {
           _recentDays = results[0] as List<Map<String, dynamic>>;
@@ -815,7 +826,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           _loaded = true;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[PartnerCard] loadTasks error: $e');
       if (mounted) setState(() => _loading = false);
     }
   }

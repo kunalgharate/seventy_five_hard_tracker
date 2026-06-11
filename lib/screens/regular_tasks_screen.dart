@@ -37,21 +37,38 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
 
   Future<void> _loadAssignedPartners() async {
     final svc = AccountabilityService();
-    final snap = await svc.fetchAssignedChallengeMap();
-    // fetchAssignedChallengeMap returns challengeId → accountableUid.
-    // We need the partner name. Fetch partnerships and build the map.
-    if (snap.isEmpty) return;
-    final partnerships = await svc.fetchMyPartnerships();
-    final uidToName = {
-      for (final p in partnerships)
-        if (p.partnerUid != null) p.partnerUid!: p.partnerName,
-    };
+    final myUid = svc.currentUid;
+
+    final results = await Future.wait([
+      svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
+      svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me, accepted)
+      svc.fetchMyPartnerships(),
+    ]);
+
+    final challengeMap = results[0] as Map<String, String>;
+    final accountableForMap = results[1] as Map<String, String>;
+    final partnerships = results[2] as List<AccountabilityPartner>;
+
+    // Build uid → name covering BOTH sides of every partnership
+    final uidToName = <String, String>{};
+    for (final p in partnerships) {
+      if (p.partnerUid != null) uidToName[p.partnerUid!] = p.partnerName;
+      if (p.ownerUid != myUid) uidToName[p.ownerUid] = p.partnerName;
+    }
+
+    final partnerNames = <String, String>{};
+    // Tasks I assigned → show the accountable person's name
+    challengeMap.forEach((cid, uid) {
+      final name = uidToName[uid];
+      if (name != null) partnerNames[cid] = name;
+    });
+    // Tasks assigned TO me (accepted) → show the assigner's name
+    accountableForMap.forEach((cid, assignerName) {
+      partnerNames.putIfAbsent(cid, () => assignerName);
+    });
+
     if (mounted) {
-      setState(() {
-        _assignedPartnerNames = snap.map(
-          (cid, uid) => MapEntry(cid, uidToName[uid] ?? ''),
-        )..removeWhere((_, v) => v.isEmpty);
-      });
+      setState(() => _assignedPartnerNames = partnerNames);
     }
   }
 

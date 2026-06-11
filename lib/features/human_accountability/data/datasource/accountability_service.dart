@@ -1004,7 +1004,8 @@ class AccountabilityService {
       final tasks = allDeduped
           .where((t) =>
               t.status == AccountabilityTaskStatus.requested ||
-              t.status == AccountabilityTaskStatus.pending)
+              t.status == AccountabilityTaskStatus.pending ||
+              t.status == AccountabilityTaskStatus.completed)
           .toList();
 
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
