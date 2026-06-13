@@ -1172,7 +1172,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   Widget _buildPendingActions(AccountabilityTask task) {
     if (task.challengeId != null) {
-      if (task.proofStatus == null || task.proofStatus == ProofStatus.rejected) {
+      if (task.proofStatus == ProofStatus.rejected) {
         return SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -3228,7 +3228,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
           color: Colors.teal.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Task Request',
+        child: const Text('Task Request',
             style: TextStyle(
                 fontSize: 11,
                 color: Colors.teal,
@@ -3239,8 +3239,8 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
   }
 
   Widget _buildProofStatusChip(AccountabilityTask task) {
-    if (task.challengeId != null && task.proofStatus != null) {
-      switch (task.proofStatus!) {
+    if (task.challengeId != null) {
+      switch (task.proofStatus) {
         case ProofStatus.submitted:
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

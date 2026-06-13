@@ -601,9 +601,9 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
           width: double.infinity,
           child: TextButton.icon(
             onPressed: _lookingUp ? null : _addCollaborator,
-            icon: Icon(Icons.person_add_alt_1,
+            icon: const Icon(Icons.person_add_alt_1,
                 size: 18, color: AppColors.primary),
-            label: Text(
+            label: const Text(
               'Add collaborator',
               style: TextStyle(
                 color: AppColors.primary,

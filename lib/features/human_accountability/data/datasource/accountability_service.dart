@@ -1485,7 +1485,7 @@ class AccountabilityService {
       final ownerData = data['owner'] as Map<String, dynamic>?;
       final owner = ownerData != null
           ? Collaborator.fromFirestore(ownerData)
-          : currentUserAsCollaborator ?? Collaborator(uid: '', email: '', name: 'Unknown');
+          : currentUserAsCollaborator ?? const Collaborator(uid: '', email: '', name: 'Unknown');
       final rawList = data['collaborators'] as List<dynamic>? ?? [];
       final collaborators = rawList
           .map((e) => Collaborator.fromFirestore(e as Map<String, dynamic>))
