@@ -110,12 +110,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (isSignedIn) ...[
                   const SizedBox(height: 12),
-                  // Email row
-                  _InfoRow(
-                    label: 'Email',
-                    value: user.email ?? '—',
-                    context: context,
-                  ),
                 ],
                 const SizedBox(height: 16),
                 if (!isSignedIn)

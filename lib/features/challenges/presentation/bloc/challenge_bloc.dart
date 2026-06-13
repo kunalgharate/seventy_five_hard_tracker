@@ -260,6 +260,26 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      // ── Partner permission check ──
+      // If this challenge has an accountability partner assigned,
+      // only that partner can toggle completion.
+      final svc = AccountabilityService();
+      final assignedMap = await svc.fetchAssignedChallengeMap();
+      final accountableForMap = await svc.fetchAccountableForMap();
+      final partnerUid = assignedMap[event.challengeId];
+      final iAmPartner = accountableForMap.containsKey(event.challengeId);
+
+      if (partnerUid != null && partnerUid.isNotEmpty) {
+        // Task has an assigned partner — only they can toggle
+        if (svc.currentUid != partnerUid) {
+          emit(const ChallengeError(
+              'Only your accountability partner can mark this task as complete.'));
+          return;
+        }
+      } else if (iAmPartner) {
+        // I am the accountable partner — allowed, continue
+      }
+
       final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 

@@ -3,9 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import '../../../../models/collaborator.dart';
 import '../models/accountability_partner.dart';
-import '../models/partner_review.dart';
 import '../models/accountability_task.dart';
+import '../models/partner_review.dart';
 import '../models/app_user.dart';
 import '../models/accountability_invitation.dart';
 
@@ -364,6 +365,87 @@ class AccountabilityService {
     }
   }
 
+  /// Finds an accepted partnership between the current user and [otherUid].
+  /// Returns the partnership if found and accepted, otherwise null.
+  Future<AccountabilityPartner?> findAcceptedPartnership(String otherUid) async {
+    if (!_isReady) return null;
+    try {
+      final myUid = currentUid!;
+      // Query where I'm the owner and they're the partner
+      final q1 = await _db
+          .collection('partnerships')
+          .where('ownerUid', isEqualTo: myUid)
+          .where('partnerUid', isEqualTo: otherUid)
+          .where('status', isEqualTo: 'accepted')
+          .limit(1)
+          .get();
+      if (q1.docs.isNotEmpty) return _partnerFromDoc(q1.docs.first);
+
+      // Query where they're the owner and I'm the partner
+      final q2 = await _db
+          .collection('partnerships')
+          .where('ownerUid', isEqualTo: otherUid)
+          .where('partnerUid', isEqualTo: myUid)
+          .where('status', isEqualTo: 'accepted')
+          .limit(1)
+          .get();
+      if (q2.docs.isNotEmpty) return _partnerFromDoc(q2.docs.first);
+
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] findAcceptedPartnership error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Ensure an accepted partnership exists with [otherUid].
+  /// Creates one if none is found. Returns the partnership ID or null.
+  Future<String?> ensurePartnership(String otherUid, String otherName) async {
+    if (!_isReady) return null;
+    try {
+      final existing = await findAcceptedPartnership(otherUid);
+      if (existing != null) {
+        if (kDebugMode) {
+          debugPrint('[AccountabilityService] ensurePartnership: existing partnership ${existing.id}');
+        }
+        return existing.id;
+      }
+
+      final myUid = currentUid!;
+      final code = _generateCode();
+      final docRef = _db.collection('partnerships').doc();
+      final now = DateTime.now();
+
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] ensurePartnership: creating new partnership with $otherUid ($otherName)');
+      }
+
+      await docRef.set({
+        'id': docRef.id,
+        'ownerUid': myUid,
+        'partnerUid': otherUid,
+        'partnerName': otherName,
+        'role': PartnerRole.friend.name,
+        'status': 'accepted',
+        'inviteCode': code,
+        'createdAt': now.toIso8601String(),
+        'acceptedAt': now.toIso8601String(),
+      });
+
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] ensurePartnership: created ${docRef.id}');
+      }
+      return docRef.id;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] ensurePartnership error: $e');
+      }
+      return null;
+    }
+  }
+
   // ── Progress sharing ─────────────────────────────────────────────
 
   Future<void> publishDailyProgress({
@@ -644,7 +726,7 @@ class AccountabilityService {
   Future<AccountabilityTask?> createAccountabilityTask({
     required String accountableUid,
     required String accountableName,
-    required String partnershipId,
+    String partnershipId = '',
     required String title,
     String? description,
     DateTime? dueDate,
@@ -762,7 +844,9 @@ class AccountabilityService {
           .get();
       final tasks = snap.docs
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .where((t) => t.status == AccountabilityTaskStatus.pending)
+          .where((t) =>
+              t.status == AccountabilityTaskStatus.requested ||
+              t.status == AccountabilityTaskStatus.pending)
           .toList();
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
       if (kDebugMode) {
@@ -790,9 +874,7 @@ class AccountabilityService {
           .get();
       final tasks = snap.docs
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .where((t) =>
-              t.status == AccountabilityTaskStatus.requested ||
-              t.status == AccountabilityTaskStatus.pending)
+          .where((t) => t.status == AccountabilityTaskStatus.requested)
           .toList();
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
       if (kDebugMode) {
@@ -1001,12 +1083,18 @@ class AccountabilityService {
         }
       }
 
-      final tasks = allDeduped
-          .where((t) =>
-              t.status == AccountabilityTaskStatus.requested ||
-              t.status == AccountabilityTaskStatus.pending ||
-              t.status == AccountabilityTaskStatus.completed)
-          .toList();
+      final tasks = allDeduped.where((t) {
+        if (t.status == AccountabilityTaskStatus.pending ||
+            t.status == AccountabilityTaskStatus.completed) {
+          return true;
+        }
+        // Show requested tasks the current user assigned (waiting for partner to accept)
+        if (t.status == AccountabilityTaskStatus.requested &&
+            t.assignedByUid == myUid) {
+          return true;
+        }
+        return false;
+      }).toList();
 
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
       if (kDebugMode) {
@@ -1362,6 +1450,386 @@ class AccountabilityService {
       return false;
     }
   }
+
+  // ── Collaborators (Google Keep style) ──────────────────────────────
+
+  /// Collection: task_collaborators/{taskId}
+  /// Each doc has: { owner: {uid, email, name, photoUrl}, collaborators: [{uid, email, name, photoUrl}] }
+
+  Collaborator? get currentUserAsCollaborator {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    return Collaborator(
+      uid: user.uid,
+      email: user.email ?? '',
+      name: user.displayName ?? user.email?.split('@').first ?? 'User',
+      photoUrl: user.photoURL,
+    );
+  }
+
+  /// Fetch collaborators for a task from Firestore.
+  /// [taskId] is the challenge/task id.
+  /// Returns (owner, collaborators) tuple.
+  Future<({Collaborator owner, List<Collaborator> collaborators})?>
+      getTaskCollaborators(String taskId) async {
+    if (!_isReady) return null;
+    try {
+      final doc =
+          await _db.collection('task_collaborators').doc(taskId).get();
+      if (!doc.exists) {
+        final me = currentUserAsCollaborator;
+        if (me == null) return null;
+        return (owner: me, collaborators: <Collaborator>[]);
+      }
+      final data = doc.data()!;
+      final ownerData = data['owner'] as Map<String, dynamic>?;
+      final owner = ownerData != null
+          ? Collaborator.fromFirestore(ownerData)
+          : currentUserAsCollaborator ?? Collaborator(uid: '', email: '', name: 'Unknown');
+      final rawList = data['collaborators'] as List<dynamic>? ?? [];
+      final collaborators = rawList
+          .map((e) => Collaborator.fromFirestore(e as Map<String, dynamic>))
+          .toList();
+      return (owner: owner, collaborators: collaborators);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] getTaskCollaborators error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Save collaborators for a task to Firestore.
+  Future<bool> saveTaskCollaborators({
+    required String taskId,
+    required Collaborator owner,
+    required List<Collaborator> collaborators,
+  }) async {
+    if (!_isReady) return false;
+    final path = 'task_collaborators/$taskId';
+    if (kDebugMode) {
+      debugPrint(
+          '[AccountabilityService] saveTaskCollaborators: path=$path, ownerUid=${owner.uid}, currentUid=$currentUid, count=${collaborators.length}');
+    }
+    try {
+      await _db.collection('task_collaborators').doc(taskId).set({
+        'owner': owner.toFirestore(),
+        'collaborators': collaborators.map((c) => c.toFirestore()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] saveTaskCollaborators error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Remove a collaborator from a task.
+  Future<bool> removeTaskCollaborator({
+    required String taskId,
+    required String collaboratorUid,
+  }) async {
+    if (!_isReady) return false;
+    try {
+      await _db.collection('task_collaborators').doc(taskId).update({
+        'collaborators': FieldValue.arrayRemove([
+          {'uid': collaboratorUid}
+        ]),
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] removeTaskCollaborator error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Add a collaborator to a task.
+  Future<bool> addTaskCollaborator({
+    required String taskId,
+    required Collaborator collaborator,
+  }) async {
+    if (!_isReady) return false;
+    try {
+      final docRef = _db.collection('task_collaborators').doc(taskId);
+      final doc = await docRef.get();
+
+      if (!doc.exists) {
+        final me = currentUserAsCollaborator;
+        if (me == null) return false;
+        await docRef.set({
+          'owner': me.toFirestore(),
+          'collaborators': [collaborator.toFirestore()],
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await docRef.update({
+          'collaborators': FieldValue.arrayUnion([collaborator.toFirestore()]),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] addTaskCollaborator error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Stream of collaborators for a task.
+  Stream<List<Collaborator>> taskCollaboratorsStream(String taskId) {
+    if (!_isReady) return const Stream.empty();
+    return _db
+        .collection('task_collaborators')
+        .doc(taskId)
+        .snapshots()
+        .map((snap) {
+      if (!snap.exists) return <Collaborator>[];
+      final data = snap.data()!;
+      final rawList = data['collaborators'] as List<dynamic>? ?? [];
+      return rawList
+          .map((e) => Collaborator.fromFirestore(e as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  // ── Photo Proof ─────────────────────────────────────────────────────────
+
+  /// Submit photo proof for a task. Sets proofStatus → submitted.
+  /// Only the accountableUid can submit.
+  Future<bool> submitTaskProof({
+    required String taskId,
+    required String proofUrl,
+  }) async {
+    if (!_isReady) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] submitTaskProof: service not ready');
+      }
+      return false;
+    }
+    if (kDebugMode) {
+      debugPrint('[AccountabilityService] submitTaskProof: taskId=$taskId proofUrl=$proofUrl');
+    }
+    try {
+      final now = DateTime.now();
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'proofStatus': ProofStatus.submitted.name,
+        'proofUrl': proofUrl,
+        'proofSubmittedAt': now.toIso8601String(),
+      });
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] submitTaskProof: SUCCESS — Firestore doc $taskId updated');
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] submitTaskProof error: $e');
+        debugPrint('[AccountabilityService] submitTaskProof error type: ${e.runtimeType}');
+      }
+      return false;
+    }
+  }
+
+  /// Review (approve/reject) a submitted proof.
+  /// Only the assigner (assignedByUid) can review.
+  Future<bool> reviewTaskProof({
+    required String taskId,
+    required bool approved,
+    String? comment,
+  }) async {
+    if (!_isReady) return false;
+    try {
+      final now = DateTime.now();
+      final batch = _db.batch();
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+
+      if (approved) {
+        batch.update(ref, {
+          'proofStatus': ProofStatus.approved.name,
+          'proofReviewComment': comment,
+          'proofReviewedAt': now.toIso8601String(),
+          'status': AccountabilityTaskStatus.completed.name,
+          'completedAt': now.toIso8601String(),
+        });
+      } else {
+        batch.update(ref, {
+          'proofStatus': ProofStatus.rejected.name,
+          'proofReviewComment': comment,
+          'proofReviewedAt': now.toIso8601String(),
+          // Keep task pending so user can resubmit
+          'status': AccountabilityTaskStatus.pending.name,
+          'completedAt': null,
+        });
+      }
+
+      await batch.commit();
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] reviewTaskProof error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Fetch tasks with pending (submitted) proof for the current user to review.
+  /// These are tasks where current user is the assigner and proof is submitted.
+  Future<List<AccountabilityTask>> fetchTasksPendingProofReview() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('assignedByUid', isEqualTo: uid)
+          .where('proofStatus', isEqualTo: ProofStatus.submitted.name)
+          .get();
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchTasksPendingProofReview error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetch proof statuses for a list of challenge IDs.
+  /// Returns Map<challengeId, ProofStatus>.
+  Future<Map<String, ProofStatus>> fetchProofStatusesForChallengeIds(
+      List<String> challengeIds) async {
+    if (!_isReady || challengeIds.isEmpty) return {};
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('challengeId', whereIn: challengeIds)
+          .get();
+      final map = <String, ProofStatus>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final cid = data['challengeId'] as String?;
+        final ps = data['proofStatus'] as String?;
+        if (cid != null) {
+          map[cid] = ProofStatus.values.firstWhere(
+            (e) => e.name == ps,
+            orElse: () => ProofStatus.not_required,
+          );
+        }
+      }
+      return map;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchProofStatusesForChallengeIds error: $e');
+      }
+      return {};
+    }
+  }
+
+  /// Fetches all tasks assigned BY the current user that are already completed.
+  /// Used to seed the "already processed" set so the real-time stream
+  /// listener doesn't re-trigger auto-completion on initial load.
+  Future<List<AccountabilityTask>> fetchAssignedTasksCompleted() async {
+    if (!_isReady) return [];
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('assignedByUid', isEqualTo: currentUid!)
+          .where('status', isEqualTo: AccountabilityTaskStatus.completed.name)
+          .get();
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] fetchAssignedTasksCompleted error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetch an accountability task by a challengeId.
+  /// Returns the first matching task, or null if none found.
+  Future<AccountabilityTask?> fetchTaskByChallengeId(
+      String challengeId) async {
+    if (!_isReady) return null;
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('challengeId', isEqualTo: challengeId)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return AccountabilityTask.fromFirestore(
+        snap.docs.first.data(),
+        id: snap.docs.first.id,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchTaskByChallengeId error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Fetch the accountability task document ID for a challengeId.
+  Future<String?> fetchTaskIdByChallengeId(String challengeId) async {
+    if (!_isReady) return null;
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('challengeId', isEqualTo: challengeId)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return snap.docs.first.id;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchTaskIdByChallengeId error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Stream of accountability tasks assigned to the current user
+  /// (where I am the accountable person), with real-time updates.
+  Stream<List<AccountabilityTask>> myTasksStream() {
+    if (!_isReady) return const Stream.empty();
+    final uid = currentUid!;
+    return _db
+        .collection('accountability_tasks')
+        .where('accountableUid', isEqualTo: uid)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+            .toList());
+  }
+
+  /// Stream of accountability tasks assigned BY the current user
+  /// (where I am the assigner), with real-time updates.
+  /// Used to detect when a partner completes a task so the owner can
+  /// auto-update their local progress.
+  Stream<List<AccountabilityTask>> assignedByMeStream() {
+    if (!_isReady) return const Stream.empty();
+    final uid = currentUid!;
+    return _db
+        .collection('accountability_tasks')
+        .where('assignedByUid', isEqualTo: uid)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+            .toList());
+  }
+
+  // ── One-time cleanup ────────────────────────────────────────────────────
 
   /// One-time cleanup: deletes accountability tasks where accountableUid == assignedByUid
   /// (tasks accidentally assigned to self due to a previous bug).

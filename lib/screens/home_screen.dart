@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
@@ -19,6 +21,8 @@ import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
+import '../widgets/photo_proof_sheet.dart';
+import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
@@ -34,8 +38,12 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   Map<String, String> _assignedChallengeMap =
       {}; // challengeId → accountableUid
-  List<AccountabilityTask> _tasksAssignedToMe = [];
   Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
+  Map<String, ProofStatus> _proofStatuses = {}; // challengeId → proofStatus
+  StreamSubscription<List<AccountabilityTask>>? _tasksAssignedByMeSub;
+
+  // Tracks previously known completed tasks to avoid re-triggering
+  final Set<String> _previouslyCompletedTaskIds = {};
 
   @override
   void initState() {
@@ -44,20 +52,57 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAssignedChallenges();
     // One-time cleanup: remove tasks accidentally assigned to self
     AccountabilityService().cleanupSelfAssignedTasks();
+    // Subscribe to real-time streams
+    _subscribeToStreams();
+  }
+
+  @override
+  void dispose() {
+    _tasksAssignedByMeSub?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToStreams() {
+    final svc = AccountabilityService();
+
+    // Listen for tasks assigned BY me (tasks I assigned to partners)
+    // Used to auto-sync completion back to my 75 Hard progress
+    _tasksAssignedByMeSub = svc.assignedByMeStream().listen((tasks) {
+      if (!mounted) return;
+      _syncCompletedTasks(tasks);
+      _loadAssignedChallenges();
+    });
+  }
+
+  /// When a partner completes an accountability task linked to one of my
+  /// challenges, auto-update my local 75 Hard progress.
+  void _syncCompletedTasks(List<AccountabilityTask> tasks) {
+    for (final task in tasks) {
+      if (task.challengeId == null) continue;
+      if (!task.isCompleted) continue;
+      if (_previouslyCompletedTaskIds.contains(task.id)) continue;
+
+      _previouslyCompletedTaskIds.add(task.id);
+
+      // Mark my local challenge task as completed
+      context.read<ChallengeBloc>().add(UpdateDailyProgress(
+            date: DateTime.now(),
+            challengeId: task.challengeId!,
+            isCompleted: true,
+          ));
+    }
   }
 
   Future<void> _loadAssignedChallenges() async {
     final svc = AccountabilityService();
     final results = await Future.wait([
       svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
-      svc.fetchTasksAssignedToMe(),
       svc.fetchMyPartnerships(),
       svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me)
     ]);
     final challengeMap = results[0] as Map<String, String>;
-    final tasksToMe = results[1] as List<AccountabilityTask>;
-    final partnerships = results[2] as List<AccountabilityPartner>;
-    final accountableForMap = results[3] as Map<String, String>;
+    final partnerships = results[1] as List<AccountabilityPartner>;
+    final accountableForMap = results[2] as Map<String, String>;
 
     // Build challengeId → partnerName for tasks I ASSIGNED
     final myUid = svc.currentUid;
@@ -77,11 +122,44 @@ class _HomeScreenState extends State<HomeScreen> {
       partnerNames.putIfAbsent(cid, () => assignerName);
     });
 
+    // Fetch proof statuses for all challenge IDs that have partners
+    final allCids = <String>{
+      ...challengeMap.keys,
+      ...accountableForMap.keys,
+    };
+    Map<String, ProofStatus> proofStatuses = {};
+    if (allCids.isNotEmpty) {
+      // Firestore whereIn supports up to 30 values
+      final batches = <List<String>>[];
+      var batch = <String>[];
+      for (final cid in allCids) {
+        batch.add(cid);
+        if (batch.length == 30) {
+          batches.add(batch);
+          batch = [];
+        }
+      }
+      if (batch.isNotEmpty) batches.add(batch);
+      for (final b in batches) {
+        final result = await svc.fetchProofStatusesForChallengeIds(b);
+        proofStatuses.addAll(result);
+      }
+    }
+
+    // Populate set of already-completed accountability tasks I assigned
+    // so the real-time stream listener doesn't re-trigger auto-completion.
+    final snap = await svc.fetchAssignedTasksCompleted();
+    _previouslyCompletedTaskIds.addAll(
+      snap
+          .where((t) => t.challengeId != null)
+          .map((t) => t.id),
+    );
+
     if (mounted) {
       setState(() {
         _assignedChallengeMap = challengeMap;
-        _tasksAssignedToMe = tasksToMe;
         _assignedPartnerNames = partnerNames;
+        _proofStatuses = proofStatuses;
       });
     }
   }
@@ -474,7 +552,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             accountablePartnerUid:
                                 _assignedChallengeMap[challenge.id],
                             partnerName: _assignedPartnerNames[challenge.id],
-                            onPartnerAssigned: _loadAssignedChallenges,
+                            proofStatus: _proofStatuses[challenge.id],
+                            onSubmitProof: () => _submitProof(challenge),
+                            onReviewProof: () => _reviewProof(challenge),
                             onToggle: (completed) {
                               context.read<ChallengeBloc>().add(
                                     UpdateDailyProgress(
@@ -487,11 +567,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             onReminderUpdate: (updatedChallenge) {
                               context.read<ChallengeBloc>().add(
                                     UpdateChallenge(updatedChallenge),
-                                  );
-                            },
-                            onRemove: () {
-                              context.read<ChallengeBloc>().add(
-                                    RemoveChallengeFromSession(challenge.id),
                                   );
                             },
                           ),
@@ -568,6 +643,35 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _submitProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
+    if (taskId == null) return;
+
+    if (!mounted) return;
+    final result = await PhotoProofSheet.show(
+      context: context,
+      taskId: taskId,
+      taskName: challenge.title,
+      date: _selectedDay,
+    );
+    if (result == true) {
+      _loadAssignedChallenges();
+    }
+  }
+
+  Future<void> _reviewProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final task = await svc.fetchTaskByChallengeId(challenge.id);
+    if (task == null) return;
+
+    if (!mounted) return;
+    final result = await ProofReviewDialog.show(context, task);
+    if (result == true) {
+      _loadAssignedChallenges();
+    }
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -928,115 +1032,4 @@ class _StatPill extends StatelessWidget {
   }
 }
 
-// ── Partner-assigned task card ────────────────────────────────────────────────
-
-class _PartnerAssignedTaskCard extends StatefulWidget {
-  final AccountabilityTask task;
-  final VoidCallback onComplete;
-
-  const _PartnerAssignedTaskCard({
-    required this.task,
-    required this.onComplete,
-  });
-
-  @override
-  State<_PartnerAssignedTaskCard> createState() =>
-      _PartnerAssignedTaskCardState();
-}
-
-class _PartnerAssignedTaskCardState extends State<_PartnerAssignedTaskCard> {
-  bool _completing = false;
-
-  Future<void> _markDone() async {
-    setState(() => _completing = true);
-    final ok = await AccountabilityService()
-        .completeAccountabilityTask(widget.task.id);
-    if (!mounted) return;
-    setState(() => _completing = false);
-    if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('✅ "${widget.task.title}" marked complete!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ));
-      widget.onComplete();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not complete task. Try again.'),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final task = widget.task;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        children: [
-          // Completion button
-          GestureDetector(
-            onTap: _completing ? null : _markDone,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.blue.withValues(alpha: 0.1),
-                border: Border.all(
-                    color: Colors.blue.withValues(alpha: 0.4), width: 1.5),
-              ),
-              child: _completing
-                  ? const Padding(
-                      padding: EdgeInsets.all(6),
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.blue))
-                  : const Icon(Icons.check, size: 16, color: Colors.blue),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Task info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  'From: ${task.assignedByName}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-          // Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              'Partner Task',
-              style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.blue,
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ── Partner-assigned task card removed — tasks now shown only in Partners tab ──

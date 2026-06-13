@@ -17,9 +17,8 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.example.seventy_five_hard_tracker"
-    // ndkVersion = "27.0.12077973"  // Removed for CI/CD compatibility
+    ndkVersion = "28.2.13676358"
     compileSdk = 36
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

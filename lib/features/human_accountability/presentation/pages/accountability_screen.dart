@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -21,6 +22,8 @@ import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
+import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
+import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 
@@ -34,16 +37,35 @@ class AccountabilityScreen extends StatefulWidget {
 class _AccountabilityScreenState extends State<AccountabilityScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
+  StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
     context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+    _subscribeToTaskStream();
+  }
+
+  void _subscribeToTaskStream() {
+    _tasksStreamSub?.cancel();
+    _assignedByMeStreamSub?.cancel();
+    _tasksStreamSub = AccountabilityService().myTasksStream().listen((_) {
+      if (!mounted) return;
+      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+    }, onError: (_) {});
+    _assignedByMeStreamSub =
+        AccountabilityService().assignedByMeStream().listen((_) {
+      if (!mounted) return;
+      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+    }, onError: (_) {});
   }
 
   @override
   void dispose() {
+    _tasksStreamSub?.cancel();
+    _assignedByMeStreamSub?.cancel();
     _tabs.dispose();
     super.dispose();
   }
@@ -596,121 +618,64 @@ class _PartnersTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final accepted =
         partners.where((p) => p.status == PartnershipStatus.accepted).toList();
-    final pending =
-        partners.where((p) => p.status == PartnershipStatus.pending).toList();
 
-    // Combine code-based incoming requests + email-based invitations
     final hasEmailInvites = emailInvitations.isNotEmpty;
     final hasCodeRequests = incomingRequests.isNotEmpty;
     final hasTaskRequests = taskRequests.isNotEmpty;
-    final totalRequestCount =
-        incomingRequests.length + emailInvitations.length + taskRequests.length;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
-        // ── Invite buttons ────────────────────────────────────────
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  if (!CloudSyncService().isSignedIn) {
-                    Navigator.of(context).pushNamed('/login');
-                    return;
-                  }
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => BlocProvider.value(
-                      value: context.read<AccountabilityBloc>(),
-                      child: const _InviteByEmailSheet(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.person_add_outlined, size: 18),
-                label: const Text('Add Collaborator'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            OutlinedButton.icon(
-              onPressed: () {
-                if (!CloudSyncService().isSignedIn) {
-                  Navigator.of(context).pushNamed('/login');
-                  return;
-                }
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => BlocProvider.value(
-                    value: context.read<AccountabilityBloc>(),
-                    child: const _JoinWithCodeSheet(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.qr_code_scanner, size: 18),
-              label: const Text('Join'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 20),
 
-        // ── Section 1: Partners ───────────────────────────────────
-        _SectionLabel(
-          title: 'Partners',
-          icon: Icons.people,
-          color: Colors.green,
-          count: accepted.length,
-        ),
-        const SizedBox(height: 10),
-        if (accepted.isEmpty)
-          const _EmptyInline(
+          // ── Partner cards ─────────────────────────────────────────
+        ...accepted.map((p) => _AcceptedPartnerCard(partner: p)),
+        if (accepted.isNotEmpty) const SizedBox(height: 20),
+
+        // ── Pending invites I sent ───────────────────────────────
+        ...() {
+          final myUid = AccountabilityService().currentUid;
+          final pending = partners.where((p) =>
+              p.status == PartnershipStatus.pending &&
+              p.ownerUid == myUid).toList();
+          if (pending.isEmpty) return const <Widget>[];
+          return [
+            _SectionLabel(
+              title: 'Pending Invites',
+              icon: Icons.hourglass_empty,
+              color: Colors.orange,
+              count: pending.length,
+            ),
+            const SizedBox(height: 10),
+            ...pending.map((p) => _PendingInviteCard(partner: p)),
+            const SizedBox(height: 20),
+          ];
+        }(),
+
+        // ── Empty state ──────────────────────────────────────────
+        if (accepted.isEmpty && !hasCodeRequests && !hasTaskRequests && !hasEmailInvites &&
+            partners.where((p) =>
+                p.status == PartnershipStatus.pending &&
+                p.ownerUid == AccountabilityService().currentUid).isEmpty)
+          const _EmptyState(
             icon: Icons.people_outline,
-            text: 'No active partners yet.\nInvite someone above.',
-          )
-        else
-          ...accepted.map((p) => _AcceptedPartnerCard(partner: p)),
-        const SizedBox(height: 20),
-
-        // ── Section 2: Pending Invites ────────────────────────────
-        if (pending.isNotEmpty) ...[
-          _SectionLabel(
-            title: 'Pending Invites',
-            icon: Icons.schedule_send_outlined,
-            color: Colors.orange,
-            count: pending.length,
+            title: 'No Partners Yet',
+            subtitle:
+                'Tap the invite button to add an accountability partner.\n'
+                'Once they accept, you\'ll see them here.',
           ),
-          const SizedBox(height: 10),
-          ...pending.map((p) => _PendingInviteCard(partner: p)),
-          const SizedBox(height: 20),
-        ],
 
-        // ── Section 3: Incoming Requests ──────────────────────────
-        if (hasEmailInvites || hasTaskRequests) ...[
+        // ── Requests for You ──────────────────────────────────────
+        if (hasEmailInvites || hasTaskRequests || hasCodeRequests) ...[
           _SectionLabel(
             title: 'Requests for You',
             icon: Icons.mark_email_unread_outlined,
             color: Colors.blue,
-            count: emailInvitations.length + taskRequests.length,
+            count: incomingRequests.length + emailInvitations.length + taskRequests.length,
           ),
           const SizedBox(height: 10),
+          // Code-based incoming partnership requests
+          ...incomingRequests.map((p) => _IncomingRequestCard(partner: p)),
           // Task assignment requests
           ...taskRequests.map((t) => _TaskRequestCard(task: t)),
           // Email-based partner invitations
@@ -834,7 +799,13 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return BlocListener<AccountabilityBloc, AccountabilityState>(
+      listener: (ctx, state) {
+        if (state is AccountabilityLoaded && _expanded) {
+          _loadTasks(forceRefresh: true);
+        }
+      },
+      child: Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -985,29 +956,37 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
             else ...[
-              if (_accountabilityTasks.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline,
-                          size: 16, color: Colors.grey[400]),
-                      const SizedBox(width: 8),
-                      Text('No tasks yet.',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[500])),
-                    ],
-                  ),
-                )
-              else
-                ..._accountabilityTasks.map((task) {
+              ...() {
+                final myUid = AccountabilityService().currentUid;
+                final visibleTasks = _accountabilityTasks.where((t) =>
+                    t.partnershipId == widget.partner.id &&
+                    (t.assignedByUid == myUid || t.accountableUid == myUid)).toList();
+                if (visibleTasks.isEmpty) {
+                  return [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 16, color: Colors.grey[400]),
+                          const SizedBox(width: 8),
+                          Text('No tasks yet.',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[500])),
+                        ],
+                      ),
+                    ),
+                  ];
+                }
+                return visibleTasks.map((task) {
                   final isCompleted =
                       task.status == AccountabilityTaskStatus.completed;
+                  final proofStatus = task.proofStatus;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(
@@ -1023,62 +1002,354 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                             : Colors.orange.withValues(alpha: 0.25),
                       ),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          isCompleted
-                              ? Icons.check_circle_rounded
-                              : Icons.radio_button_unchecked,
-                          size: 18,
-                          color: isCompleted ? Colors.green : Colors.orange,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(task.title,
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500)),
-                              if (task.description != null &&
-                                  task.description!.isNotEmpty)
-                                Text(task.description!,
-                                    style: TextStyle(
-                                        fontSize: 11, color: Colors.grey[500])),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: isCompleted
-                                ? Colors.green.withValues(alpha: 0.12)
-                                : Colors.orange.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            isCompleted ? 'Done' : 'Pending',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isCompleted
-                                  ? Colors.green[700]
-                                  : Colors.orange[700],
+                        Row(
+                          children: [
+                            Icon(
+                              isCompleted
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked,
+                              size: 18,
+                              color: isCompleted ? Colors.green : Colors.orange,
                             ),
-                          ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(task.title,
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500)),
+                                  if (task.description != null &&
+                                      task.description!.isNotEmpty)
+                                    Text(task.description!,
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey[500])),
+                                ],
+                              ),
+                            ),
+                            _buildPartnerTaskStatusChip(
+                                isCompleted, proofStatus, task.status),
+                          ],
                         ),
+                        if (!isCompleted)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: _buildPartnerTaskAction(task),
+                          ),
                       ],
                     ),
                   );
-                }),
+                });
+              }(),
               const SizedBox(height: 8),
             ],
           ],
         ),
       ),
+      ),
     );
+  }
+
+  Widget _buildPartnerTaskStatusChip(
+      bool isCompleted, ProofStatus? proofStatus,
+      AccountabilityTaskStatus status) {
+    if (isCompleted || status == AccountabilityTaskStatus.completed) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('Completed',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.green[700])),
+      );
+    }
+    if (status == AccountabilityTaskStatus.declined) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('Declined',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.red[700])),
+      );
+    }
+    if (status == AccountabilityTaskStatus.requested) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('Pending',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange[700])),
+      );
+    }
+    // status is pending — show proof status
+    if (proofStatus == ProofStatus.submitted) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.blue.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('Proof Submitted',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.blue[700])),
+      );
+    }
+    if (proofStatus == ProofStatus.approved) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
+            const SizedBox(width: 3),
+            Text('Approved',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green[700])),
+          ],
+        ),
+      );
+    }
+    if (proofStatus == ProofStatus.rejected) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cancel, size: 12, color: Colors.red[700]),
+            const SizedBox(width: 3),
+            Text('Rejected',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red[700])),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text('Accepted',
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.green[700])),
+    );
+  }
+
+  Widget _buildPendingActions(AccountabilityTask task) {
+    if (task.challengeId != null) {
+      if (task.proofStatus == null || task.proofStatus == ProofStatus.rejected) {
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              final ok = await PhotoProofSheet.show(
+                context: context,
+                taskId: task.id,
+                taskName: task.title,
+                date: DateTime.now(),
+              );
+              if (ok == true && context.mounted) {
+                context
+                    .read<AccountabilityBloc>()
+                    .add(LoadAccountabilityData());
+              }
+            },
+            icon: const Icon(Icons.camera_alt_outlined, size: 16),
+            label: Text(task.proofStatus == ProofStatus.rejected
+                ? 'Resubmit Photo Proof'
+                : 'Submit Photo Proof'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        );
+      }
+      if (task.proofStatus == ProofStatus.submitted) {
+        return SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.hourglass_empty, size: 16),
+            label: const Text('Awaiting Review'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blue[400],
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        );
+      }
+      if (task.proofStatus == ProofStatus.approved) {
+        return SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: null,
+            icon: Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
+            label: Text('Approved',
+                style: TextStyle(color: Colors.green[700])),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.green,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        );
+      }
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          setState(() => _loading = true);
+          final ok = await AccountabilityService()
+              .completeAccountabilityTask(task.id);
+          if (mounted) setState(() => _loading = false);
+          if (ok && context.mounted) {
+            context
+                .read<AccountabilityBloc>()
+                .add(LoadAccountabilityData());
+            if (task.challengeId != null) {
+              try {
+                context.read<ChallengeBloc>().add(UpdateDailyProgress(
+                      date: DateTime.now(),
+                      challengeId: task.challengeId!,
+                      isCompleted: true,
+                    ));
+              } catch (_) {
+                // safe to ignore
+              }
+            }
+          }
+        },
+        icon: const Icon(Icons.check, size: 16),
+        label: const Text('Mark Complete'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPartnerTaskAction(AccountabilityTask task) {
+    final myUid = AccountabilityService().currentUid;
+    final iAmAssignee = task.accountableUid == myUid;
+
+    if (!iAmAssignee && task.proofStatus == ProofStatus.submitted) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () async {
+            final ok = await ProofReviewDialog.show(context, task);
+            if (ok == true && context.mounted) {
+              context
+                  .read<AccountabilityBloc>()
+                  .add(LoadAccountabilityData());
+            }
+          },
+          icon: const Icon(Icons.rate_review_outlined, size: 16),
+          label: const Text('Review Proof'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
+    }
+
+    if (iAmAssignee) {
+      if (task.proofStatus == ProofStatus.submitted) {
+        return SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.hourglass_empty, size: 16),
+            label: const Text('Awaiting Review'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blue[400],
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        );
+      }
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () async {
+            final ok = await PhotoProofSheet.show(
+              context: context,
+              taskId: task.id,
+              taskName: task.title,
+              date: DateTime.now(),
+            );
+            if (ok == true && context.mounted) {
+              context
+                  .read<AccountabilityBloc>()
+                  .add(LoadAccountabilityData());
+            }
+          },
+          icon: Icon(
+              task.proofStatus == ProofStatus.rejected
+                  ? Icons.refresh
+                  : Icons.check,
+              size: 16),
+          label: Text(task.proofStatus == ProofStatus.rejected
+              ? 'Resubmit'
+              : 'Mark Complete'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   List<Widget> _buildTaskList() {
@@ -1432,34 +1703,6 @@ class _MiniProgressRing extends StatelessWidget {
           Text(
             '${(pct * 100).toInt()}%',
             style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyInline extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _EmptyInline({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey[400], size: 28),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(text,
-                style: TextStyle(color: Colors.grey[500], fontSize: 13)),
           ),
         ],
       ),
@@ -2919,26 +3162,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                     ],
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: task.status == AccountabilityTaskStatus.pending
-                        ? Colors.orange.withValues(alpha: 0.1)
-                        : Colors.teal.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                      task.status == AccountabilityTaskStatus.pending
-                          ? 'Active Task'
-                          : 'Task Request',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: task.status == AccountabilityTaskStatus.pending
-                              ? Colors.orange[700]
-                              : Colors.teal,
-                          fontWeight: FontWeight.w600)),
-                ),
+                _buildStatusChip(task),
               ],
             ),
             const SizedBox(height: 14),
@@ -2949,43 +3173,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                       height: 24,
                       child: CircularProgressIndicator(strokeWidth: 2)))
             else if (task.status == AccountabilityTaskStatus.pending)
-              // Already active — show Mark Complete button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    setState(() => _loading = true);
-                    final ok = await AccountabilityService()
-                        .completeAccountabilityTask(task.id);
-                    if (mounted) setState(() => _loading = false);
-                    if (ok && context.mounted) {
-                      context
-                          .read<AccountabilityBloc>()
-                          .add(LoadAccountabilityData());
-                      // Also check the checkbox on the 75 Hard tab if linked
-                      if (task.challengeId != null) {
-                        try {
-                          context.read<ChallengeBloc>().add(UpdateDailyProgress(
-                                date: DateTime.now(),
-                                challengeId: task.challengeId!,
-                                isCompleted: true,
-                              ));
-                        } catch (_) {
-                          // ChallengeBloc may not be available in this context — safe to ignore
-                        }
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.check, size: 16),
-                  label: const Text('Mark Complete'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              )
+              _buildPendingActions(task)
             else
               Row(
                 children: [
@@ -3027,6 +3215,144 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                 ],
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(AccountabilityTask task) {
+    if (task.status == AccountabilityTaskStatus.requested) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.teal.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('Task Request',
+            style: TextStyle(
+                fontSize: 11,
+                color: Colors.teal,
+                fontWeight: FontWeight.w600)),
+      );
+    }
+    return _buildProofStatusChip(task);
+  }
+
+  Widget _buildProofStatusChip(AccountabilityTask task) {
+    if (task.challengeId != null && task.proofStatus != null) {
+      switch (task.proofStatus!) {
+        case ProofStatus.submitted:
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('Awaiting Review',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.blue[700],
+                    fontWeight: FontWeight.w600)),
+          );
+        case ProofStatus.approved:
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
+                const SizedBox(width: 3),
+                Text('Approved',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          );
+        case ProofStatus.not_required:
+          break;
+        case ProofStatus.rejected:
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cancel, size: 12, color: Colors.red[700]),
+                const SizedBox(width: 3),
+                Text('Rejected',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.red[700],
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          );
+      }
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text('Active Task',
+          style: TextStyle(
+              fontSize: 11,
+              color: Colors.orange[700],
+              fontWeight: FontWeight.w600)),
+    );
+  }
+
+  Widget _buildPendingActions(AccountabilityTask task) {
+    if (task.proofStatus == ProofStatus.submitted) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: null,
+          icon: const Icon(Icons.hourglass_empty, size: 16),
+          label: const Text('Awaiting Review'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.blue[400],
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          final ok = await PhotoProofSheet.show(
+            context: context,
+            taskId: task.id,
+            taskName: task.title,
+            date: DateTime.now(),
+          );
+          if (ok == true && context.mounted) {
+            context
+                .read<AccountabilityBloc>()
+                .add(LoadAccountabilityData());
+          }
+        },
+        icon: const Icon(Icons.check, size: 16),
+        label: Text(task.proofStatus == ProofStatus.rejected
+            ? 'Resubmit'
+            : 'Mark Complete'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );

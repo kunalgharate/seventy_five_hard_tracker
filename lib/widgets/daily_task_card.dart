@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
-import 'package:seventy_five_hard_tracker/features/ai_accountability/presentation/screens/ai_companion_screen.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/main.dart';
+import 'package:seventy_five_hard_tracker/models/collaborator.dart';
+import 'package:seventy_five_hard_tracker/widgets/collaborator_dialog.dart';
 import 'apple_checkbox.dart';
 import 'challenge_icon_widget.dart';
 import 'reminder_bottom_sheet.dart';
@@ -24,14 +26,17 @@ class DailyTaskCard extends StatefulWidget {
   /// When set, only that person can check it — owner sees a lock icon instead.
   final String? accountablePartnerUid;
 
-  /// Optional callback to remove this challenge from the active session.
-  final VoidCallback? onRemove;
-
-  /// Called after a partner is successfully assigned to this task.
-  final VoidCallback? onPartnerAssigned;
-
   /// Display name of the accountability partner assigned to this task.
   final String? partnerName;
+
+  /// Current proof status for this task (only relevant when partner is assigned).
+  final ProofStatus? proofStatus;
+
+  /// Called when the accountable partner wants to submit photo proof.
+  final VoidCallback? onSubmitProof;
+
+  /// Called when the task owner wants to review submitted proof.
+  final VoidCallback? onReviewProof;
 
   const DailyTaskCard({
     super.key,
@@ -42,9 +47,10 @@ class DailyTaskCard extends StatefulWidget {
     this.onReminderUpdate,
     this.dayNumber,
     this.accountablePartnerUid,
-    this.onRemove,
-    this.onPartnerAssigned,
     this.partnerName,
+    this.proofStatus,
+    this.onSubmitProof,
+    this.onReviewProof,
   });
 
   @override
@@ -58,6 +64,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   late Animation<double> _scaleAnimation;
   late Animation<double> _pulseAnimation;
   OverlayEntry? _activeOverlayEntry;
+  List<Collaborator> _collaborators = [];
 
   @override
   void initState() {
@@ -93,6 +100,16 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     } else if (widget.isEditable) {
       _pulseController.repeat(reverse: true);
     }
+    _loadCollaborators();
+  }
+
+  Future<void> _loadCollaborators() async {
+    final result =
+        await AccountabilityService().getTaskCollaborators(widget.challenge.id);
+    if (!mounted) return;
+    setState(() {
+      _collaborators = result?.collaborators ?? [];
+    });
   }
 
   @override
@@ -121,137 +138,15 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     super.dispose();
   }
 
-  void _onMenuSelected(String value) {
-    if (value == 'ai') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AiCompanionScreen(
-            taskName: widget.challenge.title,
-            taskCompleted: widget.isCompleted,
-          ),
-        ),
-      );
-    } else if (value == 'human') {
-      _showHumanPartnerPicker();
-    } else if (value == 'remove') {
-      if (widget.onRemove == null) return;
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Remove Task?'),
-          content: Text(
-              'Remove "${widget.challenge.title}" from your active challenge?'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
-                Navigator.pop(context);
-                widget.onRemove!();
-              },
-              child:
-                  const Text('Remove', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  Future<void> _showHumanPartnerPicker() async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    final accepted =
-        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
-
-    if (!mounted) return;
-
-    if (accepted.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No accepted partners yet. Invite someone first.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
+  Future<void> _showCollaboratorDialog() async {
+    final changed = await CollaboratorDialog.show(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Assign to Partner',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(
-                'Who should be held accountable for "${widget.challenge.title}"?',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 16),
-            ...accepted.map((p) => ListTile(
-                  leading:
-                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
-                  title: Text(p.partnerName,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(p.role.label),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    // The accountable person is whoever is NOT the current user
-                    final myUid = AccountabilityService().currentUid;
-                    final otherUid =
-                        p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
-                    if (otherUid == null) return;
-                    final messenger = ScaffoldMessenger.of(context);
-                    final taskTitle = widget.challenge.title;
-                    final partnerName = p.partnerName;
-
-                    // Create the accountability task in Firestore
-                    final task =
-                        await AccountabilityService().createAccountabilityTask(
-                      accountableUid: otherUid,
-                      accountableName: partnerName,
-                      partnershipId: p.id,
-                      title: taskTitle,
-                      description: 'Daily challenge task from 75 Hard',
-                      challengeId: widget.challenge.id,
-                    );
-
-                    messenger.showSnackBar(SnackBar(
-                      content: Text(task != null
-                          ? '👥 "$taskTitle" assigned to $partnerName'
-                          : 'Failed to assign task. Try again.'),
-                      backgroundColor: task != null ? Colors.green : Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                    ));
-                    if (task != null) widget.onPartnerAssigned?.call();
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      taskId: widget.challenge.id,
+      taskName: widget.challenge.title,
     );
+    if (changed == true) {
+      _loadCollaborators();
+    }
   }
 
   void _showGenericReminderSetup() {
@@ -357,7 +252,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             ),
           GlassmorphicContainer(
             width: double.infinity,
-            height: 80,
+            height: 100,
             borderRadius: 16,
             blur: 20,
             alignment: Alignment.bottomCenter,
@@ -406,6 +301,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   Widget _buildCardContent() {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final hasPartner = widget.accountablePartnerUid != null &&
+        widget.accountablePartnerUid!.isNotEmpty;
+    final iAmAccountable = !hasPartner || widget.accountablePartnerUid == myUid;
+
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: 14, vertical: 8), // Optimized padding
@@ -416,11 +316,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           _buildCompletionWidget(),
           const SizedBox(width: 12),
 
-          // Challenge Icon
+          // Challenge Icon — also respects partner assignment permissions
           AnimatedChallengeIcon(
             challenge: widget.challenge,
             size: 44,
-            onTap: widget.isEditable
+            onTap: (widget.isEditable && iAmAccountable)
                 ? () => widget.onToggle(!widget.isCompleted)
                 : null,
           ),
@@ -452,6 +352,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (_collaborators.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  _buildCollaboratorAvatars(),
+                ],
                 const SizedBox(height: 3),
                 Text(
                   _getStatusText(),
@@ -472,46 +376,39 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             ),
           ),
 
-          // Reminder icon (right)
+          // Reminder icon
           if (widget.isEditable && !widget.challenge.isReminderEnabled)
             IconButton(
               onPressed: _showGenericReminderSetup,
-              icon: Icon(
-                Icons.alarm_add,
-                color: Colors.grey[600],
-                size: 20,
-              ),
-              padding: const EdgeInsets.all(6),
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.alarm_add, color: Colors.grey[500], size: 18),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               tooltip: 'Set Reminder',
             ),
 
-          // ⋮ menu
+          // Collaborator icon (Google Keep style)
           if (widget.isEditable)
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: Colors.grey[500], size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              onSelected: _onMenuSelected,
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'ai',
-                  child: Row(children: [
-                    Text('🤖', style: TextStyle(fontSize: 18)),
-                    SizedBox(width: 10),
-                    Text('AI Accountability'),
-                  ]),
-                ),
-                const PopupMenuItem(
-                  value: 'human',
-                  child: Row(children: [
-                    Text('👥', style: TextStyle(fontSize: 18)),
-                    SizedBox(width: 10),
-                    Text('Human Partner'),
-                  ]),
-                ),
-              ],
+            IconButton(
+              onPressed: _showCollaboratorDialog,
+              icon: Icon(
+                _collaborators.isNotEmpty
+                    ? Icons.person_add_alt_1
+                    : Icons.person_add_alt_1_outlined,
+                color: _collaborators.isNotEmpty
+                    ? AppColors.primary
+                    : Colors.grey[500],
+                size: 20,
+              ),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              tooltip: 'Manage Collaborators',
             ),
+
+          // Photo proof button (only for tasks with a partner)
+          if (widget.isEditable &&
+              widget.accountablePartnerUid != null &&
+              widget.accountablePartnerUid!.isNotEmpty)
+            _buildProofButton(),
         ],
       ),
     );
@@ -569,7 +466,123 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     );
   }
 
+  Widget _buildCollaboratorAvatars() {
+    const avatarSize = 22.0;
+    const overlap = 8.0;
+    final displayList = _collaborators.take(5).toList();
+    final extraCount = _collaborators.length - displayList.length;
+
+    return SizedBox(
+      height: avatarSize,
+      child: Stack(
+        children: [
+          for (int i = 0; i < displayList.length; i++)
+            Positioned(
+              left: i * (avatarSize - overlap),
+              child: CollaboratorDialog.buildAvatar(displayList[i],
+                  size: avatarSize),
+            ),
+          if (extraCount > 0)
+            Positioned(
+              left: displayList.length * (avatarSize - overlap),
+              child: Container(
+                width: avatarSize,
+                height: avatarSize,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '+$extraCount',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofButton() {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final isPartner = widget.accountablePartnerUid == myUid;
+    final status = widget.proofStatus;
+
+    // Task owner — review pending proof
+    if (!isPartner && status == ProofStatus.submitted) {
+      return IconButton(
+        onPressed: widget.onReviewProof,
+        icon: Icon(Icons.rate_review_outlined,
+            color: Colors.orange[600], size: 20),
+        padding: const EdgeInsets.all(4),
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        tooltip: 'Review Photo Proof',
+      );
+    }
+
+    // Task owner — proof approved
+    if (!isPartner && status == ProofStatus.approved) {
+      return Icon(Icons.verified, color: Colors.green[600], size: 22);
+    }
+
+    // Partner — submitted, awaiting review
+    if (isPartner && status == ProofStatus.submitted) {
+      return Icon(Icons.hourglass_bottom,
+          color: Colors.orange[600], size: 20);
+    }
+
+    // Partner — approved
+    if (isPartner && status == ProofStatus.approved) {
+      return Icon(Icons.check_circle, color: Colors.green[600], size: 22);
+    }
+
+    // Partner — rejected, can resubmit
+    if (isPartner && status == ProofStatus.rejected) {
+      return IconButton(
+        onPressed: widget.onSubmitProof,
+        icon: Icon(Icons.camera_alt, color: Colors.red[400], size: 20),
+        padding: const EdgeInsets.all(4),
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        tooltip: 'Resubmit Photo Proof',
+      );
+    }
+
+    // Partner — no proof yet
+    if (isPartner) {
+      return IconButton(
+        onPressed: widget.onSubmitProof,
+        icon: Icon(Icons.camera_alt_outlined,
+            color: Colors.grey[500], size: 20),
+        padding: const EdgeInsets.all(4),
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        tooltip: 'Submit Photo Proof',
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   String _getStatusText() {
+    final status = widget.proofStatus;
+    if (status != null && status != ProofStatus.not_required) {
+      switch (status) {
+        case ProofStatus.submitted:
+          return 'Proof submitted — awaiting review';
+        case ProofStatus.approved:
+          return 'Proof approved ✓';
+        case ProofStatus.rejected:
+          return 'Proof was rejected — resubmit';
+        default:
+          break;
+      }
+    }
+
     if (widget.isCompleted) {
       return 'Completed ✓';
     }

@@ -24,6 +24,28 @@ extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
       );
 }
 
+enum ProofStatus { not_required, submitted, approved, rejected }
+
+extension ProofStatusExtension on ProofStatus {
+  String get label {
+    switch (this) {
+      case ProofStatus.not_required:
+        return 'Not Required';
+      case ProofStatus.submitted:
+        return 'Proof Submitted';
+      case ProofStatus.approved:
+        return 'Approved';
+      case ProofStatus.rejected:
+        return 'Rejected';
+    }
+  }
+
+  static ProofStatus fromString(String v) => ProofStatus.values.firstWhere(
+        (e) => e.name == v,
+        orElse: () => ProofStatus.not_required,
+      );
+}
+
 /// A task assigned by one user to an accountability partner.
 /// Stored in Firestore `accountability_tasks/{id}`.
 class AccountabilityTask extends Equatable {
@@ -55,6 +77,13 @@ class AccountabilityTask extends Equatable {
   final DateTime assignedAt;
   final DateTime? completedAt;
 
+  // ── Photo proof fields ──
+  final ProofStatus proofStatus;
+  final String? proofUrl;
+  final String? proofReviewComment;
+  final DateTime? proofSubmittedAt;
+  final DateTime? proofReviewedAt;
+
   const AccountabilityTask({
     required this.id,
     required this.assignedByUid,
@@ -69,12 +98,20 @@ class AccountabilityTask extends Equatable {
     this.dueDate,
     required this.assignedAt,
     this.completedAt,
+    this.proofStatus = ProofStatus.not_required,
+    this.proofUrl,
+    this.proofReviewComment,
+    this.proofSubmittedAt,
+    this.proofReviewedAt,
   });
 
   bool get isCompleted => status == AccountabilityTaskStatus.completed;
   bool get isPending => status == AccountabilityTaskStatus.pending;
   bool get isRequested => status == AccountabilityTaskStatus.requested;
   bool get isDeclined => status == AccountabilityTaskStatus.declined;
+  bool get hasProofSubmitted => proofStatus == ProofStatus.submitted;
+  bool get hasProofApproved => proofStatus == ProofStatus.approved;
+  bool get hasProofRejected => proofStatus == ProofStatus.rejected;
 
   AccountabilityTask copyWith({
     AccountabilityTaskStatus? status,
@@ -83,6 +120,11 @@ class AccountabilityTask extends Equatable {
     String? description,
     DateTime? dueDate,
     String? challengeId,
+    ProofStatus? proofStatus,
+    String? proofUrl,
+    String? proofReviewComment,
+    DateTime? proofSubmittedAt,
+    DateTime? proofReviewedAt,
   }) =>
       AccountabilityTask(
         id: id,
@@ -98,6 +140,11 @@ class AccountabilityTask extends Equatable {
         dueDate: dueDate ?? this.dueDate,
         assignedAt: assignedAt,
         completedAt: completedAt ?? this.completedAt,
+        proofStatus: proofStatus ?? this.proofStatus,
+        proofUrl: proofUrl ?? this.proofUrl,
+        proofReviewComment: proofReviewComment ?? this.proofReviewComment,
+        proofSubmittedAt: proofSubmittedAt ?? this.proofSubmittedAt,
+        proofReviewedAt: proofReviewedAt ?? this.proofReviewedAt,
       );
 
   static DateTime? _parseDate(dynamic v) {
@@ -130,6 +177,12 @@ class AccountabilityTask extends Equatable {
         dueDate: _parseDate(d['dueDate']),
         assignedAt: _parseDateRequired(d['assignedAt']),
         completedAt: _parseDate(d['completedAt']),
+        proofStatus: ProofStatusExtension.fromString(
+            d['proofStatus'] as String? ?? 'not_required'),
+        proofUrl: d['proofUrl'] as String?,
+        proofReviewComment: d['proofReviewComment'] as String?,
+        proofSubmittedAt: _parseDate(d['proofSubmittedAt']),
+        proofReviewedAt: _parseDate(d['proofReviewedAt']),
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -147,6 +200,13 @@ class AccountabilityTask extends Equatable {
         'assignedAt': FieldValue.serverTimestamp(),
         'completedAt':
             completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+        'proofStatus': proofStatus.name,
+        'proofUrl': proofUrl,
+        'proofReviewComment': proofReviewComment,
+        'proofSubmittedAt':
+            proofSubmittedAt != null ? Timestamp.fromDate(proofSubmittedAt!) : null,
+        'proofReviewedAt':
+            proofReviewedAt != null ? Timestamp.fromDate(proofReviewedAt!) : null,
       };
 
   @override
@@ -162,5 +222,10 @@ class AccountabilityTask extends Equatable {
         dueDate,
         assignedAt,
         completedAt,
+        proofStatus,
+        proofUrl,
+        proofReviewComment,
+        proofSubmittedAt,
+        proofReviewedAt,
       ];
 }

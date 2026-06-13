@@ -17,6 +17,11 @@ import 'package:seventy_five_hard_tracker/core/utils/regular_task_stats.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/models/collaborator.dart';
+import 'package:seventy_five_hard_tracker/widgets/collaborator_dialog.dart';
+import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
+import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 
 class RegularTasksScreen extends StatefulWidget {
   const RegularTasksScreen({super.key});
@@ -27,6 +32,8 @@ class RegularTasksScreen extends StatefulWidget {
 
 class _RegularTasksScreenState extends State<RegularTasksScreen> {
   Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
+  final Map<String, List<Collaborator>> _taskCollaborators = {}; // taskId → collaborators
+  Map<String, ProofStatus> _proofStatuses = {}; // taskId → proofStatus
 
   @override
   void initState() {
@@ -67,9 +74,151 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
       partnerNames.putIfAbsent(cid, () => assignerName);
     });
 
-    if (mounted) {
-      setState(() => _assignedPartnerNames = partnerNames);
+    // Fetch proof statuses for all challenge IDs that have partners
+    final allCids = <String>{
+      ...challengeMap.keys,
+      ...accountableForMap.keys,
+    };
+    Map<String, ProofStatus> proofStatuses = {};
+    if (allCids.isNotEmpty) {
+      final batches = <List<String>>[];
+      var batch = <String>[];
+      for (final cid in allCids) {
+        batch.add(cid);
+        if (batch.length == 30) {
+          batches.add(batch);
+          batch = [];
+        }
+      }
+      if (batch.isNotEmpty) batches.add(batch);
+      for (final b in batches) {
+        final result = await svc.fetchProofStatusesForChallengeIds(b);
+        proofStatuses.addAll(result);
+      }
     }
+
+    if (mounted) {
+      setState(() {
+        _assignedPartnerNames = partnerNames;
+        _proofStatuses = proofStatuses;
+      });
+    }
+  }
+
+  Future<void> _loadCollaboratorsForTask(String taskId) async {
+    final result =
+        await AccountabilityService().getTaskCollaborators(taskId);
+    if (!mounted) return;
+    setState(() {
+      _taskCollaborators[taskId] = result?.collaborators ?? [];
+    });
+  }
+
+  Future<void> _showCollaboratorDialog(BuildContext context, RegularTask task) async {
+    final changed = await CollaboratorDialog.show(
+      context: context,
+      taskId: task.id,
+      taskName: task.title,
+    );
+    if (changed == true) {
+      _loadCollaboratorsForTask(task.id);
+    }
+  }
+
+  Future<void> _showHumanPartnerPicker(
+      BuildContext context, RegularTask task) async {
+    final partners = await AccountabilityService().fetchMyPartnerships();
+    final accepted =
+        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
+
+    if (!mounted) return;
+
+    if (accepted.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No accepted partners yet. Invite someone first.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Assign to Partner',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(
+                'Who should be held accountable for "${task.title}"?',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            const SizedBox(height: 16),
+            ...accepted.map((p) => ListTile(
+                  leading:
+                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
+                  title: Text(p.partnerName,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(p.role.label),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final myUid = AccountabilityService().currentUid;
+                    final otherUid =
+                        p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
+                    if (otherUid == null) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    final taskTitle = task.title;
+                    final partnerName = p.partnerName;
+
+                    final accountabilityTask =
+                        await AccountabilityService().createAccountabilityTask(
+                      accountableUid: otherUid,
+                      accountableName: partnerName,
+                      partnershipId: p.id,
+                      title: taskTitle,
+                      description: 'Regular task from Daily Mettle',
+                      challengeId: task.id,
+                    );
+
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(accountabilityTask != null
+                          ? '"$taskTitle" assigned to $partnerName'
+                          : 'Failed to assign task. Try again.'),
+                      backgroundColor: accountabilityTask != null
+                          ? Colors.green
+                          : Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                    if (accountabilityTask != null) {
+                      _loadAssignedPartners();
+                    }
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -177,8 +326,12 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               final isCompleted = todayCompletions[task.id] ?? false;
               final stats =
                   calculateRegularTaskStats(task.id, recentCompletions);
+              if (!_taskCollaborators.containsKey(task.id)) {
+                _loadCollaboratorsForTask(task.id);
+              }
               return _buildTaskItem(context, task, isCompleted, stats,
-                  partnerName: _assignedPartnerNames[task.id]);
+                  partnerName: _assignedPartnerNames[task.id],
+                  collaborators: _taskCollaborators[task.id] ?? []);
             },
           ),
         ),
@@ -192,6 +345,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     bool isCompleted,
     RegularTaskStats stats, {
     String? partnerName,
+    List<Collaborator> collaborators = const [],
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -280,7 +434,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                               ),
                             ],
                           ),
-                          if (partnerName != null &&
+                          if (collaborators.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            _buildCollaboratorAvatars(collaborators),
+                          ] else if (partnerName != null &&
                               partnerName.isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Row(
@@ -302,52 +459,164 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                         ],
                       ),
                     ),
-                    // Menu
-                    PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert,
-                          size: 18, color: Colors.grey[400]),
-                      padding: EdgeInsets.zero,
+                    // Collaborator icon (Google Keep style)
+                    IconButton(
+                      onPressed: () => _showCollaboratorDialog(context, task),
+                      icon: Icon(
+                        collaborators.isNotEmpty
+                            ? Icons.person_add_alt_1
+                            : Icons.person_add_alt_1_outlined,
+                        color: collaborators.isNotEmpty
+                            ? const Color(0xFFFFA726)
+                            : Colors.grey[500],
+                        size: 20,
+                      ),
+                      padding: const EdgeInsets.all(4),
                       constraints:
                           const BoxConstraints(minWidth: 28, minHeight: 28),
-                      position: PopupMenuPosition.under,
+                      tooltip: 'Manage Collaborators',
+                    ),
+
+                    // Three-dot menu
+                    PopupMenuButton<String>(
                       onSelected: (value) {
-                        if (value == 'edit') {
-                          _showEditTaskSheet(context, task);
-                        } else if (value == 'delete') {
+                        if (value == 'remove') {
                           _showDeleteConfirmation(context, task);
                         }
                       },
-                      itemBuilder: (context) => [
+                      icon: Icon(Icons.more_vert,
+                          color: Colors.grey[500], size: 20),
+                      padding: const EdgeInsets.all(4),
+                      constraints:
+                          const BoxConstraints(minWidth: 28, minHeight: 28),
+                      itemBuilder: (_) => [
                         const PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit_outlined, size: 18),
-                              SizedBox(width: 8),
-                              Text('Edit Task'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
+                          value: 'remove',
                           child: Row(
                             children: [
                               Icon(Icons.delete_outline,
-                                  size: 18, color: Colors.red),
+                                  color: Colors.red, size: 18),
                               SizedBox(width: 8),
-                              Text('Delete Task',
+                              Text('Remove Task',
                                   style: TextStyle(color: Colors.red)),
                             ],
                           ),
                         ),
                       ],
                     ),
+
+                    // Photo proof button (only for tasks with a partner)
+                    if (_assignedPartnerNames.containsKey(task.id))
+                      _buildProofButton(context, task),
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProofButton(BuildContext context, RegularTask task) {
+    final status = _proofStatuses[task.id] ?? ProofStatus.not_required;
+
+    if (status == ProofStatus.not_required) return const SizedBox.shrink();
+
+    switch (status) {
+      case ProofStatus.submitted:
+        // Anyone can see the review button; only the owner can act on it
+        return IconButton(
+          onPressed: () => _reviewProof(task),
+          icon: Icon(Icons.rate_review_outlined,
+              color: Colors.orange[600], size: 20),
+          padding: const EdgeInsets.all(4),
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: 'Review Photo Proof',
+        );
+      case ProofStatus.approved:
+        return Icon(Icons.verified, color: Colors.green[600], size: 22);
+      case ProofStatus.rejected:
+        return IconButton(
+          onPressed: () => _submitProof(task),
+          icon: Icon(Icons.camera_alt, color: Colors.red[400], size: 20),
+          padding: const EdgeInsets.all(4),
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: 'Resubmit Photo Proof',
+        );
+      case ProofStatus.not_required:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Future<void> _submitProof(RegularTask task) async {
+    final svc = AccountabilityService();
+    final taskId = await svc.fetchTaskIdByChallengeId(task.id);
+    if (taskId == null) return;
+
+    if (!mounted) return;
+    final result = await PhotoProofSheet.show(
+      context: context,
+      taskId: taskId,
+      taskName: task.title,
+      date: DateTime.now(),
+    );
+    if (result == true) {
+      _loadAssignedPartners();
+    }
+  }
+
+  Future<void> _reviewProof(RegularTask task) async {
+    final svc = AccountabilityService();
+    final accountabilityTask = await svc.fetchTaskByChallengeId(task.id);
+    if (accountabilityTask == null) return;
+
+    if (!mounted) return;
+    final result = await ProofReviewDialog.show(context, accountabilityTask);
+    if (result == true) {
+      _loadAssignedPartners();
+    }
+  }
+
+  Widget _buildCollaboratorAvatars(List<Collaborator> collaborators) {
+    const avatarSize = 20.0;
+    const overlap = 7.0;
+    final displayList = collaborators.take(5).toList();
+    final extraCount = collaborators.length - displayList.length;
+
+    return SizedBox(
+      height: avatarSize,
+      child: Stack(
+        children: [
+          for (int i = 0; i < displayList.length; i++)
+            Positioned(
+              left: i * (avatarSize - overlap),
+              child: CollaboratorDialog.buildAvatar(displayList[i],
+                  size: avatarSize),
+            ),
+          if (extraCount > 0)
+            Positioned(
+              left: displayList.length * (avatarSize - overlap),
+              child: Container(
+                width: avatarSize,
+                height: avatarSize,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '+$extraCount',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -451,6 +720,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               onTap: () {
                 Navigator.pop(sheetContext);
                 _showEditTaskSheet(context, task);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('Assign to Partner'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showHumanPartnerPicker(context, task);
               },
             ),
             ListTile(
