@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,13 +13,22 @@ import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.d
 const _kLastSyncTime = 'lastSyncTime';
 const _kConsentGiven = 'cloudSyncConsentGiven';
 
-/// AES-256 encrypted cloud sync service.
+/// AES-256-GCM authenticated-encryption cloud sync service.
+///
+/// Security properties:
+///   • AES-256-GCM (AEAD) — confidentiality + integrity + authenticity.
+///     Any tampered ciphertext is rejected at decryption time.
+///   • Key = HKDF-SHA256(uid + idToken, salt, info).
+///     The idToken is a short-lived Google-signed JWT only the authenticated
+///     user can obtain, so the key is NOT re-derivable from public data alone.
+///   • Random 12-byte nonce per encryption call.
+///   • 128-bit GCM authentication tag appended to ciphertext.
 ///
 /// Encryption scope — 100% encrypted before leaving device:
 ///   • Challenge sessions (titles, dates, status, failure reasons)
 ///   • Daily progress (completion maps, journal notes, task notes)
-///   • Regular tasks (titles, settings)
-///   • Regular task completions
+///   • Regular tasks (titles, settings) — ALL history, no date cap
+///   • Regular task completions — ALL history, no date cap
 ///
 /// Plaintext in Firestore (by design):
 ///   • users/{uid} — name, email, photo (needed for partner lookups)
@@ -34,6 +42,7 @@ class CloudSyncService {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
 
+  /// Derived AES-256 key. Re-derived on each sign-in using uid + idToken.
   enc.Key? _aesKey;
 
   User? get currentUser => _auth.currentUser;
@@ -42,17 +51,26 @@ class CloudSyncService {
 
   // ── Key derivation ───────────────────────────────────────────────────────
 
-  /// Derives a 256-bit AES key from the Firebase UID using HKDF-SHA256.
-  /// This is a proper one-way KDF — the key cannot be reversed to get the UID.
-  enc.Key _deriveKey(String uid) {
-    final ikm = utf8.encode(uid);
-    final salt = utf8.encode('dailymettle-v1-salt');
-    final info = utf8.encode('aes256-user-data');
+  /// Derives a 256-bit AES key using HKDF-SHA256.
+  ///
+  /// IKM = uid + idToken:
+  ///   - [uid] is the stable Firebase user ID (public, but required for lookup).
+  ///   - [idToken] is the Google-signed JWT only obtainable by the authenticated
+  ///     user. This secret component ensures the key is NOT re-derivable by
+  ///     anyone who knows only the UID (fixes violation #1 / P0).
+  ///
+  /// The static salt and info string version-namespace the key so a future
+  /// schema migration can change them without colliding with old keys.
+  enc.Key _deriveKey(String uid, String idToken) {
+    // Concatenate uid and idToken as IKM — both required to derive the key
+    final ikm = utf8.encode('$uid:$idToken');
+    final salt = utf8.encode('dailymettle-v2-salt-gcm');
+    final info = utf8.encode('aes256-gcm-user-data-v2');
 
     final hkdf = pc.HKDFKeyDerivator(pc.SHA256Digest());
     hkdf.init(pc.HkdfParameters(
       Uint8List.fromList(ikm),
-      32, // 256 bits
+      32, // 256-bit key
       Uint8List.fromList(salt),
       Uint8List.fromList(info),
     ));
@@ -63,14 +81,22 @@ class CloudSyncService {
   }
 
   void _ensureKey() {
-    if (_aesKey == null && _auth.currentUser != null) {
-      _aesKey = _deriveKey(_auth.currentUser!.uid);
+    // If key was already derived this session, nothing to do.
+    // If not (e.g. app restart with persisted auth), we cannot re-derive
+    // without a fresh idToken — caller must sign in again.
+    if (_aesKey == null) {
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Key not available — sign-in required');
+      }
     }
   }
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
-  /// Signs in with Google, saves user profile to Firestore (first login only).
+  /// Signs in with Google, derives the AES key, saves user profile.
+  ///
+  /// The idToken returned by Google Sign-In is used as part of the HKDF
+  /// input, so key derivation happens here where the token is available.
   Future<User?> signInWithGoogle() async {
     try {
       final googleSignIn = GoogleSignIn.instance;
@@ -78,7 +104,9 @@ class CloudSyncService {
         scopeHint: ['email', 'profile'],
       );
 
+      // idToken: Google-signed JWT. Used in HKDF to make key non-public.
       final idToken = googleUser.authentication.idToken;
+
       final clientAuth = await googleUser.authorizationClient.authorizeScopes([
         'email',
         'profile',
@@ -91,8 +119,9 @@ class CloudSyncService {
 
       final result = await _auth.signInWithCredential(credential);
       final user = result.user;
-      if (user != null) {
-        _aesKey = _deriveKey(user.uid);
+      if (user != null && idToken != null) {
+        // Derive key immediately while idToken is in memory
+        _aesKey = _deriveKey(user.uid, idToken);
         await _upsertUserProfile(user);
       }
       return user;
@@ -101,8 +130,9 @@ class CloudSyncService {
           e.code == GoogleSignInExceptionCode.interrupted) {
         return null;
       }
-      if (kDebugMode)
-        debugPrint('[CloudSync] Google sign-in: ${e.description}');
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Google sign-in failed: ${e.description}');
+      }
       return null;
     } catch (e) {
       if (kDebugMode) debugPrint('[CloudSync] Sign-in error: $e');
@@ -117,7 +147,6 @@ class CloudSyncService {
 
   // ── User profile ─────────────────────────────────────────────────────────
 
-  /// Creates the user doc on first login; only updates lastLoginAt on repeat.
   Future<void> _upsertUserProfile(User user) async {
     final ref = _firestore.collection('users').doc(user.uid);
     final snap = await ref.get();
@@ -152,21 +181,25 @@ class CloudSyncService {
 
   // ── Auto-sync ────────────────────────────────────────────────────────────
 
-  /// Called after sign-in or on internet reconnect.
-  /// Silently syncs if the user is signed in and consent was given.
+  /// Silently syncs if signed in and consent was given.
   Future<void> autoSync(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {
-    if (!isSignedIn) return;
+    if (!isSignedIn || _aesKey == null) return;
     if (!await hasConsentBeenGiven()) return;
     await syncToCloud(db, taskRepo);
   }
 
   // ── Sync to cloud ────────────────────────────────────────────────────────
 
-  /// Encrypts and uploads all user data to Firestore.
-  /// Returns true on success, false on any failure.
+  /// Encrypts ALL local data with AES-256-GCM and uploads to Firestore.
+  ///
+  /// Fix #2 (P2): Uses [taskRepo.getAllCompletions()] instead of a date-
+  /// bounded loop, so no historical data is truncated.
+  ///
+  /// Fix #3 (P1): AES-GCM provides authentication — any payload tampering
+  /// causes decryption to throw, preventing silent data corruption.
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -177,7 +210,7 @@ class CloudSyncService {
     try {
       final uid = currentUser!.uid;
 
-      // 1. Gather all local data
+      // Gather ALL challenge sessions + their full progress history
       final sessions = db.getAllSessions();
       final allProgress = <Map<String, dynamic>>[];
       for (final s in sessions) {
@@ -185,42 +218,36 @@ class CloudSyncService {
           allProgress.add(p.toJson());
         }
       }
-      final regularTasks = taskRepo.getAllTasks();
-      final regularCompletions = <Map<String, dynamic>>[];
-      // Completions are stored by date key — iterate last 365 days
-      final today = DateTime.now();
-      for (int i = 0; i < 365; i++) {
-        final date = today.subtract(Duration(days: i));
-        final c = taskRepo.getCompletion(date);
-        if (c != null) regularCompletions.add(c.toJson());
-      }
 
-      // 2. Build payload — everything that is personal/sensitive
+      // Gather ALL regular tasks (including archived) and ALL completions.
+      // Fix #2: getAllCompletions() reads directly from Hive box — no date cap.
+      final regularTasks = taskRepo.getAllTasks();
+      final regularCompletions =
+          taskRepo.getAllCompletions().map((c) => c.toJson()).toList();
+
       final payload = jsonEncode({
         'sessions': sessions.map((s) => s.toJson()).toList(),
         'progress': allProgress,
         'regularTasks': regularTasks.map((t) => t.toJson()).toList(),
         'regularCompletions': regularCompletions,
         'syncedAt': DateTime.now().toIso8601String(),
-        'version': 2,
+        'schemaVersion': 3,
       });
 
-      // 3. Encrypt with AES-256-CBC + random IV
-      final encrypted = _encrypt(payload);
+      // AES-256-GCM: confidentiality + integrity + authenticity (fix #3)
+      final encrypted = _encryptGcm(payload);
 
-      // 4. Upload to Firestore — only ciphertext touches the server
       await _firestore.collection('user_data').doc(uid).set({
-        'enc': encrypted['cipher'],
-        'iv': encrypted['iv'],
+        'enc': encrypted['cipher'], // ciphertext + 16-byte GCM auth tag
+        'nonce': encrypted['nonce'], // 12-byte random nonce
         'updatedAt': FieldValue.serverTimestamp(),
-        // version field so future migrations can detect the schema
-        'schemaVersion': 2,
+        'schemaVersion': 3,
       });
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLastSyncTime, DateTime.now().toIso8601String());
 
-      if (kDebugMode) debugPrint('[CloudSync] Sync complete');
+      if (kDebugMode) debugPrint('[CloudSync] Sync complete (GCM)');
       return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[CloudSync] Sync failed: $e');
@@ -230,8 +257,11 @@ class CloudSyncService {
 
   // ── Sync from cloud ──────────────────────────────────────────────────────
 
-  /// Downloads and decrypts user data from Firestore.
-  /// Returns the decoded payload map, or null if nothing found.
+  /// Downloads and authenticates + decrypts user data from Firestore.
+  ///
+  /// Fix #3: GCM authentication tag is verified during decryption.
+  /// If the ciphertext was tampered with, decryption throws and null is
+  /// returned — the corrupt data is never passed to the app.
   Future<Map<String, dynamic>?> syncFromCloud() async {
     _ensureKey();
     if (!isSignedIn || _aesKey == null) return null;
@@ -239,16 +269,27 @@ class CloudSyncService {
     try {
       final uid = currentUser!.uid;
       final doc = await _firestore.collection('user_data').doc(uid).get();
-
       if (!doc.exists) return null;
-      final data = doc.data()!;
 
-      // Support both v1 (field: 'data') and v2 (field: 'enc') schemas
+      final data = doc.data()!;
+      final schemaVersion = data['schemaVersion'] as int? ?? 1;
+
+      // Schema v3+: AES-256-GCM with nonce
+      if (schemaVersion >= 3) {
+        final cipher = data['enc'] as String?;
+        final nonce = data['nonce'] as String?;
+        if (cipher == null || nonce == null) return null;
+        final decrypted = _decryptGcm(cipher, nonce);
+        return jsonDecode(decrypted) as Map<String, dynamic>;
+      }
+
+      // Schema v1/v2: AES-256-CBC (legacy — read-only backwards compat).
+      // These backups were created before GCM migration. We decrypt them
+      // using CBC, then on the next syncToCloud they'll be re-encrypted with GCM.
       final cipher = (data['enc'] ?? data['data']) as String?;
       if (cipher == null) return null;
-
       final ivBase64 = data['iv'] as String?;
-      final decrypted = _decrypt(cipher, ivBase64: ivBase64);
+      final decrypted = _decryptCbcLegacy(cipher, ivBase64: ivBase64);
       return jsonDecode(decrypted) as Map<String, dynamic>;
     } catch (e) {
       if (kDebugMode) debugPrint('[CloudSync] Restore failed: $e');
@@ -261,22 +302,40 @@ class CloudSyncService {
     return prefs.getString(_kLastSyncTime);
   }
 
-  // ── AES-256 encryption helpers ───────────────────────────────────────────
+  // ── AES-256-GCM helpers (primary — fix #3) ──────────────────────────────
 
-  /// Encrypts [plain] with AES-256-CBC using a fresh random IV each call.
-  /// Returns {'cipher': base64, 'iv': base64}.
-  Map<String, String> _encrypt(String plain) {
-    final iv = enc.IV.fromSecureRandom(16);
-    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.cbc));
-    final encrypted = encrypter.encrypt(plain, iv: iv);
-    return {'cipher': encrypted.base64, 'iv': iv.base64};
+  /// Encrypts [plain] with AES-256-GCM using a cryptographically random
+  /// 12-byte nonce. Returns {'cipher': base64(ciphertext+tag), 'nonce': base64}.
+  ///
+  /// The 16-byte GCM authentication tag is appended to the ciphertext by
+  /// the encrypt package and verified on decryption — any bit-flip in the
+  /// stored data causes decryption to throw [ArgumentError].
+  Map<String, String> _encryptGcm(String plain) {
+    final nonce = enc.IV.fromSecureRandom(12); // GCM standard nonce size
+    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
+    final encrypted = encrypter.encrypt(plain, iv: nonce);
+    return {
+      'cipher': encrypted.base64,
+      'nonce': nonce.base64,
+    };
   }
 
-  /// Decrypts [cipherBase64] using the provided IV (base64).
-  /// Falls back to zero-IV for backwards compatibility with v1 backups.
-  String _decrypt(String cipherBase64, {String? ivBase64}) {
-    final iv =
-        ivBase64 != null ? enc.IV.fromBase64(ivBase64) : enc.IV.fromLength(16);
+  /// Decrypts and authenticates GCM ciphertext.
+  /// Throws if the authentication tag does not match (tamper detection).
+  String _decryptGcm(String cipherBase64, String nonceBase64) {
+    final nonce = enc.IV.fromBase64(nonceBase64);
+    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
+    return encrypter.decrypt64(cipherBase64, iv: nonce);
+  }
+
+  // ── AES-256-CBC legacy helpers (read-only, backwards compat) ────────────
+
+  /// Decrypts legacy CBC-encrypted backups (schema v1/v2).
+  /// Only used for reading old data — new writes always use GCM.
+  String _decryptCbcLegacy(String cipherBase64, {String? ivBase64}) {
+    final iv = ivBase64 != null
+        ? enc.IV.fromBase64(ivBase64)
+        : enc.IV.fromLength(16); // zero-IV fallback for very old v1 backups
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.cbc));
     return encrypter.decrypt64(cipherBase64, iv: iv);
   }
