@@ -72,7 +72,7 @@ dependencies:
   
   # Icons and Graphics
   flutter_svg: ^2.0.10+1
-  font_awesome_flutter: ^10.7.0
+  font_awesome_flutter: ^11.0.0
   
   # UI Enhancements
   glassmorphism: ^3.0.0
