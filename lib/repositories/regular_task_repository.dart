@@ -68,6 +68,12 @@ class RegularTaskRepository {
     return _completionsBox?.get(key);
   }
 
+  /// Returns ALL stored completions — used by cloud backup to avoid
+  /// the 365-day truncation bug that existed when iterating by date.
+  List<RegularTaskCompletion> getAllCompletions() {
+    return _completionsBox?.values.toList() ?? [];
+  }
+
   List<RegularTaskCompletion> getCompletionsInRange(
       DateTime start, DateTime end) {
     final normalizedStart = DateTime(start.year, start.month, start.day);

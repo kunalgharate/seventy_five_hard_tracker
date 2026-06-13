@@ -89,6 +89,7 @@ dependencies:
   
   # Encryption for cloud sync
   encrypt: ^5.0.3
+  pointycastle: ^3.9.1
   
   # Local storage
   shared_preferences: ^2.3.3

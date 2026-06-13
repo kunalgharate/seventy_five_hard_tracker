@@ -9,6 +9,9 @@ class RegularTaskBloc extends Bloc<RegularTaskEvent, RegularTaskState> {
   final RegularTaskRepository _repository;
   final SmartNotificationService _notifications;
 
+  /// Exposes the repository so services like CloudSyncService can read data.
+  RegularTaskRepository get repository => _repository;
+
   RegularTaskBloc({
     required RegularTaskRepository repository,
     required SmartNotificationService notifications,
