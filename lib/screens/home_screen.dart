@@ -40,7 +40,11 @@ class _HomeScreenState extends State<HomeScreen> {
       {}; // challengeId → accountableUid
   Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
   Map<String, ProofStatus> _proofStatuses = {}; // challengeId → proofStatus
+  Map<String, AccountabilityTaskStatus> _accountabilityStatuses =
+      {}; // challengeId → accountabilityStatus
   StreamSubscription<List<AccountabilityTask>>? _tasksAssignedByMeSub;
+  List<AccountabilityTask>? _latestAssignedTasks;
+  Timer? _assignedReloadDebounce;
 
   // Tracks previously known completed tasks to avoid re-triggering
   final Set<String> _previouslyCompletedTaskIds = {};
@@ -50,16 +54,28 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
     _loadAssignedChallenges();
-    // One-time cleanup: remove tasks accidentally assigned to self
-    AccountabilityService().cleanupSelfAssignedTasks();
+    // One-time cleanups
+    AccountabilityService()..cleanupSelfAssignedTasks()..migrateOrphanedAccountabilityTasks();
     // Subscribe to real-time streams
     _subscribeToStreams();
   }
 
   @override
   void dispose() {
+    _assignedReloadDebounce?.cancel();
     _tasksAssignedByMeSub?.cancel();
     super.dispose();
+  }
+
+  void _scheduleAssignedReload() {
+    _assignedReloadDebounce?.cancel();
+    _assignedReloadDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      if (_latestAssignedTasks != null) {
+        _syncCompletedTasks(_latestAssignedTasks!);
+      }
+      _loadAssignedChallenges();
+    });
   }
 
   void _subscribeToStreams() {
@@ -69,8 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Used to auto-sync completion back to my 75 Hard progress
     _tasksAssignedByMeSub = svc.assignedByMeStream().listen((tasks) {
       if (!mounted) return;
-      _syncCompletedTasks(tasks);
-      _loadAssignedChallenges();
+      _latestAssignedTasks = tasks;
+      _scheduleAssignedReload();
     });
   }
 
@@ -99,10 +115,12 @@ class _HomeScreenState extends State<HomeScreen> {
       svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
       svc.fetchMyPartnerships(),
       svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me)
+      svc.fetchMyAccountabilityTaskStatuses(), // challengeId → my accountability status
     ]);
     final challengeMap = results[0] as Map<String, String>;
     final partnerships = results[1] as List<AccountabilityPartner>;
     final accountableForMap = results[2] as Map<String, String>;
+    final accountabilityStatuses = results[3] as Map<String, AccountabilityTaskStatus>;
 
     // Build challengeId → partnerName for tasks I ASSIGNED
     final myUid = svc.currentUid;
@@ -160,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _assignedChallengeMap = challengeMap;
         _assignedPartnerNames = partnerNames;
         _proofStatuses = proofStatuses;
+        _accountabilityStatuses = accountabilityStatuses;
       });
     }
   }
@@ -479,12 +498,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDailyTasks(
       ChallengeSession session, List<DailyProgress> allProgress) {
+    // Clamp selected day to the session date range to avoid stale date state.
+    if (_selectedDay.isBefore(session.startDate)) {
+      _selectedDay = session.startDate;
+    }
     final selectedProgress =
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
 
     final isToday = _isSameDay(_selectedDay, DateTime.now());
-    final isFutureDate = _selectedDay.isAfter(DateTime.now());
-    final isBeforeStart = _selectedDay.isBefore(session.startDate);
+    final isFutureDate = _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
+    final isBeforeStart = _normalizeDate(_selectedDay).isBefore(_normalizeDate(session.startDate));
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -494,16 +517,21 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  DateFormat('EEEE, MMM d').format(_selectedDay),
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                Flexible(
+                  child: Text(
+                    DateFormat('EEEE, MMM d').format(_selectedDay),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (selectedProgress?.isCompleted == true)
-                  const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.check_circle, color: Colors.green, size: 32),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -553,8 +581,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _assignedChallengeMap[challenge.id],
                             partnerName: _assignedPartnerNames[challenge.id],
                             proofStatus: _proofStatuses[challenge.id],
+                            accountabilityStatus:
+                                _accountabilityStatuses[challenge.id],
                             onSubmitProof: () => _submitProof(challenge),
                             onReviewProof: () => _reviewProof(challenge),
+                            onViewProof: () => _viewProof(challenge),
                             onToggle: (completed) {
                               context.read<ChallengeBloc>().add(
                                     UpdateDailyProgress(
@@ -657,8 +688,10 @@ class _HomeScreenState extends State<HomeScreen> {
       taskName: challenge.title,
       date: _selectedDay,
     );
-    if (result == true) {
-      _loadAssignedChallenges();
+    if (result == true && mounted) {
+      setState(() {
+        _proofStatuses[challenge.id] = ProofStatus.submitted;
+      });
     }
   }
 
@@ -669,13 +702,73 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
     final result = await ProofReviewDialog.show(context, task);
-    if (result == true) {
-      _loadAssignedChallenges();
+    if (result == true && mounted) {
+      final updated = await svc.fetchTaskByChallengeId(challenge.id);
+      if (mounted && updated != null) {
+        setState(() {
+          _proofStatuses[challenge.id] = updated.proofStatus;
+          _accountabilityStatuses[challenge.id] = updated.status;
+        });
+      }
     }
+  }
+
+  Future<void> _viewProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final task = await svc.fetchTaskByChallengeId(challenge.id);
+    if (task == null || task.proofUrl == null) return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                task.proofUrl!,
+                fit: BoxFit.contain,
+                width: double.infinity,
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    height: 300,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (_, __, ___) => const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Column(
+                    children: [
+                      Icon(Icons.broken_image, size: 48, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('Failed to load image',
+                          style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
   }
 
   void _showResetDialog(ChallengeReset state) {

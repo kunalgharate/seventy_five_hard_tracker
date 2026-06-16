@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,40 +16,118 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
-Future<void> _handleGoogleSignIn() async {
-  setState(() => _isLoading = true);
-  try {
-    // We already initialized in main(), so just use the instance
-    final googleSignIn = GoogleSignIn.instance;
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final syncSvc = CloudSyncService();
 
-    // Start the sign-in flow directly
-    final GoogleSignInAccount? googleUser = await googleSignIn.authenticate();
-    
-    if (googleUser == null) {
-      setState(() => _isLoading = false);
-      return;
-    }
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
-    // Request Access Token
-    final clientAuth = await googleUser.authorizationClient.authorizeScopes([
-      'email', 
-      'profile',
-      'openid',
-    ]);
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
+      final user = await syncSvc.signInWithGoogle();
+      if (user == null) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        return;
+      }
 
-    final AuthCredential credential = GoogleAuthProvider.credential(
-      accessToken: clientAuth.accessToken,
-      idToken: googleUser.authentication.idToken,
-    );
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-    await FirebaseAuth.instance.signInWithCredential(credential);
+      // 4. Trigger initial sync (creates user_data/{uid})
+      if (mounted) {
+        try {
+          final db = context.read<ChallengeBloc>().repository;
+          final taskRepo = context.read<RegularTaskBloc>().repository;
+          await syncSvc.syncToCloud(db, taskRepo);
+        } catch (_) {}
+      }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    } on FirebaseAuthException catch (e) {
-      _showError(e.message ?? 'Auth failed');
+    } on GoogleSignInException catch (e) {
+      if (!mounted) return;
+      if (e.code != GoogleSignInExceptionCode.canceled &&
+          e.code != GoogleSignInExceptionCode.interrupted) {
+        _showError('Sign-in failed: ${e.description ?? e.code.name}');
+      }
+    } catch (e) {
+      if (mounted) _showError('Authentication error: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<bool> _showConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
+            SizedBox(width: 8),
+            Text('Cloud Backup'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Before enabling backup, here\'s what you need to know:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 12),
+            _ConsentPoint(
+              icon: Icons.lock_outline,
+              text:
+                  'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.key,
+              text:
+                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.visibility_off,
+              text:
+                  'We cannot read your data. The server stores only ciphertext.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.sync,
+              text:
+                  'Backup happens automatically in the background whenever you\'re online.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enable Backup'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   void _showError(String message) {
@@ -115,52 +195,37 @@ Future<void> _handleGoogleSignIn() async {
                     // ──────────────────────────────────────────────────────────
                     // GOOGLE SIGN-IN INTERACTION LAYER (CROSS-PLATFORM SAFE)
                     // ──────────────────────────────────────────────────────────
-                    if (kIsWeb)
-                      // 🌐 WEB ROUTE: Render the mandatory Google GIS JavaScript Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: Center(
-                          child: web.renderButton(
-                            configuration: web.GSIButtonConfiguration(
-                              type: web.GSIButtonType.standard,
-                              theme: web.GSIButtonTheme.filledBlue,
-                              size: web.GSIButtonSize.large,
-                              text: web.GSIButtonText.continueWith,
-                              shape: web.GSIButtonShape.rectangular,
-                            ),
+
+                    // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _handleGoogleSignIn,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                      )
-                    else
-                      // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _handleGoogleSignIn,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: _isLoading
-                              ? const SizedBox.shrink()
-                              : const Icon(Icons.login, size: 20),
-                          label: _isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
-                              : const Text(
-                                  'Continue with Google',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
+                        icon: _isLoading
+                            ? const SizedBox.shrink()
+                            : const Icon(Icons.login, size: 20),
+                        label: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
+                            : const Text(
+                                'Continue with Google',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
                                 ),
-                        ),
+                              ),
                       ),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -169,6 +234,29 @@ Future<void> _handleGoogleSignIn() async {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Helper widget for consent dialog points ──────────────────────────────────
+
+class _ConsentPoint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ConsentPoint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.green[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
+        ),
+      ],
     );
   }
 }

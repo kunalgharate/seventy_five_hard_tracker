@@ -402,7 +402,8 @@ class AccountabilityService {
 
   /// Ensure an accepted partnership exists with [otherUid].
   /// Creates one if none is found. Returns the partnership ID or null.
-  Future<String?> ensurePartnership(String otherUid, String otherName) async {
+  Future<String?> ensurePartnership(String otherUid, String otherName,
+      {String? type}) async {
     if (!_isReady) return null;
     try {
       final existing = await findAcceptedPartnership(otherUid);
@@ -731,6 +732,7 @@ class AccountabilityService {
     String? description,
     DateTime? dueDate,
     String? challengeId,
+    List<String>? accountableUserIds,
   }) async {
     if (!_isReady) return null;
     try {
@@ -748,6 +750,7 @@ class AccountabilityService {
         status: AccountabilityTaskStatus.requested,
         dueDate: dueDate,
         assignedAt: DateTime.now(),
+        accountableUserIds: accountableUserIds ?? [accountableUid],
       );
       await ref.set(task.toFirestore());
       if (kDebugMode) {
@@ -833,6 +836,39 @@ class AccountabilityService {
     }
   }
 
+  /// Returns Map<challengeId, AccountabilityTaskStatus> for tasks where
+  /// the current user is the accountable person. Used to show status chips.
+  Future<Map<String, AccountabilityTaskStatus>> fetchMyAccountabilityTaskStatuses() async {
+    if (!_isReady) return {};
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUid', isEqualTo: currentUid!)
+          .get();
+      final map = <String, AccountabilityTaskStatus>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final cid = data['challengeId'] as String?;
+        final status = AccountabilityTaskStatusExtension.fromString(
+            data['status'] as String? ?? 'pending');
+        if (cid != null && cid.isNotEmpty) {
+          map[cid] = status;
+        }
+      }
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchMyAccountabilityTaskStatuses: ${map.length} entries');
+      }
+      return map;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchMyAccountabilityTaskStatuses error: $e');
+      }
+      return {};
+    }
+  }
+
   /// Returns tasks assigned TO the current user that are active (pending status).
   /// Used to show partner-assigned tasks on the daily tasks screen.
   Future<List<AccountabilityTask>> fetchTasksAssignedToMe() async {
@@ -859,6 +895,19 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] fetchTasksAssignedToMe error: $e');
       }
       return [];
+    }
+  }
+
+  /// Fetches a single accountability task by its Firestore document ID.
+  Future<AccountabilityTask?> fetchTaskById(String taskId) async {
+    if (!_isReady) return null;
+    try {
+      final doc = await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!doc.exists) return null;
+      return AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+    } catch (e) {
+      debugPrint('[AccountabilityService] fetchTaskById error: $e');
+      return null;
     }
   }
 
@@ -932,6 +981,21 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] declineTaskRequest error: $e');
       }
       return false;
+    }
+  }
+
+  /// Cancel an accountability task — sets status to declined.
+  Future<void> cancelAccountabilityTask(String taskId) async {
+    if (!_isReady) return;
+    try {
+      await _db
+          .collection('accountability_tasks')
+          .doc(taskId)
+          .update({'status': AccountabilityTaskStatus.declined.name});
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] cancelAccountabilityTask error: $e');
+      }
     }
   }
 
@@ -1861,6 +1925,40 @@ class AccountabilityService {
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] cleanupSelfAssignedTasks error: $e');
+      }
+    }
+  }
+
+  /// One-time cleanup: deletes accountability tasks with no valid challengeId
+  /// or where the challenge no longer exists (orphaned tasks).
+  Future<void> migrateOrphanedAccountabilityTasks() async {
+    if (!_isReady) return;
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUid', isEqualTo: currentUid!)
+          .get();
+      final batch = _db.batch();
+      var count = 0;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final cid = data['challengeId'] as String?;
+        if (cid == null || cid.isEmpty) {
+          batch.delete(doc.reference);
+          count++;
+        }
+      }
+      if (count > 0) {
+        await batch.commit();
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] migrateOrphanedAccountabilityTasks: deleted $count orphaned tasks');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] migrateOrphanedAccountabilityTasks error: $e');
       }
     }
   }

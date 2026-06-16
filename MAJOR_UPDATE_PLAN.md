@@ -151,7 +151,7 @@ class FirebaseSyncService {
   // Download and decrypt data
   Future<void> syncFromCloud();
   
-  // Upload photos to Firebase Storage
+  // Upload photos to Cloudinary
   Future<String> uploadPhoto(File photo, String challengeId, DateTime date);
   
   // Auto-sync on changes

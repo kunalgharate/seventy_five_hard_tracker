@@ -191,6 +191,18 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         null,
       );
 
+      // Emit immediately so the UI shows the new session without a loading gap.
+      final allSessions = _repository.getAllSessions();
+      final currentProgress =
+          _repository.getProgressForSession(newSession.startDate);
+      emit(ChallengeLoaded(
+        activeSession: newSession,
+        allSessions: allSessions,
+        currentProgress: currentProgress,
+        hasActiveSession: true,
+      ));
+
+      // Still dispatch a background reload for Firestore sync and missed-day check.
       add(LoadChallengeData());
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
@@ -231,6 +243,17 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final newSession = createRestartedSession(historicalSession);
       await _repository.saveSession(newSession);
 
+      // Emit immediately so the UI shows the new session without a loading gap.
+      final updatedSessions = _repository.getAllSessions();
+      final currentProgress =
+          _repository.getProgressForSession(newSession.startDate);
+      emit(ChallengeLoaded(
+        activeSession: newSession,
+        allSessions: updatedSessions,
+        currentProgress: currentProgress,
+        hasActiveSession: true,
+      ));
+
       // Analytics — non-critical, fire-and-forget
       unawaited(_analytics.logSessionStart(newSession.challenges.length));
       unawaited(_analytics.logChallengeSelection(
@@ -248,6 +271,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         // Notification failures should not block the restart
       }
 
+      // Background reload for Firestore sync and missed-day check.
       add(LoadChallengeData());
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
@@ -520,6 +544,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           activeSession.currentDay,
           event.reason,
         ));
+
+        // Cancel accountability tasks for challenges that failed
+        final svc = AccountabilityService();
+        final failedChallengeIds = activeSession.challenges
+            .where((c) => event.failedChallenges.contains(c.title))
+            .map((c) => c.id)
+            .toList();
+        for (final challengeId in failedChallengeIds) {
+          final task = await svc.fetchTaskByChallengeId(challengeId);
+          if (task != null) {
+            await svc.cancelAccountabilityTask(task.id);
+          }
+        }
 
         emit(ChallengeReset(
           reason: event.reason,

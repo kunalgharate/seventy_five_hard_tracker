@@ -35,7 +35,7 @@ You wanted to update your 75 Hard Tracker app with these improvements:
 **Files modified:**
 - `lib/models/challenge.dart` - Added 8 new fields for task types, reminder settings, photos
 - `lib/models/challenge_session.dart` - Added reset mode (hard/soft)
-- `lib/models/daily_progress.dart` - Added photo storage
+- `lib/models/daily_progress.dart` - Added taskPhotos map
 
 **New capabilities:**
 - Tasks can be Hard, Soft, or Regular
@@ -72,7 +72,7 @@ You wanted to update your 75 Hard Tracker app with these improvements:
 **New packages:**
 - `cloud_firestore` - For cloud sync
 - `firebase_auth` - For user authentication
-- `firebase_storage` - For photo storage
+- `firebase_storage` - Declared but unused — photo uploads use Cloudinary
 - `encrypt` - For data encryption
 - `workmanager` - For background tasks
 - `shared_preferences` - For local settings

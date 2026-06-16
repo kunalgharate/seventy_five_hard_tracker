@@ -236,6 +236,20 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
     if (_owner == null) return;
     setState(() => _saving = true);
 
+    if (widget.taskId.isEmpty) {
+      debugPrint('[CollaboratorDialog] ABORT save — taskId is empty!');
+      setState(() => _saving = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot save: missing task ID. Please recreate this task.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final success = await _svc.saveTaskCollaborators(
       taskId: widget.taskId,
       owner: _owner!,
@@ -251,16 +265,19 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
     if (success && widget.taskName != null) {
       final myUid = _svc.currentUid;
       debugPrint('[CollaboratorDialog] Creating accountability tasks for ${_collaborators.length} collaborator(s)');
+      final allUids = _collaborators
+          .where((c) => c.uid != myUid)
+          .map((c) => c.uid)
+          .toList();
       for (final c in _collaborators) {
         if (c.uid == myUid) continue; // skip self
         try {
-          // Ensure an accepted partnership exists (creates one if needed)
-          final partnershipId = await _svc.ensurePartnership(c.uid, c.name);
-          if (partnershipId != null) {
-            debugPrint('[CollaboratorDialog] Using partnership: $partnershipId');
-          } else {
-            debugPrint('[CollaboratorDialog] Failed to ensure partnership for ${c.uid}');
-          }
+          // Ensure a partnership exists so the task is visible in both users' Partners tab
+          final partnershipId = await _svc.ensurePartnership(
+            c.uid,
+            c.name,
+            type: 'accountability',
+          );
 
           // Skip if an active accountability task already exists for this challengeId
           final existing = await _svc.fetchTaskByChallengeId(widget.taskId);
@@ -278,6 +295,7 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             title: widget.taskName!,
             description: 'Collaborator task from Daily Mettle',
             challengeId: widget.taskId,
+            accountableUserIds: allUids,
           );
           if (task != null) {
             debugPrint('[CollaboratorDialog] Created accountability task:');

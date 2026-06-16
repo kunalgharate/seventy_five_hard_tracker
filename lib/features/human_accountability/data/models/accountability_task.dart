@@ -1,19 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-enum AccountabilityTaskStatus { requested, pending, completed, declined }
+enum AccountabilityTaskStatus { requested, pending, completed, declined, approved }
 
 extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
   String get label {
     switch (this) {
       case AccountabilityTaskStatus.requested:
-        return 'Requested';
-      case AccountabilityTaskStatus.pending:
         return 'Pending';
+      case AccountabilityTaskStatus.pending:
+        return 'Accepted';
       case AccountabilityTaskStatus.completed:
         return 'Completed';
       case AccountabilityTaskStatus.declined:
         return 'Declined';
+      case AccountabilityTaskStatus.approved:
+        return 'Approved';
     }
   }
 
@@ -60,6 +62,9 @@ class AccountabilityTask extends Equatable {
   /// UID of the user who is accountable for completing it.
   final String accountableUid;
 
+  /// Additional UIDs accountable for this task (collaborators).
+  final List<String> accountableUserIds;
+
   /// Display name of the accountable person.
   final String accountableName;
 
@@ -103,9 +108,12 @@ class AccountabilityTask extends Equatable {
     this.proofReviewComment,
     this.proofSubmittedAt,
     this.proofReviewedAt,
+    this.accountableUserIds = const [],
   });
 
+  bool get isApproved => status == AccountabilityTaskStatus.approved;
   bool get isCompleted => status == AccountabilityTaskStatus.completed;
+  bool get isFinished => isCompleted || isApproved;
   bool get isPending => status == AccountabilityTaskStatus.pending;
   bool get isRequested => status == AccountabilityTaskStatus.requested;
   bool get isDeclined => status == AccountabilityTaskStatus.declined;
@@ -125,6 +133,7 @@ class AccountabilityTask extends Equatable {
     String? proofReviewComment,
     DateTime? proofSubmittedAt,
     DateTime? proofReviewedAt,
+    List<String>? accountableUserIds,
   }) =>
       AccountabilityTask(
         id: id,
@@ -145,6 +154,7 @@ class AccountabilityTask extends Equatable {
         proofReviewComment: proofReviewComment ?? this.proofReviewComment,
         proofSubmittedAt: proofSubmittedAt ?? this.proofSubmittedAt,
         proofReviewedAt: proofReviewedAt ?? this.proofReviewedAt,
+        accountableUserIds: accountableUserIds ?? this.accountableUserIds,
       );
 
   static DateTime? _parseDate(dynamic v) {
@@ -183,6 +193,8 @@ class AccountabilityTask extends Equatable {
         proofReviewComment: d['proofReviewComment'] as String?,
         proofSubmittedAt: _parseDate(d['proofSubmittedAt']),
         proofReviewedAt: _parseDate(d['proofReviewedAt']),
+        accountableUserIds: (d['accountableUserIds'] as List<dynamic>?)
+                ?.cast<String>() ?? [d['accountableUid'] as String],
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -207,6 +219,7 @@ class AccountabilityTask extends Equatable {
             proofSubmittedAt != null ? Timestamp.fromDate(proofSubmittedAt!) : null,
         'proofReviewedAt':
             proofReviewedAt != null ? Timestamp.fromDate(proofReviewedAt!) : null,
+        'accountableUserIds': accountableUserIds,
       };
 
   @override
@@ -214,6 +227,7 @@ class AccountabilityTask extends Equatable {
         id,
         assignedByUid,
         accountableUid,
+        accountableUserIds,
         partnershipId,
         challengeId,
         title,

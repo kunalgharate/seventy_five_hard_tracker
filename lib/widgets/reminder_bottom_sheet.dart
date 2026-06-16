@@ -80,10 +80,18 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final availableHeight = MediaQuery.of(context).size.height
+        - viewInsets.bottom
+        - bottomPadding;
+
     return SafeArea(
         top: false,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.95,
+          constraints: BoxConstraints(
+            maxHeight: availableHeight * 0.92,
+          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -102,23 +110,29 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.notifications, color: Colors.orange[600]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Set Reminder',
-                        style: GoogleFonts.poppins(
-                            fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
+        child: Row(
+          children: [
+            Icon(Icons.notifications, color: Colors.orange[600]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Set Reminder',
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+          ],
+        ),
               ),
               Expanded(
                 child: SingleChildScrollView(
@@ -385,11 +399,14 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(title,
-                style: GoogleFonts.poppins(
-                    fontSize: 14, fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text(title,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                      fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 8),
             TextButton.icon(
               onPressed: () async {
                 final picked = await showTimePicker(
@@ -427,6 +444,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                 Expanded(
                     child: Text(
                   _formatTime(timeStr),
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(
                       fontSize: 14,
                       color: Colors.orange[700],

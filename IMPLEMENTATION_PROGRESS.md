@@ -47,7 +47,7 @@
 ### 3. Dependencies Updated
 - ✅ Added `cloud_firestore` for cloud sync
 - ✅ Added `firebase_auth` for authentication
-- ✅ Added `firebase_storage` for photo storage
+- ⚠️ `firebase_storage` was added but is unused — photo uploads use **Cloudinary** instead
 - ✅ Added `encrypt` for data encryption
 - ✅ Added `workmanager` for background tasks
 - ✅ Added `shared_preferences` for local settings

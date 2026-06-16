@@ -195,6 +195,18 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     } else if (state is TaskRequestAccepted) {
       _showSnack('Task accepted! It will appear in your partner card.',
           isSuccess: true);
+      debugPrint('[AccountabilityScreen] TaskRequestAccepted:'
+          ' taskId=${state.taskId} challengeId=${state.challengeId}');
+      if (state.challengeId != null) {
+        try {
+          debugPrint('[AccountabilityScreen] Dispatching LoadChallengeData to ChallengeBloc');
+          context
+              .read<ChallengeBloc>()
+              .add(LoadChallengeData());
+        } catch (e) {
+          debugPrint('[AccountabilityScreen] Failed to dispatch LoadChallengeData: $e');
+        }
+      }
     } else if (state is TaskRequestDeclined) {
       _showSnack('Task request declined.', isSuccess: true);
     } else if (state is AccountabilityError) {

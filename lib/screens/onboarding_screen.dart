@@ -3,15 +3,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
@@ -33,9 +31,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   final List<Challenge> _challenges = [];
   final Map<int, String?> _validationErrors = {};
   final PageController _pageController = PageController();
-  // partnerUid selected per challenge index (null = no partner)
-  final Map<int, AccountabilityPartner?> _selectedPartners = {};
-  List<AccountabilityPartner> _availablePartners = [];
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
   bool _isLoggingIn = false;
@@ -57,20 +52,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     // Start with 2 empty challenges
     _addNewChallenge();
     _addNewChallenge();
-
-    // Load accepted accountability partners
-    _loadPartners();
-  }
-
-  Future<void> _loadPartners() async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    if (mounted) {
-      setState(() {
-        _availablePartners = partners
-            .where((p) => p.status == PartnershipStatus.accepted)
-            .toList();
-      });
-    }
   }
 
   @override
@@ -243,31 +224,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     context.read<ChallengeBloc>().add(StartNewSession(sanitizedChallenges));
 
-    // Create accountability task requests for challenges with assigned partners
-    final svc = AccountabilityService();
-    final myUid = svc.currentUid;
-    for (int i = 0; i < _challenges.length; i++) {
-      final challenge = _challenges[i];
-      if (challenge.title.trim().isEmpty) continue;
-      final partner = _selectedPartners[i];
-      if (partner == null || partner.id == '__ai__') continue;
-      // Always assign to the OTHER person
-      final otherUid =
-          partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
-      if (otherUid == null) continue;
-
-      // Fire-and-forget — don't block navigation
-      svc.createAccountabilityTask(
-        accountableUid: otherUid,
-        accountableName: partner.partnerName,
-        partnershipId: partner.id,
-        title: challenge.title.trim(),
-        description: 'Daily challenge task from 75 Hard',
-        challengeId: challenge.id,
-      );
-    }
-
-    await Future.delayed(const Duration(milliseconds: 100));
+    await context.read<ChallengeBloc>().stream.firstWhere(
+      (state) => state is ChallengeLoaded && state.hasActiveSession,
+    );
 
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
@@ -275,38 +234,50 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   /// Handles Google Sign-In inline within onboarding.
-  /// On success, saves user to Firestore and advances to challenge setup.
+  /// Shows consent dialog, signs in via CloudSyncService (derives AES key,
+  /// writes users/{uid}), records consent, triggers initial sync to
+  /// create user_data/{uid}, then advances to challenge setup.
   Future<void> handleInitialLogin() async {
     setState(() => _isLoggingIn = true);
     try {
-      final googleSignIn = GoogleSignIn.instance;
-      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
-        scopeHint: ['email', 'profile'],
-      );
+      final syncSvc = CloudSyncService();
 
-      final idToken = googleUser.authentication.idToken;
-      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
-        'email',
-        'profile',
-      ]);
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoggingIn = false);
+          return;
+        }
+      }
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: clientAuth.accessToken,
-        idToken: idToken,
-      );
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
+      final user = await syncSvc.signInWithGoogle();
+      if (user == null) {
+        if (!mounted) return;
+        setState(() => _isLoggingIn = false);
+        return;
+      }
 
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-      // Save to Firestore — first login only
-      await _saveUserToFirestore(userCredential.user);
+      // 4. Trigger initial sync (creates user_data/{uid})
+      if (mounted) {
+        try {
+          final db = context.read<ChallengeBloc>().repository;
+          final taskRepo = context.read<RegularTaskBloc>().repository;
+          await syncSvc.syncToCloud(db, taskRepo);
+        } catch (_) {}
+      }
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Welcome, ${userCredential.user?.displayName ?? 'there'}! Your progress will sync to the cloud.',
+            'Welcome, ${user.displayName ?? 'there'}! Cloud backup is enabled.',
           ),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
@@ -342,26 +313,70 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
-  /// Saves user profile to Firestore on first login only.
-  Future<void> _saveUserToFirestore(User? user) async {
-    if (user == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-    final snapshot = await docRef.get();
-    if (!snapshot.exists) {
-      await docRef.set({
-        'id': user.uid,
-        'name': user.displayName ?? '',
-        'email': user.email ?? '',
-        'photoUrl': user.photoURL ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLoginAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await docRef.set(
-        {'lastLoginAt': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
-      );
-    }
+  /// Shows the cloud backup consent dialog.
+  Future<bool> _showConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
+            SizedBox(width: 8),
+            Text('Cloud Backup'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Before enabling backup, here\'s what you need to know:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 12),
+            _ConsentPoint(
+              icon: Icons.lock_outline,
+              text:
+                  'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.key,
+              text:
+                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.visibility_off,
+              text:
+                  'We cannot read your data. The server stores only ciphertext.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.sync,
+              text:
+                  'Backup happens automatically in the background whenever you\'re online.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enable Backup'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   @override
@@ -395,11 +410,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildWelcomePage() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      physics: const BouncingScrollPhysics(),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const SizedBox(height: 10),
           // Animated Header with Pulse
           AnimatedBuilder(
             animation: _pulseController,
@@ -475,12 +491,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               .fadeIn(delay: 1000.ms, duration: 600.ms)
               .slideY(begin: 0.3, end: 0),
 
-          const SizedBox(height: 60),
+          const SizedBox(height: 40),
 
           // Rules with Staggered Animation
           _buildRulesList(),
 
-          const Spacer(),
+          const SizedBox(height: 40),
 
           // Continue Button with Scale and Glow
           _isLoggingIn
@@ -491,8 +507,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     // The new Login Button
                     _buildAnimatedButton(
                       text: 'Sign In & Start Setup',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/login'), 
+                      onPressed: handleInitialLogin,
                       gradient: const LinearGradient(
                           colors: [Colors.orange, Colors.red]),
                     ),
@@ -582,7 +597,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   Widget _buildChallengeSetupPage() {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1121,9 +1136,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ),
                   ],
-                  // Partner selector
-                  const SizedBox(height: 8),
-                  _buildPartnerSelector(index),
                 ],
               ],
             ),
@@ -1139,7 +1151,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         .toList();
 
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1347,153 +1359,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           );
           setState(() {});
         },
-      ),
-    );
-  }
-
-  Widget _buildPartnerSelector(int index) {
-    final selected = _selectedPartners[index];
-    final hasPartners = _availablePartners.isNotEmpty;
-
-    return GestureDetector(
-      onTap: !hasPartners ? null : () => _showPartnerPicker(index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected != null
-              ? Colors.blue.withValues(alpha: 0.08)
-              : Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected != null
-                ? Colors.blue.withValues(alpha: 0.4)
-                : Colors.grey[300]!,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.people_outline,
-              size: 16,
-              color: selected != null ? Colors.blue[700] : Colors.grey[500],
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                selected != null
-                    ? '👤 ${selected.partnerName} (${selected.role.label})'
-                    : hasPartners
-                        ? 'Assign accountability partner (optional)'
-                        : 'No partners yet — invite one first',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: selected != null ? Colors.blue[700] : Colors.grey[500],
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (selected != null)
-              GestureDetector(
-                onTap: () => setState(() => _selectedPartners[index] = null),
-                child: Icon(Icons.close, size: 14, color: Colors.blue[400]),
-              )
-            else if (hasPartners)
-              Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showPartnerPicker(int index) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Assign Accountability Partner',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'This partner will be responsible for verifying this task.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            // No partner
-            ListTile(
-              leading:
-                  const Icon(Icons.person_off_outlined, color: Colors.grey),
-              title: const Text('No partner (self-tracked)'),
-              onTap: () {
-                setState(() => _selectedPartners[index] = null);
-                Navigator.pop(context);
-              },
-            ),
-            const Divider(height: 1),
-            // AI option
-            ListTile(
-              leading: const Text('🤖', style: TextStyle(fontSize: 22)),
-              title: const Text('AI Accountability',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('AI will track and motivate you'),
-              trailing: _selectedPartners[index]?.id == '__ai__'
-                  ? const Icon(Icons.check_circle, color: Colors.blue)
-                  : null,
-              onTap: () {
-                setState(() => _selectedPartners[index] = AccountabilityPartner(
-                      id: '__ai__',
-                      ownerUid: '',
-                      partnerName: 'AI',
-                      role: PartnerRole.mentorCoach,
-                      status: PartnershipStatus.accepted,
-                      inviteCode: '',
-                      createdAt: DateTime.now(),
-                    ));
-                Navigator.pop(context);
-              },
-            ),
-            if (_availablePartners.isNotEmpty) ...[
-              const Divider(height: 1),
-              ..._availablePartners.map((p) => ListTile(
-                    leading: Text(p.role.emoji,
-                        style: const TextStyle(fontSize: 22)),
-                    title: Text(p.partnerName,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(p.role.label),
-                    trailing: _selectedPartners[index]?.id == p.id
-                        ? const Icon(Icons.check_circle, color: Colors.blue)
-                        : null,
-                    onTap: () {
-                      setState(() => _selectedPartners[index] = p);
-                      Navigator.pop(context);
-                    },
-                  )),
-            ],
-            const SizedBox(height: 8),
-          ],
-        ),
       ),
     );
   }
@@ -1709,5 +1574,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       'bedtime': Icons.bedtime,
     };
     return map[name] ?? Icons.check_circle;
+  }
+}
+
+// ── Helper widget for consent dialog points ──────────────────────────────────
+
+class _ConsentPoint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ConsentPoint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.green[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
+        ),
+      ],
+    );
   }
 }

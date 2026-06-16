@@ -92,6 +92,9 @@ class AccountabilityPartner extends Equatable {
   /// When the partner accepted (null if still pending).
   final DateTime? acceptedAt;
 
+  /// The type of partnership: 'accountability' or 'collaborator'.
+  final String type;
+
   const AccountabilityPartner({
     required this.id,
     required this.ownerUid,
@@ -103,6 +106,7 @@ class AccountabilityPartner extends Equatable {
     required this.inviteCode,
     required this.createdAt,
     this.acceptedAt,
+    this.type = 'accountability',
   });
 
   AccountabilityPartner copyWith({
@@ -116,6 +120,7 @@ class AccountabilityPartner extends Equatable {
     String? inviteCode,
     DateTime? createdAt,
     DateTime? acceptedAt,
+    String? type,
   }) {
     return AccountabilityPartner(
       id: id ?? this.id,
@@ -128,6 +133,7 @@ class AccountabilityPartner extends Equatable {
       inviteCode: inviteCode ?? this.inviteCode,
       createdAt: createdAt ?? this.createdAt,
       acceptedAt: acceptedAt ?? this.acceptedAt,
+      type: type ?? this.type,
     );
   }
 
@@ -142,6 +148,7 @@ class AccountabilityPartner extends Equatable {
         'inviteCode': inviteCode,
         'createdAt': createdAt.toIso8601String(),
         'acceptedAt': acceptedAt?.toIso8601String(),
+        'type': type,
       };
 
   factory AccountabilityPartner.fromJson(Map<String, dynamic> json) {
@@ -160,6 +167,7 @@ class AccountabilityPartner extends Equatable {
       acceptedAt: json['acceptedAt'] != null
           ? DateTime.parse(json['acceptedAt'] as String)
           : null,
+      type: json['type'] as String? ?? 'accountability',
     );
   }
 
@@ -175,5 +183,6 @@ class AccountabilityPartner extends Equatable {
         inviteCode,
         createdAt,
         acceptedAt,
+        type,
       ];
 }

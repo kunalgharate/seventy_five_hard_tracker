@@ -340,9 +340,11 @@ Each task has:
 4. Replaces local Hive data with restored data
 
 ### 8.5 Photo Storage
-- Photos uploaded to Firebase Storage
-- Max resolution: 1024×1024, 80% JPEG quality
-- Download URL stored in `taskPhotos` map
+- Photos uploaded to **Cloudinary** (cloud: `dudjztvui`, preset: `jiremalisamajapp-prod`, folder: `task_proofs`)
+- Image capture: 1024×1024, 80% JPEG quality; compression: 1080×1080, quality 80
+- `secure_url` stored in Firestore `accountability_tasks.{id}.proofUrl`
+- Displayed via `Image.network(proofUrl)` in `ProofReviewDialog`
+- Firebase Storage is NOT used for proof images
 
 ---
 
@@ -355,7 +357,7 @@ Each task has:
 | **CloudSyncService** | AES-256 encrypted backup/restore via Firestore |
 | **ConnectivityService** | Lazy Firebase init, retry on connectivity change |
 | **FCMService** | Firebase Cloud Messaging, subscribes to `all_users` topic |
-| **PhotoSyncService** | Camera/gallery image picker, Firebase Storage upload |
+| **PhotoSyncService** | Camera/gallery image picker, Cloudinary upload |
 | **AnalyticsService** | Firebase Analytics events (session start, task completion, resets) |
 | **SimpleBackgroundCheckService** | Missed-day detection on app open/resume |
 | **ChallengeIconService** | 50+ predefined icons in 7 categories, keyword auto-detection |
@@ -586,7 +588,7 @@ for each day from startDate to yesterday:
 - [ ] Restored data matches original
 - [ ] Backup/restore works after app restart
 - [ ] Offline state shows appropriate messaging
-- [ ] Photo upload to Firebase Storage works
+- [x] Photo upload to Cloudinary works (Firebase Storage not used)
 
 ### 14.9 History & Profile
 

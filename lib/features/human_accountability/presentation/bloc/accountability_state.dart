@@ -132,10 +132,11 @@ class EmailInviteRejected extends AccountabilityState {
 
 class TaskRequestAccepted extends AccountabilityState {
   final String taskId;
-  const TaskRequestAccepted(this.taskId);
+  final String? challengeId;
+  const TaskRequestAccepted(this.taskId, {this.challengeId});
 
   @override
-  List<Object> get props => [taskId];
+  List<Object?> get props => [taskId, challengeId];
 }
 
 class TaskRequestDeclined extends AccountabilityState {

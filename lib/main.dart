@@ -1,9 +1,9 @@
+import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
+import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-
-import 'screens/login_screen.dart';
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,9 +11,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'models/quote.dart';
-import 'repositories/database_repository.dart';
-import 'repositories/regular_task_repository.dart';
+import 'dart:async';
 import 'models/quote.dart';
 import 'repositories/database_repository.dart';
 import 'repositories/regular_task_repository.dart';
@@ -24,25 +22,16 @@ import 'features/challenges/data/models/daily_progress.dart';
 import 'features/challenges/data/models/challenge_session.dart';
 import 'features/regular_tasks/data/models/regular_task.dart';
 import 'features/regular_tasks/data/models/regular_task_completion.dart';
-import 'models/quote.dart';
-import 'repositories/database_repository.dart';
-import 'repositories/regular_task_repository.dart';
-import 'features/challenges/presentation/bloc/challenge_bloc.dart';
-import 'features/challenges/presentation/bloc/challenge_event.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
-import 'features/accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/discipline_score/discipline_score.dart';
+import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/privacy_policy_screen.dart';
-import 'services/smart_notification_service.dart';
-import 'services/simple_background_check_service.dart';
-import 'services/analytics_service.dart';
-import 'services/connectivity_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -63,7 +52,11 @@ void main() async {
 
   // ── OFFLINE-FIRST: Core local services init first ──
   await Hive.initFlutter();
-  // ... (Keep all your existing Hive adapter registrations here)
+  Hive.registerAdapter(ChallengeSessionAdapter());
+  Hive.registerAdapter(ChallengeAdapter());
+  Hive.registerAdapter(DailyProgressAdapter());
+  Hive.registerAdapter(RegularTaskCompletionAdapter());
+  Hive.registerAdapter(RegularTaskAdapter());
 
   final smartNotifications = SmartNotificationService();
   try {
@@ -145,7 +138,9 @@ class MyApp extends StatelessWidget {
           )..add(LoadRegularTasks()),
         ),
         BlocProvider(
-          create: (context) => AccountabilityBloc(),
+          create: (context) => AccountabilityBloc(
+            repository: DatabaseRepository(),
+          ),
         ),
         BlocProvider(
           create: (context) => DisciplineScoreBloc(),
@@ -461,11 +456,9 @@ class _InitialScreenState extends State<InitialScreen>
 
     if (mounted) {
       if (currentUser != null) {
-        // User is already logged in, go to Dashboard
-        navigator.pushReplacementNamed('/home');
+        Navigator.of(context).pushReplacementNamed('/home');
       } else {
-        // User is new or logged out, go to Welcome gate
-        navigator.pushReplacementNamed('/onboarding');
+        Navigator.of(context).pushReplacementNamed('/onboarding');
       }
     }
   }

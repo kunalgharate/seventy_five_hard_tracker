@@ -114,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 16),
                 if (!isSignedIn)
                   ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/login'),
+                    onPressed: _signIn,
                     icon: const Icon(Icons.login),
                     label: const Text('Sign In to Enable Backup'),
                     style: ElevatedButton.styleFrom(

@@ -47,7 +47,7 @@ class _ProofReviewDialogState extends State<ProofReviewDialog> {
         SnackBar(
           content: Text(
             approved
-                ? 'Proof approved — task completed'
+                ? 'Proof approved — mark complete when ready'
                 : 'Proof rejected — task reopened',
           ),
           backgroundColor: approved ? Colors.green : Colors.orange,

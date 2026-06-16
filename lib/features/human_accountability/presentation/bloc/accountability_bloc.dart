@@ -1,19 +1,27 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/partner_review.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_invitation.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'accountability_event.dart';
 import 'accountability_state.dart';
 
 class AccountabilityBloc
     extends Bloc<AccountabilityEvent, AccountabilityState> {
   final AccountabilityService _service;
+  final DatabaseRepository _repository;
 
-  AccountabilityBloc({AccountabilityService? service})
-      : _service = service ?? AccountabilityService(),
+  AccountabilityBloc({
+    AccountabilityService? service,
+    DatabaseRepository? repository,
+  })  : _service = service ?? AccountabilityService(),
+        _repository = repository ?? DatabaseRepository(),
         super(AccountabilityInitial()) {
     on<LoadAccountabilityData>(_onLoad);
     on<InvitePartner>(_onInvitePartner);
@@ -52,9 +60,70 @@ class AccountabilityBloc
         emailInvitations: results[3] as List<AccountabilityInvitation>,
         taskRequests: results[4] as List<AccountabilityTask>,
       ));
+      unawaited(_syncMissingChallenges());
     } catch (e) {
       if (kDebugMode) debugPrint('[AccountabilityBloc] load error: $e');
       emit(const AccountabilityError('Failed to load accountability data'));
+    }
+  }
+
+  Future<void> _syncMissingChallenges() async {
+    try {
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) {
+        debugPrint('[AccountabilityBloc] _syncMissingChallenges: no active session');
+        return;
+      }
+      final tasks = await _service.fetchTasksAssignedToMe();
+      debugPrint('[AccountabilityBloc] _syncMissingChallenges: ${tasks.length} tasks, '
+          'session has ${activeSession.challenges.length} challenges');
+      var changed = false;
+      for (final task in tasks) {
+        if (task.challengeId == null || task.challengeId!.isEmpty) continue;
+        final cid = task.challengeId!;
+        if (activeSession.challenges.any((c) => c.id == cid)) continue;
+        debugPrint('[AccountabilityBloc] _syncMissingChallenges: creating local challenge cid=$cid title="${task.title}"');
+        final challenge = Challenge(
+          id: cid,
+          title: task.title,
+          taskType: 'hard',
+          category: 'general',
+        );
+        final updatedChallenges = [...activeSession.challenges, challenge];
+        final updatedSession =
+            activeSession.copyWith(challenges: updatedChallenges);
+        await _repository.saveSession(updatedSession);
+        activeSession.challenges.add(challenge);
+
+        final today = DateTime.now();
+        var todayProgress = _repository.getDailyProgress(today);
+        if (todayProgress != null) {
+          final updatedCompletions = Map<String, bool>.from(
+              todayProgress.challengeCompletions);
+          updatedCompletions[cid] = false;
+          todayProgress = todayProgress.copyWith(
+            challengeCompletions: updatedCompletions,
+          );
+        } else {
+          final challengeCompletions = <String, bool>{};
+          for (final c in updatedChallenges) {
+            challengeCompletions[c.id] = false;
+          }
+          todayProgress = DailyProgress(
+            date: today,
+            challengeCompletions: challengeCompletions,
+            isCompleted: false,
+          );
+        }
+        await _repository.saveDailyProgress(todayProgress);
+        changed = true;
+      }
+      debugPrint('[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
+      if (changed) {
+        // Notify UI to reload challenge data
+      }
+    } catch (e) {
+      debugPrint('[AccountabilityBloc] _syncMissingChallenges error: $e');
     }
   }
 
@@ -256,13 +325,21 @@ class AccountabilityBloc
   ) async {
     try {
       final ok = await _service.acceptTaskRequest(event.taskId);
+      debugPrint('[AccountabilityBloc] acceptTaskRequest("${event.taskId}") → $ok');
       if (ok) {
-        emit(TaskRequestAccepted(event.taskId));
+        await _syncMissingChallenges();
+
+        final task = await _service.fetchTaskById(event.taskId);
+        final challengeId = task?.challengeId;
+        debugPrint('[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
+
+        emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
       } else {
         emit(const AccountabilityError('Could not accept task request.'));
       }
     } catch (e) {
+      debugPrint('[AccountabilityBloc] _onAcceptTaskRequest error: $e');
       emit(AccountabilityError('Accept task failed: $e'));
     }
   }
