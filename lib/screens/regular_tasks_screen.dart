@@ -25,6 +25,8 @@ import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 
 class RegularTasksScreen extends StatefulWidget {
   const RegularTasksScreen({super.key});
@@ -34,238 +36,10 @@ class RegularTasksScreen extends StatefulWidget {
 }
 
 class _RegularTasksScreenState extends State<RegularTasksScreen> {
-  Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
-  final Map<String, List<Collaborator>> _taskCollaborators = {}; // taskId → collaborators
-  Map<String, ProofStatus> _proofStatuses = {}; // taskId → proofStatus
-  final Set<String> _tasksIAssigned = {}; // taskIds where I assigned the task to a partner
-  Map<String, AccountabilityTaskStatus> _accountabilityStatuses =
-      {}; // taskId → accountability status
-  StreamSubscription<List<AccountabilityTask>>? _accTasksStreamSub;
-  StreamSubscription<List<AccountabilityTask>>? _accAssignedByMeStreamSub;
-  Timer? _accRefreshTimer;
-
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
-    _loadAssignedPartners();
-    _subscribeToAccStreams();
-    // Periodic refresh so partner status changes (e.g. accept, complete) are
-    // reflected without waiting for the stream to fire.
-    _accRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) _loadAssignedPartners();
-    });
-  }
-
-  void _subscribeToAccStreams() {
-    _accTasksStreamSub?.cancel();
-    _accAssignedByMeStreamSub?.cancel();
-    _accTasksStreamSub =
-        AccountabilityService().myTasksStream().listen((_) {
-      if (!mounted) return;
-      _loadAssignedPartners();
-    }, onError: (_) {});
-    _accAssignedByMeStreamSub =
-        AccountabilityService().assignedByMeStream().listen((_) {
-      if (!mounted) return;
-      _loadAssignedPartners();
-    }, onError: (_) {});
-  }
-
-  @override
-  void dispose() {
-    _accTasksStreamSub?.cancel();
-    _accAssignedByMeStreamSub?.cancel();
-    _accRefreshTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadAssignedPartners() async {
-    final svc = AccountabilityService();
-    final myUid = svc.currentUid;
-
-    final results = await Future.wait([
-      svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
-      svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me, accepted)
-      svc.fetchMyPartnerships(),
-      svc.fetchMyAccountabilityTaskStatuses(), // challengeId → my accountability status
-    ]);
-
-    final challengeMap = results[0] as Map<String, String>;
-    final accountableForMap = results[1] as Map<String, String>;
-    final partnerships = results[2] as List<AccountabilityPartner>;
-    final accountabilityStatuses = results[3] as Map<String, AccountabilityTaskStatus>;
-
-    // Build uid → name covering BOTH sides of every partnership
-    final uidToName = <String, String>{};
-    for (final p in partnerships) {
-      if (p.partnerUid != null) uidToName[p.partnerUid!] = p.partnerName;
-      if (p.ownerUid != myUid) uidToName[p.ownerUid] = p.partnerName;
-    }
-
-    final partnerNames = <String, String>{};
-    // Tasks I assigned → show the accountable person's name
-    challengeMap.forEach((cid, uid) {
-      final name = uidToName[uid];
-      if (name != null) partnerNames[cid] = name;
-    });
-    // Tasks assigned TO me (accepted) → show the assigner's name
-    accountableForMap.forEach((cid, assignerName) {
-      partnerNames.putIfAbsent(cid, () => assignerName);
-    });
-
-    // Track which tasks I'm the assigner for (vs tasks assigned TO me)
-    final tasksIAssigned = <String>{...challengeMap.keys};
-
-    // Fetch proof statuses for all challenge IDs that have partners
-    final allCids = <String>{
-      ...challengeMap.keys,
-      ...accountableForMap.keys,
-    };
-    Map<String, ProofStatus> proofStatuses = {};
-    if (allCids.isNotEmpty) {
-      final batches = <List<String>>[];
-      var batch = <String>[];
-      for (final cid in allCids) {
-        batch.add(cid);
-        if (batch.length == 30) {
-          batches.add(batch);
-          batch = [];
-        }
-      }
-      if (batch.isNotEmpty) batches.add(batch);
-      for (final b in batches) {
-        final result = await svc.fetchProofStatusesForChallengeIds(b);
-        proofStatuses.addAll(result);
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _assignedPartnerNames = partnerNames;
-        _proofStatuses = proofStatuses;
-        _tasksIAssigned
-          ..clear()
-          ..addAll(tasksIAssigned);
-        _accountabilityStatuses = accountabilityStatuses;
-      });
-    }
-  }
-
-  Future<void> _loadCollaboratorsForTask(String taskId) async {
-    final result =
-        await AccountabilityService().getTaskCollaborators(taskId);
-    if (!mounted) return;
-    setState(() {
-      _taskCollaborators[taskId] = result?.collaborators ?? [];
-    });
-  }
-
-  Future<void> _showCollaboratorDialog(BuildContext context, RegularTask task) async {
-    final changed = await CollaboratorDialog.show(
-      context: context,
-      taskId: task.id,
-      taskName: task.title,
-    );
-    if (changed == true) {
-      _loadCollaboratorsForTask(task.id);
-    }
-  }
-
-  Future<void> _showHumanPartnerPicker(
-      BuildContext context, RegularTask task) async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    final accepted =
-        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
-
-    if (!mounted) return;
-
-    if (accepted.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No accepted partners yet. Invite someone first.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Assign to Partner',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(
-                'Who should be held accountable for "${task.title}"?',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 16),
-            ...accepted.map((p) => ListTile(
-                  leading:
-                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
-                  title: Text(p.partnerName,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(p.role.label),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    final myUid = AccountabilityService().currentUid;
-                    final otherUid =
-                        p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
-                    if (otherUid == null) return;
-                    final messenger = ScaffoldMessenger.of(context);
-                    final taskTitle = task.title;
-                    final partnerName = p.partnerName;
-
-                    final accountabilityTask =
-                        await AccountabilityService().createAccountabilityTask(
-                      accountableUid: otherUid,
-                      accountableName: partnerName,
-                      partnershipId: p.id,
-                      title: taskTitle,
-                      description: 'Regular task from Daily Mettle',
-                      challengeId: task.id,
-                    );
-
-                    messenger.showSnackBar(SnackBar(
-                      content: Text(accountabilityTask != null
-                          ? '"$taskTitle" assigned to $partnerName'
-                          : 'Failed to assign task. Try again.'),
-                      backgroundColor: accountabilityTask != null
-                          ? Colors.green
-                          : Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                    ));
-                    if (accountabilityTask != null) {
-                      _loadAssignedPartners();
-                    }
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -373,12 +147,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               final isCompleted = todayCompletions[task.id] ?? false;
               final stats =
                   calculateRegularTaskStats(task.id, recentCompletions);
-              if (!_taskCollaborators.containsKey(task.id)) {
-                _loadCollaboratorsForTask(task.id);
-              }
-              return _buildTaskItem(context, task, isCompleted, stats,
-                  partnerName: _assignedPartnerNames[task.id],
-                  collaborators: _taskCollaborators[task.id] ?? []);
+              return _buildTaskItem(context, task, isCompleted, stats);
             },
           ),
         ),
@@ -390,10 +159,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     BuildContext context,
     RegularTask task,
     bool isCompleted,
-    RegularTaskStats stats, {
-    String? partnerName,
-    List<Collaborator> collaborators = const [],
-  }) {
+    RegularTaskStats stats,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
@@ -487,31 +254,6 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                               ),
                             ],
                           ),
-                          if (collaborators.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            _buildCollaboratorAvatars(collaborators),
-                          ] else if (partnerName != null &&
-                              partnerName.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(Icons.people_outline,
-                                    size: 11, color: Colors.blue[400]),
-                                const SizedBox(width: 3),
-                                Flexible(
-                                  child: Text(
-                                    partnerName,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.blue[600],
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -889,11 +631,21 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
   final _controller = TextEditingController();
   late Challenge _challenge;
   String? _taskNameError;
+  AccountabilityPartner? _selectedPartner;
+  List<AccountabilityPartner> _availablePartners = [];
 
   @override
   void initState() {
     super.initState();
-    _challenge = const Challenge(id: '', title: '');
+    _challenge = Challenge(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: '',
+      taskType: 'regular',
+      category: 'general',
+      reminderType: 'once',
+      isReminderEnabled: false,
+      showInRegularTab: true,
+    );
   }
 
   @override
@@ -1174,6 +926,66 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
                             ),
                           ),
                         ),
+                        // ── Accountability Partner picker ──────
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: _availablePartners.isEmpty
+                              ? null
+                              : _showPartnerPicker,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: _selectedPartner != null
+                                  ? Colors.blue[50]
+                                  : Colors.grey[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _selectedPartner != null
+                                    ? Colors.blue[300]!
+                                    : Colors.grey[300]!,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 18,
+                                  color: _selectedPartner != null
+                                      ? Colors.blue[600]
+                                      : Colors.grey[500],
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _selectedPartner != null
+                                        ? '👥 ${_selectedPartner!.partnerName}'
+                                        : _availablePartners.isEmpty
+                                            ? 'No partners yet'
+                                            : 'Assign accountability partner (optional)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: _selectedPartner != null
+                                          ? Colors.blue[700]
+                                          : Colors.grey[600],
+                                    ),
+                                  ),
+                                ),
+                                if (_selectedPartner != null)
+                                  GestureDetector(
+                                    onTap: () =>
+                                        setState(() => _selectedPartner = null),
+                                    child: Icon(Icons.close,
+                                        size: 16, color: Colors.grey[400]),
+                                  )
+                                else
+                                  Icon(Icons.chevron_right,
+                                      size: 18, color: Colors.grey[400]),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -1271,6 +1083,63 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
     );
   }
 
+  void _showPartnerPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Assign Accountability Partner',
+              style: GoogleFonts.poppins(
+                  fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'They will be held accountable for this task',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            ..._availablePartners.map((p) => ListTile(
+                  leading:
+                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
+                  title: Text(p.partnerName,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(p.role.label),
+                  trailing: _selectedPartner?.id == p.id
+                      ? const Icon(Icons.check_circle, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedPartner = p);
+                    Navigator.pop(context);
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showReminderSetup() {
     showModalBottomSheet(
       context: context,
@@ -1326,7 +1195,6 @@ class _AddRegularTaskSheetState extends State<_AddRegularTaskSheet> {
       createdAt: DateTime.now(),
     );
     widget.bloc.add(AddRegularTask(regularTask));
-
     Navigator.pop(context);
   }
 }

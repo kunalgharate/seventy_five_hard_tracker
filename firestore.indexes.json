@@ -55,13 +55,6 @@
         { "fieldPath": "fromUid", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "accountability_tasks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "accountableUserIds", "arrayConfig": "CONTAINS" }
-      ]
     }
   ],
   "fieldOverrides": []

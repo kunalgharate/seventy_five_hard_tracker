@@ -16,6 +16,11 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/dat
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -36,151 +41,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
-  Map<String, String> _assignedChallengeMap =
-      {}; // challengeId → accountableUid
-  Map<String, String> _assignedPartnerNames = {}; // challengeId → partnerName
-  Map<String, ProofStatus> _proofStatuses = {}; // challengeId → proofStatus
-  Map<String, AccountabilityTaskStatus> _accountabilityStatuses =
-      {}; // challengeId → accountabilityStatus
-  StreamSubscription<List<AccountabilityTask>>? _tasksAssignedByMeSub;
-  List<AccountabilityTask>? _latestAssignedTasks;
-  Timer? _assignedReloadDebounce;
-
-  // Tracks previously known completed tasks to avoid re-triggering
-  final Set<String> _previouslyCompletedTaskIds = {};
 
   @override
   void initState() {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
-    _loadAssignedChallenges();
-    // One-time cleanups
-    AccountabilityService()..cleanupSelfAssignedTasks()..migrateOrphanedAccountabilityTasks();
-    // Subscribe to real-time streams
-    _subscribeToStreams();
-  }
-
-  @override
-  void dispose() {
-    _assignedReloadDebounce?.cancel();
-    _tasksAssignedByMeSub?.cancel();
-    super.dispose();
-  }
-
-  void _scheduleAssignedReload() {
-    _assignedReloadDebounce?.cancel();
-    _assignedReloadDebounce = Timer(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-      if (_latestAssignedTasks != null) {
-        _syncCompletedTasks(_latestAssignedTasks!);
-      }
-      _loadAssignedChallenges();
-    });
-  }
-
-  void _subscribeToStreams() {
-    final svc = AccountabilityService();
-
-    // Listen for tasks assigned BY me (tasks I assigned to partners)
-    // Used to auto-sync completion back to my 75 Hard progress
-    _tasksAssignedByMeSub = svc.assignedByMeStream().listen((tasks) {
-      if (!mounted) return;
-      _latestAssignedTasks = tasks;
-      _scheduleAssignedReload();
-    });
-  }
-
-  /// When a partner completes an accountability task linked to one of my
-  /// challenges, auto-update my local 75 Hard progress.
-  void _syncCompletedTasks(List<AccountabilityTask> tasks) {
-    for (final task in tasks) {
-      if (task.challengeId == null) continue;
-      if (!task.isCompleted) continue;
-      if (_previouslyCompletedTaskIds.contains(task.id)) continue;
-
-      _previouslyCompletedTaskIds.add(task.id);
-
-      // Mark my local challenge task as completed
-      context.read<ChallengeBloc>().add(UpdateDailyProgress(
-            date: DateTime.now(),
-            challengeId: task.challengeId!,
-            isCompleted: true,
-          ));
-    }
-  }
-
-  Future<void> _loadAssignedChallenges() async {
-    final svc = AccountabilityService();
-    final results = await Future.wait([
-      svc.fetchAssignedChallengeMap(), // challengeId → accountableUid (I assigned)
-      svc.fetchMyPartnerships(),
-      svc.fetchAccountableForMap(), // challengeId → assignerName (assigned to me)
-      svc.fetchMyAccountabilityTaskStatuses(), // challengeId → my accountability status
-    ]);
-    final challengeMap = results[0] as Map<String, String>;
-    final partnerships = results[1] as List<AccountabilityPartner>;
-    final accountableForMap = results[2] as Map<String, String>;
-    final accountabilityStatuses = results[3] as Map<String, AccountabilityTaskStatus>;
-
-    // Build challengeId → partnerName for tasks I ASSIGNED
-    final myUid = svc.currentUid;
-    final uidToName = <String, String>{};
-    for (final p in partnerships) {
-      if (p.partnerUid != null) uidToName[p.partnerUid!] = p.partnerName;
-      if (p.ownerUid != myUid) uidToName[p.ownerUid] = p.partnerName;
-    }
-    final partnerNames = <String, String>{};
-    // From tasks I assigned — show the accountable person's name
-    challengeMap.forEach((cid, uid) {
-      final name = uidToName[uid];
-      if (name != null) partnerNames[cid] = name;
-    });
-    // From tasks assigned TO me — show the assigner's name on my card
-    accountableForMap.forEach((cid, assignerName) {
-      partnerNames.putIfAbsent(cid, () => assignerName);
-    });
-
-    // Fetch proof statuses for all challenge IDs that have partners
-    final allCids = <String>{
-      ...challengeMap.keys,
-      ...accountableForMap.keys,
-    };
-    Map<String, ProofStatus> proofStatuses = {};
-    if (allCids.isNotEmpty) {
-      // Firestore whereIn supports up to 30 values
-      final batches = <List<String>>[];
-      var batch = <String>[];
-      for (final cid in allCids) {
-        batch.add(cid);
-        if (batch.length == 30) {
-          batches.add(batch);
-          batch = [];
-        }
-      }
-      if (batch.isNotEmpty) batches.add(batch);
-      for (final b in batches) {
-        final result = await svc.fetchProofStatusesForChallengeIds(b);
-        proofStatuses.addAll(result);
-      }
-    }
-
-    // Populate set of already-completed accountability tasks I assigned
-    // so the real-time stream listener doesn't re-trigger auto-completion.
-    final snap = await svc.fetchAssignedTasksCompleted();
-    _previouslyCompletedTaskIds.addAll(
-      snap
-          .where((t) => t.challengeId != null)
-          .map((t) => t.id),
-    );
-
-    if (mounted) {
-      setState(() {
-        _assignedChallengeMap = challengeMap;
-        _assignedPartnerNames = partnerNames;
-        _proofStatuses = proofStatuses;
-        _accountabilityStatuses = accountabilityStatuses;
-      });
-    }
   }
 
   @override
@@ -577,15 +442,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             challenge: challenge,
                             isCompleted: isCompleted,
                             isEditable: isToday,
-                            accountablePartnerUid:
-                                _assignedChallengeMap[challenge.id],
-                            partnerName: _assignedPartnerNames[challenge.id],
-                            proofStatus: _proofStatuses[challenge.id],
-                            accountabilityStatus:
-                                _accountabilityStatuses[challenge.id],
-                            onSubmitProof: () => _submitProof(challenge),
-                            onReviewProof: () => _reviewProof(challenge),
-                            onViewProof: () => _viewProof(challenge),
                             onToggle: (completed) {
                               context.read<ChallengeBloc>().add(
                                     UpdateDailyProgress(
@@ -598,6 +454,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             onReminderUpdate: (updatedChallenge) {
                               context.read<ChallengeBloc>().add(
                                     UpdateChallenge(updatedChallenge),
+                                  );
+                            },
+                            onRemove: () {
+                              context.read<ChallengeBloc>().add(
+                                    RemoveChallengeFromSession(challenge.id),
                                   );
                             },
                           ),
@@ -863,266 +724,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-// ── Discipline Score Card ────────────────────────────────────────────────────
-
-class _DisciplineScoreCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<DisciplineScoreBloc, DisciplineScoreState>(
-      builder: (context, state) {
-        if (state is! DisciplineScoreLoaded) {
-          return const SizedBox.shrink();
-        }
-        final s = state;
-        return Card(
-          elevation: 3,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFFFFA726).withValues(alpha: 0.08),
-                  const Color(0xFFFF7043).withValues(alpha: 0.05),
-                ],
-              ),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header row
-                Row(
-                  children: [
-                    const Icon(Icons.local_fire_department,
-                        color: Color(0xFFFFA726), size: 20),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Discipline Score',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                    const Spacer(),
-                    // Grade badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _gradeColor(s.grade).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border:
-                            Border.all(color: _gradeColor(s.grade), width: 1.2),
-                      ),
-                      child: Text(
-                        s.grade,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: _gradeColor(s.grade),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // Score + tier
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      s.disciplineScore.toStringAsFixed(0),
-                      style: GoogleFonts.poppins(
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        color: _gradeColor(s.grade),
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text('/100',
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[500])),
-                    ),
-                    const Spacer(),
-                    Text(
-                      s.tier,
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _gradeColor(s.grade),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                // Progress bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(100),
-                  child: LinearProgressIndicator(
-                    value: s.disciplineScore / 100,
-                    minHeight: 6,
-                    backgroundColor: Colors.grey[200],
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(_gradeColor(s.grade)),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                // Warning banner — shown when consecutive misses exist
-                if (s.hasActiveWarnings) ...[
-                  Container(
-                    width: double.infinity,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: s.onFinalWarning
-                          ? Colors.red.withValues(alpha: 0.12)
-                          : Colors.orange.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: s.onFinalWarning ? Colors.red : Colors.orange,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          s.onFinalWarning
-                              ? Icons.dangerous_outlined
-                              : Icons.warning_amber_rounded,
-                          size: 16,
-                          color: s.onFinalWarning ? Colors.red : Colors.orange,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            s.onFinalWarning
-                                ? '${s.warningLabel} — Next miss breaks your streak! (-15 pts)'
-                                : '${s.warningLabel} — Complete today to avoid penalty',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: s.onFinalWarning
-                                  ? Colors.red[700]
-                                  : Colors.orange[800],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                // Stats row
-                Row(
-                  children: [
-                    _StatPill(
-                      icon: Icons.local_fire_department,
-                      label: 'Streak',
-                      value: '${s.currentStreak}d',
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(width: 8),
-                    _StatPill(
-                      icon: Icons.emoji_events_outlined,
-                      label: 'Best',
-                      value: '${s.longestStreak}d',
-                      color: Colors.amber,
-                    ),
-                    const SizedBox(width: 8),
-                    _StatPill(
-                      icon: Icons.calendar_today_outlined,
-                      label: '7-day',
-                      value: '${s.weeklyConsistency.toStringAsFixed(0)}%',
-                      color: Colors.green,
-                    ),
-                    const SizedBox(width: 8),
-                    _StatPill(
-                      icon: Icons.trending_up,
-                      label: 'Breaks',
-                      value: '${s.streakBreaks}',
-                      color: s.streakBreaks > 0 ? Colors.red : Colors.blue,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0);
-      },
-    );
-  }
-
-  Color _gradeColor(String grade) {
-    switch (grade) {
-      case 'S':
-        return const Color(0xFF6C3FC5); // purple
-      case 'A':
-        return const Color(0xFF2E7D32); // dark green
-      case 'B':
-        return const Color(0xFF1565C0); // blue
-      case 'C':
-        return const Color(0xFFFFA726); // orange
-      case 'D':
-        return const Color(0xFFE65100); // deep orange
-      default:
-        return const Color(0xFFB71C1C); // red
-    }
-  }
-}
-
-class _StatPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(height: 3),
-            Text(
-              value,
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.bold, color: color),
-            ),
-            Text(
-              label,
-              style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Partner-assigned task card removed — tasks now shown only in Partners tab ──

@@ -4,7 +4,11 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:seventy_five_hard_tracker/features/ai_accountability/presentation/screens/ai_companion_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
@@ -22,29 +26,6 @@ class DailyTaskCard extends StatefulWidget {
   final Function(Challenge)? onReminderUpdate;
   final int? dayNumber;
 
-  /// UID of the accountability partner assigned to this task.
-  /// When set, only that person can check it — owner sees a lock icon instead.
-  final String? accountablePartnerUid;
-
-  /// Display name of the accountability partner assigned to this task.
-  final String? partnerName;
-
-  /// Current proof status for this task (only relevant when partner is assigned).
-  final ProofStatus? proofStatus;
-
-  /// Status of the accountability task (requested, pending, completed, declined).
-  /// null if no accountability task is associated.
-  final AccountabilityTaskStatus? accountabilityStatus;
-
-  /// Called when the accountable partner wants to submit photo proof.
-  final VoidCallback? onSubmitProof;
-
-  /// Called when the task owner wants to review submitted proof.
-  final VoidCallback? onReviewProof;
-
-  /// Called when the accountable person wants to view submitted proof.
-  final VoidCallback? onViewProof;
-
   const DailyTaskCard({
     super.key,
     required this.challenge,
@@ -53,13 +34,6 @@ class DailyTaskCard extends StatefulWidget {
     required this.onToggle,
     this.onReminderUpdate,
     this.dayNumber,
-    this.accountablePartnerUid,
-    this.partnerName,
-    this.proofStatus,
-    this.accountabilityStatus,
-    this.onSubmitProof,
-    this.onReviewProof,
-    this.onViewProof,
   });
 
   @override
@@ -145,17 +119,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     _completionController.dispose();
     _pulseController.dispose();
     super.dispose();
-  }
-
-  Future<void> _showCollaboratorDialog() async {
-    final changed = await CollaboratorDialog.show(
-      context: context,
-      taskId: widget.challenge.id,
-      taskName: widget.challenge.title,
-    );
-    if (changed == true) {
-      _loadCollaborators();
-    }
   }
 
   void _showGenericReminderSetup() {
@@ -401,8 +364,20 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             ),
           ),
 
-          // Trailing action buttons wrapped to prevent overflow
-          _buildTrailingActions(myUid),
+          // Reminder icon (right)
+          if (widget.isEditable && !widget.challenge.isReminderEnabled)
+            IconButton(
+              onPressed: _showGenericReminderSetup,
+              icon: Icon(
+                Icons.alarm_add,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              padding: const EdgeInsets.all(6),
+              constraints:
+                  const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: 'Set Reminder',
+            ),
         ],
       ),
     );
@@ -461,8 +436,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   Widget _buildCompletionWidget() {
-    final myUid = FirebaseAuth.instance.currentUser?.uid;
-
     if (!widget.isEditable) {
       return Container(
         padding: const EdgeInsets.all(8),
@@ -486,35 +459,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       );
     }
 
-    // If partner is assigned and current user is the creator (assigned this) — show lock
-    if (_isAssigner(myUid)) {
-      return Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: Colors.grey[200],
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.lock_outline, size: 16, color: Colors.grey[500]),
-      );
-    }
-
-    // If task is requested (not yet accepted by assignee), show Pending badge
-    if (_isRequestedAndUnaccepted()) {
-      return Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: Colors.orange[100],
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.hourglass_empty, size: 16, color: Colors.orange[700]),
-      );
-    }
-    // Interactive completion toggle — Apple-style checkbox
+    // Interactive completion toggle for editable cards - Apple-style checkbox
     return AppleCheckbox(
       isChecked: widget.isCompleted,
-      isEnabled: widget.isEditable && _isOwner(myUid),
+      isEnabled: widget.isEditable,
       onChanged: (value) => widget.onToggle(value),
     );
   }
