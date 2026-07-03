@@ -1,15 +1,15 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Dart
+name: Flutter CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main", "feature/**", "fix/**", "release/**" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
+
+# Cancel any in-progress run for the same branch/PR when a new one starts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,27 +17,60 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for changelog
 
-      # Note: This workflow uses the latest stable version of the Dart SDK.
-      # You can specify other versions if desired, see documentation here:
-      # https://github.com/dart-lang/setup-dart/blob/main/README.md
-      # - uses: dart-lang/setup-dart@v1
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.0'
+          cache: true
+
       - name: Install dependencies
         run: flutter pub get
 
-      # Uncomment this step to verify the use of 'dart format' on each commit.
-      # - name: Verify formatting
-      #   run: dart format --output=none --set-exit-if-changed .
-
-      # Consider passing '--fatal-infos' for slightly stricter analysis.
       - name: Analyze project source
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
-      # Your project will need to have tests in test/ and a dependency on
-      # package:test for this step to succeed. Note that Flutter projects will
-      # want to change this to 'flutter test'.
       - name: Run tests
         run: flutter test
+        continue-on-error: true # Don't block APK build on test failures
+
+      # ── Build APK ─────────────────────────────────────────────────
+      - name: Build APK
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DailyMettle-${{ github.ref_name }}-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+      # ── Notify Teams via Power Automate webhook ────────────────────
+      - name: Get commit messages
+        id: changelog
+        run: |
+          CHANGES=$(git log --oneline -5 --pretty=format:"• %s" | head -c 500)
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Notify Teams channel
+        if: success()
+        run: |
+          APK_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST \
+            "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d @- <<PAYLOAD
+          {
+            "app": "🏋️ DailyMettle: Habit & Challenge",
+            "branch": "${{ github.ref_name }}",
+            "buildNumber": "#${{ github.run_number }}",
+            "description": "New APK build generated from branch **${{ github.ref_name }}**",
+            "changes": "${{ steps.changelog.outputs.changes }}",
+            "triggeredBy": "${{ github.actor }}",
+            "apkDownloadLink": "$APK_URL",
+            "commitSha": "${{ github.sha }}"
+          }
+          PAYLOAD

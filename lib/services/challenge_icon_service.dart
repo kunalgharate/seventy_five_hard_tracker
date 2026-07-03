@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class ChallengeIconService {
-  static const Map<String, List<ChallengeIconData>> categoryIcons = {
+  static final Map<String, List<ChallengeIconData>> categoryIcons = {
     'fitness': [
       ChallengeIconData(
         icon: FontAwesomeIcons.dumbbell,
@@ -241,7 +241,7 @@ class ChallengeIconService {
 }
 
 class ChallengeIconData {
-  final IconData icon;
+  final FaIconData icon;
   final String name;
   final Color color;
   final List<String> keywords;
