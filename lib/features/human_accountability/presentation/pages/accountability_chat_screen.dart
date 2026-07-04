@@ -25,6 +25,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
   final _scrollCtrl = ScrollController();
   MessageType _selectedType = MessageType.encouragement;
   bool _sending = false;
+  int _previousMessageCount = 0;
 
   String get _myUid => AccountabilityService().currentUid ?? '';
 
@@ -33,6 +34,13 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
     _textCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollCtrl.hasClients) return true;
+    final maxScroll = _scrollCtrl.position.maxScrollExtent;
+    final currentScroll = _scrollCtrl.offset;
+    return (maxScroll - currentScroll) <= 150.0;
   }
 
   void _scrollToBottom() {
@@ -140,6 +148,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
         }
         final messages = snap.data ?? [];
         if (messages.isEmpty) {
+          _previousMessageCount = 0;
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -153,7 +162,11 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
             ),
           );
         }
-        _scrollToBottom();
+        // Only auto-scroll if a new message arrived and user was near bottom
+        if (messages.length > _previousMessageCount && _isNearBottom()) {
+          _scrollToBottom();
+        }
+        _previousMessageCount = messages.length;
         return ListView.builder(
           controller: _scrollCtrl,
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),

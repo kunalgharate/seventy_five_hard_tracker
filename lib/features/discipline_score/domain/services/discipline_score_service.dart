@@ -46,8 +46,10 @@ class DisciplineScoreService {
     int completedDays = 0;
     int missedDays = 0;
 
-    final taskCount =
-        session.challenges.where((c) => c.taskType != 'regular').length;
+    final nonRegularChallenges =
+        session.challenges.where((c) => c.taskType != 'regular');
+    final taskCount = nonRegularChallenges.length;
+    final nonRegularIds = nonRegularChallenges.map((c) => c.id).toSet();
 
     for (int i = 0; i < trackedDays; i++) {
       final date = startDate.add(Duration(days: i));
@@ -57,8 +59,9 @@ class DisciplineScoreService {
       if (p == null) {
         missedDays++;
       } else {
-        final done =
-            p.challengeCompletions.values.where((v) => v == true).length;
+        final done = p.challengeCompletions.entries
+            .where((e) => e.value == true && nonRegularIds.contains(e.key))
+            .length;
         totalCompleted += done;
         if (p.isCompleted) {
           completedDays++;

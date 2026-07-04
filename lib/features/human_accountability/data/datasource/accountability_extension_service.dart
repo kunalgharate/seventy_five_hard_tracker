@@ -183,6 +183,7 @@ class AccountabilityExtensionService {
       final snap = await _db
           .collection('accountability_notifications')
           .where('recipientUid', isEqualTo: currentUid)
+          .where('isRead', isEqualTo: false)
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .get();
@@ -365,10 +366,22 @@ class AccountabilityExtensionService {
   }) async {
     if (!_isReady) return;
     try {
+      // Verify the streak action belongs to the subject user before updating.
+      final docRef = _db.collection('streak_actions').doc(actionId);
+      final docSnap = await docRef.get();
+      if (!docSnap.exists || docSnap.data()?['subjectUid'] != subjectUid) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityExtensionService] acknowledgeStreakAction: '
+              'action $actionId does not belong to user $subjectUid');
+        }
+        return;
+      }
+
       final type = confirmed
           ? StreakActionType.resetConfirmed
           : StreakActionType.resetDenied;
-      await _db.collection('streak_actions').doc(actionId).update({
+      await docRef.update({
         'acknowledged': true,
         'type': type.name,
       });
@@ -431,9 +444,9 @@ class AccountabilityExtensionService {
       final completionPct =
           totalTasks == 0 ? 0.0 : completedTasks / totalTasks * 100;
 
-      // Streak trend: list of booleans for each day
+      // Streak trend: list of booleans for each day (chronological: oldest first)
       final streakTrend =
-          days.map((d) => d['dayCompleted'] as bool? ?? false).toList();
+          days.map((d) => d['dayCompleted'] as bool? ?? false).toList().reversed.toList();
 
       return {
         'completionPct': completionPct,

@@ -820,6 +820,28 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       // Cancel any pending reminders for the removed challenge
       await _smartNotifications.cancelCompletedTaskReminders(event.challengeId);
 
+      // Recalculate daily progress completion flags for all existing progress
+      // entries, since removing a challenge changes which tasks are required.
+      final allProgress =
+          _repository.getProgressForSession(activeSession.startDate);
+      for (final progress in allProgress) {
+        // Remove the deleted challenge from completions map
+        final updatedCompletions =
+            Map<String, bool>.from(progress.challengeCompletions)
+              ..remove(event.challengeId);
+
+        // Recalculate isCompleted based on remaining non-regular challenges
+        final allCompleted = updatedChallenges
+            .where((c) => c.taskType != 'regular')
+            .every((c) => updatedCompletions[c.id] == true);
+
+        final updatedProgress = progress.copyWith(
+          challengeCompletions: updatedCompletions,
+          isCompleted: allCompleted,
+        );
+        await _repository.saveDailyProgress(updatedProgress);
+      }
+
       add(LoadChallengeData());
     } catch (e) {
       emit(ChallengeError('Failed to remove challenge: $e'));

@@ -47,7 +47,7 @@ class StreakAction extends Equatable {
   /// Current streak value at the time of the action.
   final int currentStreakAtAction;
 
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
   /// Whether the subject user has acknowledged this action.
   final bool acknowledged;
@@ -60,7 +60,7 @@ class StreakAction extends Equatable {
     required this.type,
     required this.reason,
     required this.currentStreakAtAction,
-    required this.createdAt,
+    this.createdAt,
     this.acknowledged = false,
   });
 
@@ -76,10 +76,10 @@ class StreakAction extends Equatable {
         acknowledged: acknowledged ?? this.acknowledged,
       );
 
-  static DateTime _parseDate(dynamic v) {
+  static DateTime? _parseDate(dynamic v) {
     if (v is Timestamp) return v.toDate();
     if (v is String) return DateTime.parse(v);
-    return DateTime.now();
+    return null;
   }
 
   factory StreakAction.fromFirestore(Map<String, dynamic> d, {String? id}) =>

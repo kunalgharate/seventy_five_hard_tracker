@@ -377,6 +377,7 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
+    if (!mounted) return;
     if (picked != null) setState(() => _dueDate = picked);
   }
 
@@ -396,8 +397,8 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       dueDate: _dueDate,
     );
-    setState(() => _submitting = false);
     if (!mounted) return;
+    setState(() => _submitting = false);
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(task != null

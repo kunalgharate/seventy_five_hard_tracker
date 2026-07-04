@@ -10,10 +10,10 @@ class ApiConstants {
   /// API-Ninjas quotes endpoint (plural — /quote returns 404)
   static const String quotesEndpoint = 'https://api.api-ninjas.com/v1/quotes';
 
-  /// API-Ninjas key
+  /// API-Ninjas key — supply via --dart-define=API_NINJAS_KEY=your_key
   static const String apiNinjasKey = String.fromEnvironment(
     'API_NINJAS_KEY',
-    defaultValue: 'HzzXv9PYL0eEgXwPF9aTC2hZUQKgZpWumHx4rvbZ',
+    defaultValue: '',
   );
 
   // NOTE: The `category` query param requires a premium API-Ninjas subscription.
@@ -23,10 +23,10 @@ class ApiConstants {
 
   // ── Gemini AI ──────────────────────────────────────────────────
 
-  /// Gemini API key
+  /// Gemini API key — supply via --dart-define=GEMINI_API_KEY=your_key
   static const String geminiApiKey = String.fromEnvironment(
     'GEMINI_API_KEY',
-    defaultValue: 'AQ.Ab8RN6J3arJ8kmRH3qJr1UnzMmMTRbIMcBBNEC1mMzfAqXfQNg',
+    defaultValue: '',
   );
 
   /// Gemini model — use gemini-2.5-flash as primary
