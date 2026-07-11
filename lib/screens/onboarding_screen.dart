@@ -5,7 +5,6 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
@@ -1715,6 +1714,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                   trailing: const Icon(Icons.add_circle_outline,
                                       color: Colors.green),
                                   onTap: () {
+                                    // Remove blank (empty-title) challenges first
+                                    // so the template item appears at the top
+                                    final blankIndices = <int>[];
+                                    for (int i = _challenges.length - 1;
+                                        i >= 0;
+                                        i--) {
+                                      if (_challenges[i]
+                                          .title
+                                          .trim()
+                                          .isEmpty) {
+                                        blankIndices.add(i);
+                                      }
+                                    }
+                                    for (final i in blankIndices) {
+                                      _controllers[i].dispose();
+                                      _controllers.removeAt(i);
+                                      _challenges.removeAt(i);
+                                    }
+
                                     if (_challenges.length >= 10) {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(

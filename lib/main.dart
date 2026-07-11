@@ -27,21 +27,14 @@ import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'screens/login_screen.dart';
-import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
-import 'features/discipline_score/discipline_score.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/privacy_policy_screen.dart';
-import 'services/smart_notification_service.dart';
-import 'services/simple_background_check_service.dart';
-import 'services/analytics_service.dart';
-import 'services/connectivity_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 /// App-wide theme colors — single source of truth.
 class AppColors {
@@ -374,14 +367,6 @@ class _InitialScreenState extends State<InitialScreen>
     });
   }
 
-  /// Orchestrates splash: fetch quote in parallel, then navigate.
-  Future<void> _initApp() async {
-    // Fetch quote (non-blocking for navigation)
-    unawaited(_fetchQuote());
-    // Wait for splash display then navigate
-    _checkInitialRoute();
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -446,10 +431,10 @@ class _InitialScreenState extends State<InitialScreen>
     if (mounted) {
       if (currentUser != null) {
         // User is already logged in, go to Dashboard
-        navigator.pushReplacementNamed('/home');
+        Navigator.of(context).pushReplacementNamed('/home');
       } else {
         // User is new or logged out, go to Welcome gate
-        navigator.pushReplacementNamed('/onboarding');
+        Navigator.of(context).pushReplacementNamed('/onboarding');
       }
     }
   }

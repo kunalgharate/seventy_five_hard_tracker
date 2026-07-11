@@ -14,13 +14,6 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -41,6 +34,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
+  final Map<String, ProofStatus> _proofStatuses = {};
+  final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
 
   @override
   void initState() {
@@ -461,6 +456,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     RemoveChallengeFromSession(challenge.id),
                                   );
                             },
+                            proofStatus: _proofStatuses[challenge.id],
+                            onSubmitProof: () => _submitProof(challenge),
+                            onReviewProof: () => _reviewProof(challenge),
+                            onViewProof: () => _viewProof(challenge),
                           ),
                         ),
                       ),

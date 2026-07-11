@@ -4,11 +4,7 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
-import 'package:seventy_five_hard_tracker/features/ai_accountability/presentation/screens/ai_companion_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
@@ -24,7 +20,15 @@ class DailyTaskCard extends StatefulWidget {
   final bool isEditable;
   final Function(bool) onToggle;
   final Function(Challenge)? onReminderUpdate;
+  final VoidCallback? onRemove;
   final int? dayNumber;
+  final String? accountablePartnerUid;
+  final String? partnerName;
+  final AccountabilityTaskStatus? accountabilityStatus;
+  final ProofStatus? proofStatus;
+  final VoidCallback? onSubmitProof;
+  final VoidCallback? onReviewProof;
+  final VoidCallback? onViewProof;
 
   const DailyTaskCard({
     super.key,
@@ -33,7 +37,15 @@ class DailyTaskCard extends StatefulWidget {
     required this.isEditable,
     required this.onToggle,
     this.onReminderUpdate,
+    this.onRemove,
     this.dayNumber,
+    this.accountablePartnerUid,
+    this.partnerName,
+    this.accountabilityStatus,
+    this.proofStatus,
+    this.onSubmitProof,
+    this.onReviewProof,
+    this.onViewProof,
   });
 
   @override
@@ -132,6 +144,16 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         onSave: (updated) => widget.onReminderUpdate!(updated),
       ),
     );
+  }
+
+  void _showCollaboratorDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => CollaboratorDialog(
+        taskId: widget.challenge.id,
+        taskName: widget.challenge.title,
+      ),
+    ).then((_) => _loadCollaborators());
   }
 
   @override
@@ -273,9 +295,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   bool get _hasPartner =>
-      widget.accountablePartnerUid != null && widget.accountablePartnerUid!.isNotEmpty;
+      widget.accountablePartnerUid != null &&
+      widget.accountablePartnerUid!.isNotEmpty;
   bool get _assignedToMe =>
-      !_hasPartner && widget.partnerName != null && widget.partnerName!.isNotEmpty;
+      !_hasPartner &&
+      widget.partnerName != null &&
+      widget.partnerName!.isNotEmpty;
   bool get _hasAccountabilityConnection => _hasPartner || _assignedToMe;
 
   /// True if the current user is the task owner (accountable person = the one who completes the task).
@@ -297,24 +322,22 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Padding(
-      padding: const EdgeInsets.only(
-          left: 10, right: 4, top: 6, bottom: 6),
+      padding: const EdgeInsets.only(left: 10, right: 4, top: 6, bottom: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _buildCompletionWidget(),
           const SizedBox(width: 8),
-
           AnimatedChallengeIcon(
             challenge: widget.challenge,
             size: 36,
-            onTap: (widget.isEditable && _isOwner(myUid) &&
+            onTap: (widget.isEditable &&
+                    _isOwner(myUid) &&
                     !_isRequestedAndUnaccepted())
                 ? () => widget.onToggle(!widget.isCompleted)
                 : null,
           ),
           const SizedBox(width: 10),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,21 +386,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
               ],
             ),
           ),
-
-          // Reminder icon (right)
-          if (widget.isEditable && !widget.challenge.isReminderEnabled)
-            IconButton(
-              onPressed: _showGenericReminderSetup,
-              icon: Icon(
-                Icons.alarm_add,
-                color: Colors.grey[600],
-                size: 20,
-              ),
-              padding: const EdgeInsets.all(6),
-              constraints:
-                  const BoxConstraints(minWidth: 32, minHeight: 32),
-              tooltip: 'Set Reminder',
-            ),
+          _buildTrailingActions(myUid),
         ],
       ),
     );
@@ -393,7 +402,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         onPressed: _showGenericReminderSetup,
         icon: Icon(Icons.alarm_add, color: Colors.grey[500], size: iconSize),
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
         tooltip: 'Set Reminder',
       ));
     }
@@ -411,7 +421,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           size: iconSize,
         ),
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
         tooltip: 'Manage Collaborators',
       ));
     }
@@ -424,10 +435,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: actions.map((w) => Padding(
-        padding: const EdgeInsets.only(left: 2),
-        child: w,
-      )).toList(),
+      children: actions
+          .map((w) => Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: w,
+              ))
+          .toList(),
     );
   }
 
@@ -512,14 +525,16 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   Widget _buildProofButton() {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
-    final isCreator = _isAssigner(myUid); // person who created the task & added collaborators
+    final isCreator = _isAssigner(myUid);
     final status = widget.proofStatus;
     const btnSize = 24.0;
     const iconS = 16.0;
     const zeroEdge = EdgeInsets.zero;
-    const btnConstraints = BoxConstraints(minWidth: btnSize, minHeight: btnSize);
+    const btnConstraints =
+        BoxConstraints(minWidth: btnSize, minHeight: btnSize);
 
-    Widget iconBtn(IconData icon, Color color, VoidCallback? onPressed, String tooltip) {
+    Widget iconBtn(
+        IconData icon, Color color, VoidCallback? onPressed, String tooltip) {
       return IconButton(
         onPressed: onPressed,
         icon: Icon(icon, color: color, size: iconS),
@@ -530,18 +545,21 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
 
     // ── CREATOR (assigned this task to a collaborator) ──
-    // Camera upload is on the creator's task ID — they prove they did it.
     if (isCreator) {
       if (status == null || status == ProofStatus.not_required) {
-        return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!, widget.onSubmitProof, 'Upload Photo Proof');
+        return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!,
+            widget.onSubmitProof, 'Upload Photo Proof');
       }
       switch (status) {
         case ProofStatus.submitted:
-          return iconBtn(Icons.hourglass_bottom, Colors.orange[600]!, null, 'Awaiting Review');
+          return iconBtn(Icons.hourglass_bottom, Colors.orange[600]!, null,
+              'Awaiting Review');
         case ProofStatus.approved:
-          return iconBtn(Icons.check_circle, Colors.green[600]!, widget.onViewProof, 'View Approved Proof');
+          return iconBtn(Icons.check_circle, Colors.green[600]!,
+              widget.onViewProof, 'View Approved Proof');
         case ProofStatus.rejected:
-          return iconBtn(Icons.camera_alt, Colors.red[400]!, widget.onSubmitProof, 'Resubmit Photo Proof');
+          return iconBtn(Icons.camera_alt, Colors.red[400]!,
+              widget.onSubmitProof, 'Resubmit Photo Proof');
         default:
           return const SizedBox.shrink();
       }
@@ -553,11 +571,14 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
     switch (status) {
       case ProofStatus.submitted:
-        return iconBtn(Icons.rate_review_outlined, Colors.orange[600]!, widget.onReviewProof, 'Review Photo Proof');
+        return iconBtn(Icons.rate_review_outlined, Colors.orange[600]!,
+            widget.onReviewProof, 'Review Photo Proof');
       case ProofStatus.approved:
-        return iconBtn(Icons.check_circle, Colors.green[600]!, widget.onViewProof, 'View Approved Proof');
+        return iconBtn(Icons.check_circle, Colors.green[600]!,
+            widget.onViewProof, 'View Approved Proof');
       case ProofStatus.rejected:
-        return iconBtn(Icons.cancel, Colors.red[400]!, null, 'Proof Rejected');
+        return iconBtn(
+            Icons.cancel, Colors.red[400]!, null, 'Proof Rejected');
       default:
         return const SizedBox.shrink();
     }
