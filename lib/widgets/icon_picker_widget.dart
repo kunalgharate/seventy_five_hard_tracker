@@ -45,10 +45,18 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
 
   @override
   Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final availableHeight = MediaQuery.of(context).size.height
+        - viewInsets.bottom
+        - bottomPadding;
+
     return SafeArea(
       top: false,
       child: Container(
-      height: 400,
+      constraints: BoxConstraints(
+        maxHeight: availableHeight * 0.85,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -61,6 +69,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           _buildHeader(),
           _buildTabBar(),
@@ -142,17 +151,17 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
           child: GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 6,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 56,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
             ),
             itemCount: icons.length,
             itemBuilder: (context, index) {
               return AnimationConfiguration.staggeredGrid(
                 position: index,
                 duration: const Duration(milliseconds: 375),
-                columnCount: 6,
+                columnCount: 4,
                 child: ScaleAnimation(
                   child: FadeInAnimation(
                     child: _buildIconOption(icons[index]),
@@ -213,8 +222,7 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
   }
 
   Widget _buildCustomImageTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return SingleChildScrollView(
       child: Column(
         children: [
           if (_selectedImagePath != null) ...[

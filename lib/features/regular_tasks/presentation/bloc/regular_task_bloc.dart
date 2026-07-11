@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
@@ -84,6 +85,12 @@ class RegularTaskBloc extends Bloc<RegularTaskEvent, RegularTaskState> {
   ) async {
     try {
       await _repository.archiveTask(event.taskId);
+      // Cancel associated accountability task if any
+      final svc = AccountabilityService();
+      final task = await svc.fetchTaskByChallengeId(event.taskId);
+      if (task != null) {
+        await svc.cancelAccountabilityTask(task.id);
+      }
       add(LoadRegularTasks());
     } catch (e) {
       emit(RegularTaskError('Failed to delete regular task: $e'));

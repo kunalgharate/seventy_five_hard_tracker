@@ -85,7 +85,7 @@ dependencies:
   firebase_messaging: ^15.1.6
   firebase_auth: ^5.3.3
   cloud_firestore: ^5.5.0
-  firebase_storage: ^12.3.6
+  flutter_image_compress: ^2.3.0
   
   # Encryption for cloud sync
   encrypt: ^5.0.3

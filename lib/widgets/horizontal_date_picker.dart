@@ -84,24 +84,30 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  DateFormat('MMMM yyyy').format(widget.selectedDate),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFFFA726),
+                Flexible(
+                  child: Text(
+                    DateFormat('MMMM yyyy').format(widget.selectedDate),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFFFA726),
+                    ),
                   ),
                 ),
-                Text(
-                  'Day ${widget.selectedDate.difference(widget.startDate).inDays + 1} of 75',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[600],
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Day ${widget.selectedDate.difference(widget.startDate).inDays + 1} of 75',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ),
               ],
@@ -126,7 +132,7 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                         false;
 
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 1),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -135,8 +141,8 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 64,
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        width: 56,
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           gradient: isSelected

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,13 +8,19 @@ import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
+import '../widgets/photo_proof_sheet.dart';
+import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
@@ -27,6 +34,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
+  final Map<String, ProofStatus> _proofStatuses = {};
+  final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
 
   @override
   void initState() {
@@ -180,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             } else {
-              // Show journal FAB for active session
+              // Journal FAB for active session
               final selectedProgress = state.currentProgress
                   .where((p) => _isSameDay(p.date, _selectedDay))
                   .firstOrNull;
@@ -188,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedProgress!.journalNote!.isNotEmpty;
 
               return FloatingActionButton.extended(
+                heroTag: 'journal',
                 onPressed: () => _showJournalBottomSheet(
                   context,
                   state,
@@ -267,6 +277,16 @@ class _HomeScreenState extends State<HomeScreen> {
         DateTime.now().difference(session.startDate).inDays + 1;
     final currentDay = daysSinceStart > 75 ? 75 : daysSinceStart;
 
+    // Trigger discipline score calculation whenever session data changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
+              session: session,
+              progress: state.currentProgress,
+            ));
+      }
+    });
+
     return Column(
       children: [
         // Progress Stats
@@ -338,12 +358,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDailyTasks(
       ChallengeSession session, List<DailyProgress> allProgress) {
+    // Clamp selected day to the session date range to avoid stale date state.
+    if (_selectedDay.isBefore(session.startDate)) {
+      _selectedDay = session.startDate;
+    }
     final selectedProgress =
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
 
     final isToday = _isSameDay(_selectedDay, DateTime.now());
-    final isFutureDate = _selectedDay.isAfter(DateTime.now());
-    final isBeforeStart = _selectedDay.isBefore(session.startDate);
+    final isFutureDate = _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
+    final isBeforeStart = _normalizeDate(_selectedDay).isBefore(_normalizeDate(session.startDate));
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -353,16 +377,21 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  DateFormat('EEEE, MMM d').format(_selectedDay),
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                Flexible(
+                  child: Text(
+                    DateFormat('EEEE, MMM d').format(_selectedDay),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (selectedProgress?.isCompleted == true)
-                  const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.check_circle, color: Colors.green, size: 32),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -418,11 +447,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                             },
                             onReminderUpdate: (updatedChallenge) {
-                              // Update the challenge with new reminder settings
                               context.read<ChallengeBloc>().add(
                                     UpdateChallenge(updatedChallenge),
                                   );
                             },
+                            onRemove: () {
+                              context.read<ChallengeBloc>().add(
+                                    RemoveChallengeFromSession(challenge.id),
+                                  );
+                            },
+                            proofStatus: _proofStatuses[challenge.id],
+                            onSubmitProof: () => _submitProof(challenge),
+                            onReviewProof: () => _reviewProof(challenge),
+                            onViewProof: () => _viewProof(challenge),
                           ),
                         ),
                       ),
@@ -499,8 +536,99 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _submitProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
+    if (taskId == null) return;
+
+    if (!mounted) return;
+    final result = await PhotoProofSheet.show(
+      context: context,
+      taskId: taskId,
+      taskName: challenge.title,
+      date: _selectedDay,
+    );
+    if (result == true && mounted) {
+      setState(() {
+        _proofStatuses[challenge.id] = ProofStatus.submitted;
+      });
+    }
+  }
+
+  Future<void> _reviewProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final task = await svc.fetchTaskByChallengeId(challenge.id);
+    if (task == null) return;
+
+    if (!mounted) return;
+    final result = await ProofReviewDialog.show(context, task);
+    if (result == true && mounted) {
+      final updated = await svc.fetchTaskByChallengeId(challenge.id);
+      if (mounted && updated != null) {
+        setState(() {
+          _proofStatuses[challenge.id] = updated.proofStatus;
+          _accountabilityStatuses[challenge.id] = updated.status;
+        });
+      }
+    }
+  }
+
+  Future<void> _viewProof(Challenge challenge) async {
+    final svc = AccountabilityService();
+    final task = await svc.fetchTaskByChallengeId(challenge.id);
+    if (task == null || task.proofUrl == null) return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                task.proofUrl!,
+                fit: BoxFit.contain,
+                width: double.infinity,
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    height: 300,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (_, __, ___) => const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Column(
+                    children: [
+                      Icon(Icons.broken_image, size: 48, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('Failed to load image',
+                          style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
   }
 
   void _showResetDialog(ChallengeReset state) {

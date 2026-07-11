@@ -1,4 +1,4 @@
-name: Flutter CI
+name: Flutter CI/CD
 
 on:
   push:
@@ -12,14 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history for changelog
+          fetch-depth: 0
 
+      # ── Setup Flutter ──────────────────────────────────────────────
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.0'
@@ -28,31 +29,51 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # ── Code Quality ───────────────────────────────────────────────
       - name: Analyze project source
         run: flutter analyze --no-fatal-infos
 
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+
+      # ── Tests ──────────────────────────────────────────────────────
       - name: Run tests
-        run: flutter test
-        continue-on-error: true # Don't block APK build on test failures
+        run: flutter test --reporter=expanded
 
-      # ── Build APK ─────────────────────────────────────────────────
-      - name: Build APK
-        run: flutter build apk --debug
+      # ── Setup Signing ──────────────────────────────────────────────
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
 
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      # ── Build Release APK ──────────────────────────────────────────
+      - name: Build release APK
+        run: flutter build apk --release
+
+      # ── Upload Artifact ────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: DailyMettle-${{ github.ref_name }}-${{ github.run_number }}
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
-      # ── Notify Teams via Power Automate webhook ────────────────────
+      # ── Notify Teams ───────────────────────────────────────────────
       - name: Get commit messages
         id: changelog
         run: |
           CHANGES=$(git log --oneline -5 --pretty=format:"• %s" | head -c 500)
+          # Escape newlines and special chars for JSON
+          CHANGES_ESCAPED=$(echo "$CHANGES" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
           echo "changes<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "$CHANGES_ESCAPED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Notify Teams channel
@@ -64,13 +85,108 @@ jobs:
             -H "Content-Type: application/json" \
             -d @- <<PAYLOAD
           {
-            "app": "🏋️ DailyMettle: Habit & Challenge",
-            "branch": "${{ github.ref_name }}",
-            "buildNumber": "#${{ github.run_number }}",
-            "description": "New APK build generated from branch **${{ github.ref_name }}**",
-            "changes": "${{ steps.changelog.outputs.changes }}",
-            "triggeredBy": "${{ github.actor }}",
-            "apkDownloadLink": "$APK_URL",
-            "commitSha": "${{ github.sha }}"
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "type": "AdaptiveCard",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "size": "Large",
+                      "weight": "Bolder",
+                      "text": "🏋️ DailyMettle — New Build Ready!",
+                      "wrap": true
+                    },
+                    {
+                      "type": "FactSet",
+                      "facts": [
+                        { "title": "Branch", "value": "${{ github.ref_name }}" },
+                        { "title": "Build", "value": "#${{ github.run_number }}" },
+                        { "title": "Triggered by", "value": "${{ github.actor }}" },
+                        { "title": "Commit", "value": "${GITHUB_SHA:0:7}" },
+                        { "title": "Status", "value": "✅ All checks passed" }
+                      ]
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "**Recent Changes:**",
+                      "wrap": true,
+                      "spacing": "Medium"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "${{ steps.changelog.outputs.changes }}",
+                      "wrap": true,
+                      "isSubtle": true
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "type": "Action.OpenUrl",
+                      "title": "⬇️ Download APK",
+                      "url": "$APK_URL"
+                    },
+                    {
+                      "type": "Action.OpenUrl",
+                      "title": "📋 View Run",
+                      "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          PAYLOAD
+
+      - name: Notify Teams on failure
+        if: failure()
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST \
+            "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d @- <<PAYLOAD
+          {
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "type": "AdaptiveCard",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "size": "Large",
+                      "weight": "Bolder",
+                      "text": "❌ DailyMettle — Build Failed!",
+                      "wrap": true,
+                      "color": "Attention"
+                    },
+                    {
+                      "type": "FactSet",
+                      "facts": [
+                        { "title": "Branch", "value": "${{ github.ref_name }}" },
+                        { "title": "Build", "value": "#${{ github.run_number }}" },
+                        { "title": "Triggered by", "value": "${{ github.actor }}" },
+                        { "title": "Commit", "value": "${GITHUB_SHA:0:7}" }
+                      ]
+                    }
+                  ],
+                  "actions": [
+                    {
+                      "type": "Action.OpenUrl",
+                      "title": "🔍 View Logs",
+                      "url": "$RUN_URL"
+                    }
+                  ]
+                }
+              }
+            ]
           }
           PAYLOAD

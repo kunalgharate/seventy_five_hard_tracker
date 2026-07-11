@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import '../main.dart'; // To access AppColors
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,75 +19,109 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
     try {
-      final googleSignIn = GoogleSignIn.instance;
+      final syncSvc = CloudSyncService();
 
-      // Authenticate the user (triggers native sign-in UI)
-      final GoogleSignInAccount googleUser = await googleSignIn.authenticate(
-        scopeHint: ['email', 'profile'],
-      );
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
-      // Get the idToken from authentication
-      final idToken = googleUser.authentication.idToken;
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
+      final user = await syncSvc.signInWithGoogle();
+      if (user == null) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        return;
+      }
 
-      // Get access token via authorization client
-      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
-        'email',
-        'profile',
-      ]);
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: clientAuth.accessToken,
-        idToken: idToken,
-      );
-
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-
-      // Save user profile to Firestore on first login only.
-      // Using set with merge:true so subsequent logins never overwrite existing data.
-      await _saveUserToFirestore(userCredential.user);
+      // 4. Trigger initial sync (creates user_data/{uid})
+      if (mounted) {
+        try {
+          final db = context.read<ChallengeBloc>().repository;
+          final taskRepo = context.read<RegularTaskBloc>().repository;
+          await syncSvc.syncToCloud(db, taskRepo);
+        } catch (_) {}
+      }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    } on GoogleSignInException catch (e) {
-      // User cancelled or sign-in was interrupted
-      if (e.code != GoogleSignInExceptionCode.canceled &&
-          e.code != GoogleSignInExceptionCode.interrupted) {
-        _showError('Sign-in failed: ${e.description ?? e.code.name}');
-      }
-    } catch (e) {
-      _showError('Authentication error: $e');
+    } on FirebaseAuthException catch (e) {
+      _showError(e.message ?? 'Auth failed');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Saves user profile to Firestore the first time they sign in.
-  /// Uses [SetOptions(merge: true)] so repeated logins never overwrite
-  /// fields that may have been updated later (e.g. a custom display name).
-  Future<void> _saveUserToFirestore(User? user) async {
-    if (user == null) return;
-
-    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-    final snapshot = await docRef.get();
-
-    if (!snapshot.exists) {
-      // First login — create the document
-      await docRef.set({
-        'id': user.uid,
-        'name': user.displayName ?? '',
-        'email': user.email ?? '',
-        'photoUrl': user.photoURL ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLoginAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      // Returning user — only update last login timestamp
-      await docRef.set(
-        {'lastLoginAt': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
-      );
-    }
+  Future<bool> _showConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
+            SizedBox(width: 8),
+            Text('Cloud Backup'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Before enabling backup, here\'s what you need to know:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 12),
+            _ConsentPoint(
+              icon: Icons.lock_outline,
+              text:
+                  'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.key,
+              text:
+                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.visibility_off,
+              text:
+                  'We cannot read your data. The server stores only ciphertext.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.sync,
+              text:
+                  'Backup happens automatically in the background whenever you\'re online.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enable Backup'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   void _showError(String message) {
@@ -110,15 +146,14 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             child: Card(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
+                  borderRadius: BorderRadius.circular(20)),
               elevation: 8,
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // App Logo Wrapper
+                    // Logo
                     Container(
                       width: 80,
                       height: 80,
@@ -141,11 +176,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Welcome Typography
-                    Text(
-                      'Welcome Back',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
+                    Text('Welcome Back',
+                        style: Theme.of(context).textTheme.headlineMedium),
                     const SizedBox(height: 8),
                     Text(
                       'Sign in to sync your 75 Hard progress',
@@ -154,7 +186,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 40),
 
-                    // 📱 Google Sign-In Button (Native)
+                    // ──────────────────────────────────────────────────────────
+                    // GOOGLE SIGN-IN INTERACTION LAYER (CROSS-PLATFORM SAFE)
+                    // ──────────────────────────────────────────────────────────
+
+                    // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -192,6 +228,29 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Helper widget for consent dialog points ──────────────────────────────────
+
+class _ConsentPoint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ConsentPoint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.green[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
+        ),
+      ],
     );
   }
 }

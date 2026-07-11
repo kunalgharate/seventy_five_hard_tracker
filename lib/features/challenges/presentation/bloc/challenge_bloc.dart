@@ -7,7 +7,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
-import 'package:seventy_five_hard_tracker/features/accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'challenge_event.dart';
 import 'challenge_state.dart';
 
@@ -56,6 +56,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<AddTaskPhoto>(_onAddTaskPhoto);
     on<AddChallengeToSession>(_onAddChallengeToSession);
     on<RestartFromHistory>(_onRestartFromHistory);
+    on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
 
     _startMidnightTimer();
   }
@@ -123,6 +124,22 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         hasActiveSession: activeSession != null,
       ));
 
+      // Publish challenge names to Firestore so partners see task names
+      if (activeSession != null && activeSession.isActive) {
+        unawaited(() async {
+          try {
+            final names = activeSession.challenges
+                .where((c) => c.taskType != 'regular')
+                .map((c) => c.title)
+                .toList();
+            await AccountabilityService().publishChallengeMeta(
+              challengeNames: names,
+              currentDay: activeSession.currentDay,
+            );
+          } catch (_) {}
+        }());
+      }
+
       // Check for missed days only on first load (app open)
       if (activeSession != null &&
           activeSession.isActive &&
@@ -174,6 +191,18 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         null,
       );
 
+      // Emit immediately so the UI shows the new session without a loading gap.
+      final allSessions = _repository.getAllSessions();
+      final currentProgress =
+          _repository.getProgressForSession(newSession.startDate);
+      emit(ChallengeLoaded(
+        activeSession: newSession,
+        allSessions: allSessions,
+        currentProgress: currentProgress,
+        hasActiveSession: true,
+      ));
+
+      // Still dispatch a background reload for Firestore sync and missed-day check.
       add(LoadChallengeData());
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
@@ -214,6 +243,17 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final newSession = createRestartedSession(historicalSession);
       await _repository.saveSession(newSession);
 
+      // Emit immediately so the UI shows the new session without a loading gap.
+      final updatedSessions = _repository.getAllSessions();
+      final currentProgress =
+          _repository.getProgressForSession(newSession.startDate);
+      emit(ChallengeLoaded(
+        activeSession: newSession,
+        allSessions: updatedSessions,
+        currentProgress: currentProgress,
+        hasActiveSession: true,
+      ));
+
       // Analytics — non-critical, fire-and-forget
       unawaited(_analytics.logSessionStart(newSession.challenges.length));
       unawaited(_analytics.logChallengeSelection(
@@ -231,6 +271,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         // Notification failures should not block the restart
       }
 
+      // Background reload for Firestore sync and missed-day check.
       add(LoadChallengeData());
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
@@ -243,6 +284,26 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
+      // ── Partner permission check ──
+      // If this challenge has an accountability partner assigned,
+      // only that partner can toggle completion.
+      final svc = AccountabilityService();
+      final assignedMap = await svc.fetchAssignedChallengeMap();
+      final accountableForMap = await svc.fetchAccountableForMap();
+      final partnerUid = assignedMap[event.challengeId];
+      final iAmPartner = accountableForMap.containsKey(event.challengeId);
+
+      if (partnerUid != null && partnerUid.isNotEmpty) {
+        // Task has an assigned partner — only they can toggle
+        if (svc.currentUid != partnerUid) {
+          emit(const ChallengeError(
+              'Only your accountability partner can mark this task as complete.'));
+          return;
+        }
+      } else if (iAmPartner) {
+        // I am the accountable partner — allowed, continue
+      }
+
       final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
@@ -303,6 +364,14 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             totalTasks: nonRegular.length,
             dayCompleted: updatedProgress.isCompleted,
             currentDay: _computeCurrentDay(activeSession),
+            taskDetails: nonRegular
+                .map((c) => {
+                      'name': c.title,
+                      'completed':
+                          updatedProgress.challengeCompletions[c.id] == true,
+                      'type': c.taskType,
+                    })
+                .toList(),
           );
         } catch (_) {}
       }());
@@ -475,6 +544,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           activeSession.currentDay,
           event.reason,
         ));
+
+        // Cancel accountability tasks for challenges that failed
+        final svc = AccountabilityService();
+        final failedChallengeIds = activeSession.challenges
+            .where((c) => event.failedChallenges.contains(c.title))
+            .map((c) => c.id)
+            .toList();
+        for (final challengeId in failedChallengeIds) {
+          final task = await svc.fetchTaskByChallengeId(challengeId);
+          if (task != null) {
+            await svc.cancelAccountabilityTask(task.id);
+          }
+        }
 
         emit(ChallengeReset(
           reason: event.reason,
@@ -713,6 +795,58 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
+
+  Future<void> _onRemoveChallengeFromSession(
+    RemoveChallengeFromSession event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      final updatedChallenges = activeSession.challenges
+          .where((c) => c.id != event.challengeId)
+          .toList();
+
+      if (updatedChallenges.isEmpty) {
+        emit(const ChallengeError('Cannot remove the last challenge.'));
+        return;
+      }
+
+      final updatedSession =
+          activeSession.copyWith(challenges: updatedChallenges);
+      await _repository.saveSession(updatedSession);
+
+      // Cancel any pending reminders for the removed challenge
+      await _smartNotifications.cancelCompletedTaskReminders(event.challengeId);
+
+      // Recalculate daily progress completion flags for all existing progress
+      // entries, since removing a challenge changes which tasks are required.
+      final allProgress =
+          _repository.getProgressForSession(activeSession.startDate);
+      for (final progress in allProgress) {
+        // Remove the deleted challenge from completions map
+        final updatedCompletions =
+            Map<String, bool>.from(progress.challengeCompletions)
+              ..remove(event.challengeId);
+
+        // Recalculate isCompleted based on remaining non-regular challenges
+        final allCompleted = updatedChallenges
+            .where((c) => c.taskType != 'regular')
+            .every((c) => updatedCompletions[c.id] == true);
+
+        final updatedProgress = progress.copyWith(
+          challengeCompletions: updatedCompletions,
+          isCompleted: allCompleted,
+        );
+        await _repository.saveDailyProgress(updatedProgress);
+      }
+
+      add(LoadChallengeData());
+    } catch (e) {
+      emit(ChallengeError('Failed to remove challenge: $e'));
+    }
+  }
 
   int _computeCurrentDay(ChallengeSession session) {
     final now = DateTime.now();

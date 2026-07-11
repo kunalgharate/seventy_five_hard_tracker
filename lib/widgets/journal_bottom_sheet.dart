@@ -112,7 +112,7 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
+          Row(  
             children: [
               if (hasExistingNote)
                 Expanded(

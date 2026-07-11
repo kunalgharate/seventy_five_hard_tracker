@@ -133,3 +133,12 @@ class RestartFromHistory extends ChallengeEvent {
   @override
   List<Object> get props => [sessionId];
 }
+
+class RemoveChallengeFromSession extends ChallengeEvent {
+  final String challengeId;
+
+  const RemoveChallengeFromSession(this.challengeId);
+
+  @override
+  List<Object> get props => [challengeId];
+}

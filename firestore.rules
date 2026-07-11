@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── invite_codes ──────────────────────────────────────────────
+    // Any signed-in user must be able to READ a code (to accept an invite
+    // created by someone else). Only the owner can write/delete their code.
+    match /invite_codes/{code} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null
+                    && (resource.data.ownerUid == request.auth.uid
+                        || request.auth.uid != null); // acceptor deletes on join
+    }
+
+    // ── partnerships ──────────────────────────────────────────────
+    // Owner can create. Owner or partner can read/update/delete.
+    // partnerUid may be null at creation time (email-based flow) — allow
+    // update so the recipient can set their uid when accepting.
+    match /partnerships/{partnershipId} {
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update, delete: if request.auth != null
+                    && (resource.data.ownerUid == request.auth.uid
+                        || resource.data.partnerUid == request.auth.uid
+                        // allow update when partnerUid is being set for the first time
+                        || resource.data.partnerUid == null);
+    }
+
+    // ── public_progress ───────────────────────────────────────────
+    // Owner writes their own progress. Any signed-in user can read
+    // (partners need to see each other's progress).
+    match /public_progress/{uid}/days/{dateKey} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Also allow reads on the root public_progress doc (challenge meta).
+    match /public_progress/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── partner_reviews ───────────────────────────────────────────
+    // Any signed-in user can create a review.
+    // Subject and reviewer can read. Only reviewer can delete.
+    match /partner_reviews/{reviewId} {
+      allow create: if request.auth != null
+                    && request.resource.data.reviewerUid == request.auth.uid;
+      allow read: if request.auth != null
+                  && (resource.data.subjectUid == request.auth.uid
+                      || resource.data.reviewerUid == request.auth.uid);
+      allow delete: if request.auth != null
+                    && resource.data.reviewerUid == request.auth.uid;
+    }
+
+    // ── users ─────────────────────────────────────────────────────
+    // Any signed-in user can read the users collection — needed for the
+    // email-based partner lookup (findUserByEmail queries by email field).
+    // Only the owner can create or update their own document.
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                             && request.auth.uid == uid;
+    }
+
+    // ── invitations ───────────────────────────────────────────────
+    // Sender creates. Both sender and recipient can read.
+    // Only the recipient can update (accept/reject).
+    // Either party can delete (sender cancels, recipient clears).
+    //
+    // toUid may be null at invite time if the recipient has not yet
+    // registered — in that case we fall back to matching by toEmail
+    // against the verified token email.
+    match /invitations/{invitationId} {
+      // Any signed-in user can send an invite.
+      allow create: if request.auth != null
+                    && request.resource.data.fromUid == request.auth.uid;
+
+      // Sender or recipient can read.
+      // Recipient may be identified by toUid OR by matching toEmail to the
+      // token email (covers the case where toUid is null pre-registration).
+      allow read: if request.auth != null
+                  && (
+                    resource.data.fromUid == request.auth.uid
+                    || resource.data.toUid == request.auth.uid
+                    || resource.data.toEmail == request.auth.token.email
+                  );
+
+      // Only the recipient can update (accept / reject).
+      // Accepts: sets status = 'accepted' and toUid = auth.uid.
+      // Rejects: sets status = 'rejected'.
+      // Identified by toUid match OR by toEmail match (pre-registration).
+      allow update: if request.auth != null
+                    && (
+                      resource.data.toUid == request.auth.uid
+                      || resource.data.toEmail == request.auth.token.email
+                    );
+
+      // Sender can cancel a pending invite; either party can clean up.
+      allow delete: if request.auth != null
+                    && (
+                      resource.data.fromUid == request.auth.uid
+                      || resource.data.toUid == request.auth.uid
+                      || resource.data.toEmail == request.auth.token.email
+                    );
+    }
+
+   match /task_collaborators/{taskId} {
+  allow read: if request.auth != null;
+
+  allow create: if request.auth != null
+                && request.resource.data.owner.uid == request.auth.uid;
+
+  allow update: if request.auth != null
+                && resource.data.owner.uid == request.auth.uid;
+
+  allow delete: if request.auth != null
+                && resource.data.owner.uid == request.auth.uid;
+}
+    // ── accountability_tasks ──────────────────────────────────────
+    // Any signed-in user can read — queries are filtered by assignedByUid
+    // or accountableUid so only relevant tasks are returned.
+    // Only the creator can create. Only the accountable user can update.
+    match /accountability_tasks/{taskId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.assignedByUid == request.auth.uid;
+      allow update: if request.auth != null
+                    && (resource.data.accountableUid == request.auth.uid
+                        || resource.data.assignedByUid == request.auth.uid
+                        || (request.auth.uid in resource.data.accountableUserIds));
+      allow delete: if request.auth != null
+                    && resource.data.assignedByUid == request.auth.uid;
+    }
+  }
+}
