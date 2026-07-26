@@ -2395,7 +2395,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                 GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          initialValue: _selectedDateKey,
+          value: _selectedDateKey,
           items: _pendingDays.map((d) {
             final key = d['dateKey'] as String;
             final completed = d['completedTasks'] as int? ?? 0;

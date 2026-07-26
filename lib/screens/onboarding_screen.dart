@@ -36,6 +36,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // partnerUid selected per challenge index (null = no partner)
   final Map<int, AccountabilityPartner?> _selectedPartners = {};
   List<AccountabilityPartner> _availablePartners = [];
+  final ScrollController _setupScrollController = ScrollController();
+  final Map<int, GlobalKey> _cardKeys = {};
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
   bool _isLoggingIn = false;
@@ -79,6 +81,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       controller.dispose();
     }
     _pageController.dispose();
+    _setupScrollController.dispose();
     _headerAnimationController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -86,8 +89,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   void _addNewChallenge() {
     if (_challenges.length < 10) {
+      final index = _challenges.length;
       final controller = TextEditingController();
       _controllers.add(controller);
+      _cardKeys[index] = GlobalKey();
 
       _challenges.add(Challenge(
         id: DateTime.now().millisecondsSinceEpoch.toString() +
@@ -121,7 +126,35 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
       _validationErrors.clear();
       _validationErrors.addAll(newErrors);
+      // Rebuild card keys with updated indices
+      final newKeys = <int, GlobalKey>{};
+      for (final entry in _cardKeys.entries) {
+        if (entry.key < index) {
+          newKeys[entry.key] = entry.value;
+        } else if (entry.key > index) {
+          newKeys[entry.key - 1] = entry.value;
+        }
+      }
+      _cardKeys.clear();
+      _cardKeys.addAll(newKeys);
       setState(() {});
+    }
+  }
+
+  void _scrollToFirstError() {
+    for (int i = 0; i < _challenges.length; i++) {
+      if (_validationErrors[i] != null) {
+        final key = _cardKeys[i];
+        if (key != null && key.currentContext != null) {
+          Scrollable.ensureVisible(
+            key.currentContext!,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+        }
+        break;
+      }
     }
   }
 
@@ -187,6 +220,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     if (invalidNames.isNotEmpty) {
+      // Mark validation errors on the cards so they highlight red
+      for (int i = 0; i < _challenges.length; i++) {
+        if (_challenges[i].title.trim().isNotEmpty) {
+          _validationErrors[i] = validateTaskName(_challenges[i].title);
+        }
+      }
+      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -198,6 +238,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      Future.delayed(const Duration(milliseconds: 400), _scrollToFirstError);
       return;
     }
 
@@ -225,19 +266,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
       // Go back to setup page
-      PageView(
-        controller: _pageController,
-        // This line ensures users can't swipe manually past the login gate
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (page) => setState(() {}),
-        children: [
-          _buildWelcomePage(),
-          _buildChallengeSetupPage(),
-          _buildReviewPage(),
-        ],
-      );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      Future.delayed(const Duration(milliseconds: 400), _scrollToFirstError);
       return;
     }
 
@@ -740,6 +771,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Expanded(
             child: AnimationLimiter(
               child: ListView.builder(
+                controller: _setupScrollController,
                 itemCount: _challenges.length,
                 itemBuilder: (context, index) {
                   return AnimationConfiguration.staggeredList(
@@ -751,7 +783,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       child: FadeInAnimation(
                         child: ScaleAnimation(
                           scale: 0.9,
-                          child: _buildChallengeCard(index),
+                          child: KeyedSubtree(
+                            key: _cardKeys[index],
+                            child: _buildChallengeCard(index),
+                          ),
                         ),
                       ),
                     ),
@@ -852,6 +887,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     margin: const EdgeInsets.all(16),
                   ),
                 );
+                _scrollToFirstError();
                 return;
               }
 

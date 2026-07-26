@@ -280,7 +280,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               _enabled = v;
               if (v && _time.isEmpty) _time = '09:00';
             }),
-            activeThumbColor: Colors.orange[600],
+            activeColor: Colors.orange[600],
           ),
         ],
       ),

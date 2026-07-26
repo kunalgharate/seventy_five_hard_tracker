@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+  final Map<String, GlobalKey> _taskCardKeys = {};
 
   @override
   void initState() {
@@ -433,33 +434,36 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
-                          child: DailyTaskCard(
-                            challenge: challenge,
-                            isCompleted: isCompleted,
-                            isEditable: isToday,
-                            onToggle: (completed) {
-                              context.read<ChallengeBloc>().add(
-                                    UpdateDailyProgress(
-                                      date: _selectedDay,
-                                      challengeId: challenge.id,
-                                      isCompleted: completed,
-                                    ),
-                                  );
-                            },
-                            onReminderUpdate: (updatedChallenge) {
-                              context.read<ChallengeBloc>().add(
-                                    UpdateChallenge(updatedChallenge),
-                                  );
-                            },
-                            onRemove: () {
-                              context.read<ChallengeBloc>().add(
-                                    RemoveChallengeFromSession(challenge.id),
-                                  );
-                            },
-                            proofStatus: _proofStatuses[challenge.id],
-                            onSubmitProof: () => _submitProof(challenge),
-                            onReviewProof: () => _reviewProof(challenge),
-                            onViewProof: () => _viewProof(challenge),
+                          child: KeyedSubtree(
+                            key: _taskCardKeys.putIfAbsent(challenge.id, () => GlobalKey()),
+                            child: DailyTaskCard(
+                              challenge: challenge,
+                              isCompleted: isCompleted,
+                              isEditable: isToday,
+                              onToggle: (completed) {
+                                context.read<ChallengeBloc>().add(
+                                      UpdateDailyProgress(
+                                        date: _selectedDay,
+                                        challengeId: challenge.id,
+                                        isCompleted: completed,
+                                      ),
+                                    );
+                              },
+                              onReminderUpdate: (updatedChallenge) {
+                                context.read<ChallengeBloc>().add(
+                                      UpdateChallenge(updatedChallenge),
+                                    );
+                              },
+                              onRemove: () {
+                                context.read<ChallengeBloc>().add(
+                                      RemoveChallengeFromSession(challenge.id),
+                                    );
+                              },
+                              proofStatus: _proofStatuses[challenge.id],
+                              onSubmitProof: () => _submitProof(challenge),
+                              onReviewProof: () => _reviewProof(challenge),
+                              onViewProof: () => _viewProof(challenge),
+                            ),
                           ),
                         ),
                       ),
@@ -504,34 +508,64 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
+    return GestureDetector(
+      onTap: progress.isCompleted
+          ? null
+          : () {
+              final session = context.read<ChallengeBloc>().state;
+              if (session is ChallengeLoaded && session.activeSession != null) {
+                final nonRegular = session.activeSession!.challenges
+                    .where((c) => c.taskType != 'regular')
+                    .toList();
+                for (final challenge in nonRegular) {
+                  if (progress.challengeCompletions[challenge.id] != true) {
+                    final key = _taskCardKeys[challenge.id];
+                    if (key != null && key.currentContext != null) {
+                      Scrollable.ensureVisible(
+                        key.currentContext!,
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                        alignment: 0.1,
+                      );
+                    }
+                    break;
+                  }
+                }
+              }
+            },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            progress.isCompleted ? Icons.check_circle : Icons.cancel,
-            color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            progress.isCompleted
-                ? 'All tasks completed!'
-                : 'Some tasks incomplete',
-            style: TextStyle(
-              color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+        child: Row(
+          children: [
+            Icon(
+              progress.isCompleted ? Icons.check_circle : Icons.cancel,
+              color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
+              size: 20,
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                progress.isCompleted
+                    ? 'All tasks completed!'
+                    : 'Some tasks incomplete — tap to find incomplete tasks',
+                style: TextStyle(
+                  color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            if (!progress.isCompleted)
+              Icon(Icons.chevron_right, color: Colors.red[400], size: 20),
+          ],
+        ),
       ),
     );
   }

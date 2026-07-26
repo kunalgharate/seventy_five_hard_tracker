@@ -241,7 +241,7 @@ class ChallengeIconService {
 }
 
 class ChallengeIconData {
-  final FaIconData icon;
+  final IconData icon;
   final String name;
   final Color color;
   final List<String> keywords;
