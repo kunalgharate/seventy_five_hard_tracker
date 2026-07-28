@@ -27,7 +27,25 @@ class _LiquidWaveIndicatorState extends State<LiquidWaveIndicator>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat();
+    );
+    _updateAnimationState();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiquidWaveIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _updateAnimationState();
+    }
+  }
+
+  void _updateAnimationState() {
+    // No wave is visible at 0 or full fill — stop animating to save resources
+    if (widget.value <= 0.0 || widget.value >= 1.0) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -84,15 +102,18 @@ class _WavePainter extends CustomPainter {
     path.moveTo(0, size.height);
     path.lineTo(0, yOffset);
 
-    // Draw wave
-    for (double i = 0; i <= size.width; i++) {
-      // Sine wave formula: y = A * sin(B * x + C) + D
-      // A = amplitude, B = frequency, C = phase shift, D = vertical offset
+    // Draw wave at 4px step for performance (smooth enough visually)
+    for (double i = 0; i <= size.width; i += 4) {
       path.lineTo(
         i,
         yOffset + math.sin((i / size.width * 2 * math.pi) + (animationValue * 2 * math.pi)) * 8,
       );
     }
+    // Close to the right edge
+    path.lineTo(
+      size.width,
+      yOffset + math.sin((size.width / size.width * 2 * math.pi) + (animationValue * 2 * math.pi)) * 8,
+    );
 
     path.lineTo(size.width, size.height);
     path.close();

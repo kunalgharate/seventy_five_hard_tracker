@@ -15,8 +15,9 @@ class DisciplineHeatmap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Generate dates going backwards from today
-    final today = DateTime.now();
+    // Generate dates going backwards from today (normalized to local midnight)
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final dates = List.generate(
       daysToShow,
       (index) => today.subtract(Duration(days: daysToShow - 1 - index)),

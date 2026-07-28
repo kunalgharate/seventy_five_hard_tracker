@@ -24,11 +24,10 @@ class JournalTimelineScreen extends StatelessWidget {
       ),
       body: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
-          if (state is ChallengeLoaded && state.hasActiveSession) {
-            final session = state.activeSession!;
-            
-            // Filter progress to only those with journal notes
-            final entries = state.currentProgress
+          if (state is ChallengeLoaded) {
+            // Source journal entries from all sessions' progress
+            final allProgress = state.currentProgress;
+            final entries = allProgress
                 .where((p) => p.journalNote != null && p.journalNote!.trim().isNotEmpty)
                 .toList()
               ..sort((a, b) => b.date.compareTo(a.date)); // Newest first
@@ -37,7 +36,9 @@ class JournalTimelineScreen extends StatelessWidget {
               return _buildEmptyState(context);
             }
 
-            return _buildTimeline(context, session, entries);
+            // Use the active session for day-number calculation if available,
+            // otherwise pass null and compute from the entry's own date.
+            return _buildTimeline(context, state.activeSession, entries);
           }
           return _buildEmptyState(context);
         },
@@ -78,14 +79,22 @@ class JournalTimelineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeline(BuildContext context, ChallengeSession session, List<DailyProgress> entries) {
+  Widget _buildTimeline(BuildContext context, ChallengeSession? session, List<DailyProgress> entries) {
     return AnimationLimiter(
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         itemCount: entries.length,
         itemBuilder: (context, index) {
           final progress = entries[index];
-          final dayNumber = progress.date.difference(session.startDate).inDays + 1;
+          // Normalize to date-only to avoid time-of-day drift in day calculation
+          final progressDate = DateTime(progress.date.year, progress.date.month, progress.date.day);
+          int dayNumber;
+          if (session != null) {
+            final startDate = DateTime(session.startDate.year, session.startDate.month, session.startDate.day);
+            dayNumber = progressDate.difference(startDate).inDays + 1;
+          } else {
+            dayNumber = index + 1;
+          }
           
           return AnimationConfiguration.staggeredList(
             position: index,

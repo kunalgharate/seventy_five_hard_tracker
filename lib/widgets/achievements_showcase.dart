@@ -19,14 +19,12 @@ class AchievementsShowcase extends StatelessWidget {
     for (var session in state.allSessions) {
       if (session.isCompleted) {
         hasCompleted = true;
-      }
-      final sessionDays = session.currentDay;
-      if (sessionDays > maxDays) {
-        maxDays = sessionDays;
+        // A completed session means all 75 days were done
+        if (75 > maxDays) maxDays = 75;
       }
     }
 
-    // In case the active session has more days tracked
+    // Use actual completed-day count from current progress
     final currentDays = state.currentProgress.where((p) => p.isCompleted).length;
     if (currentDays > maxDays) maxDays = currentDays;
 

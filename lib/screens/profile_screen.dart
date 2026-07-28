@@ -89,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(20),
@@ -152,7 +152,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                           ),
                           child: CircleAvatar(
                             radius: 45,
@@ -179,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Text(
                           user.email!,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
                           ),
                         ).animate(delay: 300.ms).fadeIn().slideY(begin: 0.2),
@@ -212,7 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         return Card(
           elevation: 0,
-          color: AppColors.primary.withOpacity(0.1),
+          color: AppColors.primary.withValues(alpha: 0.1),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -275,11 +275,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(
-              colors: [gradeColor.withOpacity(0.15), Colors.transparent],
+              colors: [gradeColor.withValues(alpha: 0.15), Colors.transparent],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: gradeColor.withOpacity(0.3), width: 1.5),
+            border: Border.all(color: gradeColor.withValues(alpha: 0.3), width: 1.5),
           ),
           padding: const EdgeInsets.all(24),
           child: Row(
@@ -316,7 +316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: gradeColor.withOpacity(0.3),
+                      color: gradeColor.withValues(alpha: 0.3),
                       blurRadius: 10,
                       spreadRadius: 2,
                     )
@@ -345,8 +345,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildPremiumStatsGrid(ChallengeLoaded state) {
     final totalSessions = state.allSessions.length;
     final completedSessions = state.allSessions.where((s) => s.isCompleted).length;
-    final totalDaysTracked = state.currentProgress.length;
-    final completedDays = state.currentProgress.where((p) => p.isCompleted).length;
+    // Aggregate days across all sessions for lifetime scope
+    int totalDaysTracked = 0;
+    int completedDays = 0;
+    for (final session in state.allSessions) {
+      totalDaysTracked += session.currentDay;
+    }
+    // currentProgress may have more detail for the active session
+    final activeCompleted = state.currentProgress.where((p) => p.isCompleted).length;
+    completedDays = activeCompleted;
+    // Add completed days from past completed sessions
+    for (final session in state.allSessions) {
+      if (session.isCompleted && session != state.activeSession) {
+        completedDays += session.currentDay;
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.orange.withOpacity(0.3),
+                color: Colors.orange.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -408,7 +421,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.auto_stories, color: Colors.white, size: 24),
@@ -430,7 +443,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'Read your past thoughts & reflections',
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
@@ -451,10 +464,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.withOpacity(0.15)),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.05),
+              color: color.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -495,7 +508,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -547,7 +560,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       color: Colors.grey[50],
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -653,8 +666,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isSyncing = true);
     _syncService.syncToCloud(db, taskRepo).then((success) {
       if (!mounted) return;
-      _loadLastSync();
+      if (success) {
+        _loadLastSync();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sync failed. Please try again.'), backgroundColor: Colors.red),
+        );
+      }
       setState(() => _isSyncing = false);
+    }).catchError((error) {
+      if (!mounted) return;
+      setState(() => _isSyncing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sync error: ${error.toString().substring(0, 80)}'), backgroundColor: Colors.red),
+      );
     });
   }
 

@@ -13,13 +13,13 @@ import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 class EditRegularTaskSheet extends StatefulWidget {
   final RegularTaskBloc bloc;
   final RegularTask task;
-  const EditRegularTaskSheet({required this.bloc, required this.task});
+  const EditRegularTaskSheet({super.key, required this.bloc, required this.task});
 
   @override
-  State<EditRegularTaskSheet> createState() => EditRegularTaskSheetState();
+  State<EditRegularTaskSheet> createState() => _EditRegularTaskSheetState();
 }
 
-class EditRegularTaskSheetState extends State<EditRegularTaskSheet> {
+class _EditRegularTaskSheetState extends State<EditRegularTaskSheet> {
   late TextEditingController _controller;
   late Challenge _challenge;
   String? _taskNameError;
@@ -381,6 +381,18 @@ class EditRegularTaskSheetState extends State<EditRegularTaskSheet> {
       createdAt: widget.task.createdAt,
     );
     widget.bloc.add(UpdateRegularTask(updatedTask));
+
+    // If reminder settings changed, dispatch reminder update to schedule/cancel
+    final reminderChanged = _challenge.isReminderEnabled != widget.task.isReminderEnabled ||
+        _challenge.reminderTime != widget.task.reminderTime ||
+        _challenge.reminderType != widget.task.reminderType ||
+        _challenge.reminderStartHour != widget.task.reminderStartHour ||
+        _challenge.reminderEndHour != widget.task.reminderEndHour ||
+        _challenge.reminderIntervalMinutes != widget.task.reminderIntervalMinutes;
+    if (reminderChanged) {
+      widget.bloc.add(UpdateRegularTaskReminder(updatedTask));
+    }
+
     Navigator.pop(context);
   }
 }

@@ -480,13 +480,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWaterTracker(Challenge challenge, bool isToday, DailyProgress? selectedProgress) {
-    // Parse completed times from taskNotes
+    // Parse completed times from taskNotes — skip individual invalid tokens
     List<DateTime> completedTimes = [];
     final noteString = selectedProgress?.taskNotes?[challenge.id];
     if (noteString != null && noteString.isNotEmpty) {
-      try {
-        completedTimes = noteString.split(',').map((e) => DateTime.parse(e)).toList();
-      } catch (_) {}
+      for (final token in noteString.split(',')) {
+        final trimmed = token.trim();
+        if (trimmed.isEmpty) continue;
+        final parsed = DateTime.tryParse(trimmed);
+        if (parsed != null) completedTimes.add(parsed);
+      }
     }
 
     return WaterReminderWidget(
@@ -514,21 +517,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final newString = times.map((e) => e.toIso8601String()).join(',');
     final isCompleted = times.length >= 8;
 
-    // 1. Update the overall completion boolean
-    context.read<ChallengeBloc>().add(
-      UpdateDailyProgress(
-        date: _selectedDay,
-        challengeId: challenge.id,
-        isCompleted: isCompleted,
-      ),
-    );
-    
-    // 2. Save the array of timestamps into the task's notes field
+    // 1. Save timestamps first so a stale rebuild doesn't overwrite them
     context.read<ChallengeBloc>().add(
       AddTaskNote(
         date: _selectedDay,
         challengeId: challenge.id,
         note: newString, 
+      ),
+    );
+    
+    // 2. Update the overall completion boolean
+    context.read<ChallengeBloc>().add(
+      UpdateDailyProgress(
+        date: _selectedDay,
+        challengeId: challenge.id,
+        isCompleted: isCompleted,
       ),
     );
   }

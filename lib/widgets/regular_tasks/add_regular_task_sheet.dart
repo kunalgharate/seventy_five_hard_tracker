@@ -17,13 +17,13 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/mod
 
 class AddRegularTaskSheet extends StatefulWidget {
   final RegularTaskBloc bloc;
-  const AddRegularTaskSheet({required this.bloc});
+  const AddRegularTaskSheet({super.key, required this.bloc});
 
   @override
-  State<AddRegularTaskSheet> createState() => AddRegularTaskSheetState();
+  State<AddRegularTaskSheet> createState() => _AddRegularTaskSheetState();
 }
 
-class AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
+class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
   final _controller = TextEditingController();
   late Challenge _challenge;
   String? _taskNameError;
@@ -602,6 +602,18 @@ class AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
       createdAt: DateTime.now(),
     );
     widget.bloc.add(AddRegularTask(regularTask));
+
+    // If an accountability partner was selected, create the accountability task
+    if (_selectedPartner != null && _selectedPartner!.partnerUid != null) {
+      AccountabilityService().createAccountabilityTask(
+        accountableUid: _selectedPartner!.partnerUid!,
+        accountableName: _selectedPartner!.partnerName,
+        partnershipId: _selectedPartner!.id,
+        title: sanitizedTitle,
+        challengeId: taskId,
+      );
+    }
+
     Navigator.pop(context);
   }
 }
