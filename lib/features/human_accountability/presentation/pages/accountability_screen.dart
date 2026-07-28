@@ -229,6 +229,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
 
   // ── Invite sheet ─────────────────────────────────────────────────
 
+  // ignore: unused_element
   void _showInviteSheet(BuildContext context) {
     final syncService = CloudSyncService();
     if (!syncService.isSignedIn) {
@@ -246,6 +247,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     );
   }
 
+  // ignore: unused_element
   void _showJoinSheet(BuildContext context) {
     final syncService = CloudSyncService();
     if (!syncService.isSignedIn) {
@@ -327,6 +329,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
 
 // ── Dashboard Tab ────────────────────────────────────────────────────────────
 
+// ignore: unused_element
 class _DashboardTab extends StatelessWidget {
   final List<AccountabilityPartner> partners;
   const _DashboardTab({required this.partners});
@@ -1182,6 +1185,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildPendingActions(AccountabilityTask task) {
     if (task.challengeId != null) {
       if (task.proofStatus == ProofStatus.rejected) {
@@ -1364,6 +1368,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     return const SizedBox.shrink();
   }
 
+  // ignore: unused_element
   List<Widget> _buildTaskList() {
     final latest = _recentDays.isNotEmpty ? _recentDays.first : null;
     if (latest == null) return [];
@@ -2540,6 +2545,7 @@ class _RoleAvatar extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _StatusChip extends StatelessWidget {
   final PartnershipStatus status;
   const _StatusChip({required this.status});

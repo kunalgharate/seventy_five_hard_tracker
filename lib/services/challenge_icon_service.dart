@@ -4,37 +4,37 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 class ChallengeIconService {
   static final Map<String, List<ChallengeIconData>> categoryIcons = {
     'fitness': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.dumbbell,
         name: 'dumbbell',
         color: Colors.orange,
         keywords: ['workout', 'gym', 'exercise', 'strength', 'weights'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.personRunning,
         name: 'running',
         color: Colors.blue,
         keywords: ['run', 'jog', 'cardio', 'marathon'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.personWalking,
         name: 'walking',
         color: Colors.green,
         keywords: ['walk', 'steps', 'hiking'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.personSwimming,
         name: 'swimming',
         color: Colors.cyan,
         keywords: ['swim', 'pool', 'water'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.personBiking,
         name: 'cycling',
         color: Colors.teal,
         keywords: ['bike', 'cycle', 'bicycle'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.heart,
         name: 'cardio',
         color: Colors.red,
@@ -42,31 +42,31 @@ class ChallengeIconService {
       ),
     ],
     'health': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.droplet,
         name: 'water',
         color: Colors.blue,
         keywords: ['water', 'drink', 'hydrate', 'liquid'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.pills,
         name: 'medicine',
         color: Colors.green,
         keywords: ['medicine', 'pills', 'vitamins', 'supplements'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.bed,
         name: 'sleep',
         color: Colors.indigo,
         keywords: ['sleep', 'rest', 'bed', 'nap'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.spa,
         name: 'meditation',
         color: Colors.purple,
         keywords: ['meditate', 'mindfulness', 'zen', 'calm'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.appleWhole,
         name: 'healthy_food',
         color: Colors.green,
@@ -74,31 +74,31 @@ class ChallengeIconService {
       ),
     ],
     'learning': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.book,
         name: 'reading',
         color: Colors.brown,
         keywords: ['read', 'book', 'study', 'learn'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.graduationCap,
         name: 'study',
         color: Colors.blue,
         keywords: ['study', 'learn', 'education', 'course'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.language,
         name: 'language',
         color: Colors.orange,
         keywords: ['language', 'speak', 'translate', 'foreign'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.code,
         name: 'coding',
         color: Colors.green,
         keywords: ['code', 'programming', 'develop', 'software'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.pen,
         name: 'writing',
         color: Colors.purple,
@@ -106,25 +106,25 @@ class ChallengeIconService {
       ),
     ],
     'productivity': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.listCheck,
         name: 'tasks',
         color: Colors.blue,
         keywords: ['task', 'todo', 'checklist', 'organize'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.clock,
         name: 'time',
         color: Colors.orange,
         keywords: ['time', 'schedule', 'punctual', 'early'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.briefcase,
         name: 'work',
         color: Colors.grey,
         keywords: ['work', 'job', 'career', 'business'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.bullseye,
         name: 'goal',
         color: Colors.red,
@@ -132,25 +132,25 @@ class ChallengeIconService {
       ),
     ],
     'lifestyle': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.broom,
         name: 'cleaning',
         color: Colors.teal,
         keywords: ['clean', 'tidy', 'organize', 'house'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.utensils,
         name: 'cooking',
         color: Colors.orange,
         keywords: ['cook', 'meal', 'kitchen', 'recipe'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.seedling,
         name: 'gardening',
         color: Colors.green,
         keywords: ['garden', 'plant', 'grow', 'nature'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.handHoldingHeart,
         name: 'kindness',
         color: Colors.pink,
@@ -158,19 +158,19 @@ class ChallengeIconService {
       ),
     ],
     'social': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.userGroup,
         name: 'friends',
         color: Colors.blue,
         keywords: ['friends', 'social', 'people', 'connect'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.phone,
         name: 'call',
         color: Colors.green,
         keywords: ['call', 'phone', 'contact', 'family'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.envelope,
         name: 'message',
         color: Colors.orange,
@@ -178,25 +178,25 @@ class ChallengeIconService {
       ),
     ],
     'general': [
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.star,
         name: 'star',
         color: Colors.amber,
         keywords: ['star', 'favorite', 'important', 'special'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.fire,
         name: 'fire',
         color: Colors.red,
         keywords: ['fire', 'hot', 'energy', 'passion'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.bolt,
         name: 'lightning',
         color: Colors.yellow,
         keywords: ['lightning', 'energy', 'power', 'fast'],
       ),
-      ChallengeIconData(
+      const ChallengeIconData(
         icon: FontAwesomeIcons.gem,
         name: 'gem',
         color: Colors.purple,

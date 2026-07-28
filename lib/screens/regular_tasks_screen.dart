@@ -9,8 +9,6 @@ import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bl
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 import '../widgets/challenge_icon_widget.dart';
-import '../widgets/icon_picker_widget.dart';
-import '../widgets/reminder_bottom_sheet.dart';
 import 'package:seventy_five_hard_tracker/core/utils/regular_task_stats.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
