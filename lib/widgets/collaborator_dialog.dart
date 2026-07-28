@@ -320,9 +320,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       }
     }
 
-    setState(() => _saving = false);
-
     if (!mounted) return;
+    setState(() => _saving = false);
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
