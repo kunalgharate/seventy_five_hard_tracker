@@ -31,7 +31,8 @@ class PhotoSyncService {
     );
     if (picked == null) {
       if (kDebugMode) {
-        debugPrint('[PhotoSyncService] pickPhoto: user cancelled or permission denied');
+        debugPrint(
+            '[PhotoSyncService] pickPhoto: user cancelled or permission denied');
       }
       return null;
     }

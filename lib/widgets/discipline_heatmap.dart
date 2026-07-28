@@ -6,6 +6,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 class DisciplineHeatmap extends StatelessWidget {
   final List<DailyProgress> progressList;
   final int daysToShow;
+
   /// If provided, only these challenge IDs are counted in the ratio.
   /// Use to exclude Regular tasks from the discipline calculation.
   final Set<String>? challengeTaskIds;
@@ -33,8 +34,8 @@ class DisciplineHeatmap extends StatelessWidget {
       final dateStr = DateFormat('yyyy-MM-dd').format(p.date);
       // Filter completions to only challenge tasks if IDs are provided
       final entries = challengeTaskIds != null
-          ? Map.fromEntries(
-              p.challengeCompletions.entries.where((e) => challengeTaskIds!.contains(e.key)))
+          ? Map.fromEntries(p.challengeCompletions.entries
+              .where((e) => challengeTaskIds!.contains(e.key)))
           : p.challengeCompletions;
       final total = entries.length;
       if (total > 0) {
@@ -52,7 +53,7 @@ class DisciplineHeatmap extends StatelessWidget {
     // Pad the beginning with nulls to align the grid
     final paddedDates = <DateTime?>[];
     // Let's use Sunday=7, Monday=1. So if first is Wednesday(3), we pad 2 (Mon, Tue)
-    final padCount = firstDateWeekday - 1; 
+    final padCount = firstDateWeekday - 1;
     for (int i = 0; i < padCount; i++) {
       paddedDates.add(null);
     }
@@ -89,7 +90,7 @@ class DisciplineHeatmap extends StatelessWidget {
                   if (date == null) {
                     return _buildEmptyBox();
                   }
-                  
+
                   final dateStr = DateFormat('yyyy-MM-dd').format(date);
                   final ratio = ratios[dateStr];
                   return _buildHeatBox(ratio, date);
@@ -102,13 +103,15 @@ class DisciplineHeatmap extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            const Text('Less ', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text('Less ',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
             _buildHeatBox(0.0, null),
             _buildHeatBox(0.25, null),
             _buildHeatBox(0.5, null),
             _buildHeatBox(0.75, null),
             _buildHeatBox(1.0, null),
-            const Text(' More', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text(' More',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         )
       ],
@@ -150,14 +153,16 @@ class DisciplineHeatmap extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(2.5),
-        border: ratio == null ? Border.all(color: Colors.grey[300]!, width: 0.5) : null,
+        border: ratio == null
+            ? Border.all(color: Colors.grey[300]!, width: 0.5)
+            : null,
       ),
     );
 
     if (date != null) {
       box = Tooltip(
         message: '${DateFormat('MMM d').format(date)}\n'
-                 '${ratio == null ? "No data" : "${(ratio * 100).toInt()}% completed"}',
+            '${ratio == null ? "No data" : "${(ratio * 100).toInt()}% completed"}',
         child: box,
       );
     }

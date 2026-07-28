@@ -54,7 +54,8 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
     });
 
     if (kDebugMode) {
-      debugPrint('[PhotoProofSheet] _pickPhoto: fromCamera=$fromCamera taskId=${widget.taskId}');
+      debugPrint(
+          '[PhotoProofSheet] _pickPhoto: fromCamera=$fromCamera taskId=${widget.taskId}');
     }
 
     try {
@@ -79,14 +80,16 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
       );
 
       if (kDebugMode) {
-        debugPrint('[PhotoProofSheet] _pickPhoto: uploadPhoto returned url=$url');
+        debugPrint(
+            '[PhotoProofSheet] _pickPhoto: uploadPhoto returned url=$url');
       }
 
       if (!mounted) return;
 
       if (url == null) {
         if (kDebugMode) {
-          debugPrint('[PhotoProofSheet] _pickPhoto: url is null — upload failed');
+          debugPrint(
+              '[PhotoProofSheet] _pickPhoto: url is null — upload failed');
         }
         setState(() {
           _uploading = false;
@@ -118,13 +121,15 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
   Future<void> _submitProof() async {
     if (_proofUrl == null) {
       if (kDebugMode) {
-        debugPrint('[PhotoProofSheet] _submitProof: _proofUrl is null, aborting');
+        debugPrint(
+            '[PhotoProofSheet] _submitProof: _proofUrl is null, aborting');
       }
       return;
     }
 
     if (kDebugMode) {
-      debugPrint('[PhotoProofSheet] _submitProof: taskId=${widget.taskId} proofUrl=$_proofUrl');
+      debugPrint(
+          '[PhotoProofSheet] _submitProof: taskId=${widget.taskId} proofUrl=$_proofUrl');
     }
 
     setState(() => _uploading = true);
@@ -135,7 +140,8 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
     );
 
     if (kDebugMode) {
-      debugPrint('[PhotoProofSheet] _submitProof: submitTaskProof returned $success');
+      debugPrint(
+          '[PhotoProofSheet] _submitProof: submitTaskProof returned $success');
     }
 
     if (!mounted) return;
@@ -190,7 +196,6 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
             style: TextStyle(fontSize: 13, color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
-
           if (_proofUrl != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -219,7 +224,8 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
+                      Icon(Icons.broken_image,
+                          color: Colors.grey[400], size: 40),
                       const SizedBox(height: 8),
                       Text('Failed to load image',
                           style: TextStyle(color: Colors.grey[500])),
@@ -267,7 +273,6 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
               ],
             ),
           ],
-
           if (_uploading && _proofUrl == null) ...[
             const SizedBox(height: 24),
             const SizedBox(
@@ -281,7 +286,6 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
           ],
-
           if (_error != null) ...[
             const SizedBox(height: 12),
             Container(
@@ -305,25 +309,22 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
               ),
             ),
           ],
-
           const SizedBox(height: 20),
-
           Row(
             children: [
               Expanded(
                 child: TextButton(
                   onPressed: _uploading ? null : () => Navigator.pop(context),
-                  child: Text('Cancel',
-                      style: TextStyle(color: Colors.grey[600])),
+                  child:
+                      Text('Cancel', style: TextStyle(color: Colors.grey[600])),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
-                  onPressed: (_proofUrl != null && !_uploading)
-                      ? _submitProof
-                      : null,
+                  onPressed:
+                      (_proofUrl != null && !_uploading) ? _submitProof : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,

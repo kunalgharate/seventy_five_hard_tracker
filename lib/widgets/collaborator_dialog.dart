@@ -16,8 +16,7 @@ class CollaboratorDialog extends StatefulWidget {
   });
 
   /// Public facing avatar builder for use in task cards.
-  static Widget buildAvatar(Collaborator collaborator,
-      {double size = 32}) {
+  static Widget buildAvatar(Collaborator collaborator, {double size = 32}) {
     if (collaborator.photoUrl != null && collaborator.photoUrl!.isNotEmpty) {
       return ClipOval(
         child: Image.network(
@@ -141,15 +140,18 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
   String? _validateEmail(String value) {
     final email = value.trim();
     if (email.isEmpty) return null;
-    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     if (!emailRegex.hasMatch(email)) {
       return 'Please enter a valid email address';
     }
     final myUid = _svc.currentUid;
-    if (_owner?.uid == myUid && _owner?.email.toLowerCase() == email.toLowerCase()) {
+    if (_owner?.uid == myUid &&
+        _owner?.email.toLowerCase() == email.toLowerCase()) {
       return 'You cannot add yourself as a collaborator';
     }
-    if (_collaborators.any((c) => c.email.toLowerCase() == email.toLowerCase())) {
+    if (_collaborators
+        .any((c) => c.email.toLowerCase() == email.toLowerCase())) {
       return 'This person is already a collaborator';
     }
     return null;
@@ -177,7 +179,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       if (appUser == null) {
         setState(() {
           _lookingUp = false;
-          _addError = 'No user found with this email. They need to sign up first.';
+          _addError =
+              'No user found with this email. They need to sign up first.';
         });
         return;
       }
@@ -242,7 +245,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cannot save: missing task ID. Please recreate this task.'),
+          content:
+              Text('Cannot save: missing task ID. Please recreate this task.'),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),
@@ -264,7 +268,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
     // the accountability system.
     if (success && widget.taskName != null) {
       final myUid = _svc.currentUid;
-      debugPrint('[CollaboratorDialog] Creating accountability tasks for ${_collaborators.length} collaborator(s)');
+      debugPrint(
+          '[CollaboratorDialog] Creating accountability tasks for ${_collaborators.length} collaborator(s)');
       final allUids = _collaborators
           .where((c) => c.uid != myUid)
           .map((c) => c.uid)
@@ -284,7 +289,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
           if (existing != null &&
               existing.status != AccountabilityTaskStatus.declined &&
               existing.status != AccountabilityTaskStatus.completed) {
-            debugPrint('[CollaboratorDialog] Active task already exists: ${existing.id} — skipping');
+            debugPrint(
+                '[CollaboratorDialog] Active task already exists: ${existing.id} — skipping');
             continue;
           }
 
@@ -304,10 +310,12 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             debugPrint('  accountableUid:    ${task.accountableUid}');
             debugPrint('  task document ID:  ${task.id}');
           } else {
-            debugPrint('[CollaboratorDialog] FAILED to create accountability task for ${c.uid}');
+            debugPrint(
+                '[CollaboratorDialog] FAILED to create accountability task for ${c.uid}');
           }
         } catch (e) {
-          debugPrint('[CollaboratorDialog] Error creating task for ${c.uid}: $e');
+          debugPrint(
+              '[CollaboratorDialog] Error creating task for ${c.uid}: $e');
         }
       }
     }
@@ -353,7 +361,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Discard', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('Discard', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -589,8 +598,7 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
           ),
           style: const TextStyle(fontSize: 14),
@@ -691,5 +699,4 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       ),
     );
   }
-
 }

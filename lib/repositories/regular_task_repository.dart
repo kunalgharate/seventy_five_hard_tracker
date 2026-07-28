@@ -52,7 +52,8 @@ class RegularTaskRepository {
     // Fix any tasks with empty IDs (legacy data bug)
     for (int i = 0; i < tasks.length; i++) {
       if (tasks[i].id.isEmpty) {
-        final newId = DateTime.now().millisecondsSinceEpoch.toString() + i.toString();
+        final newId =
+            DateTime.now().millisecondsSinceEpoch.toString() + i.toString();
         final fixed = tasks[i].copyWith(id: newId);
         _tasksBox!.put(newId, fixed);
         _tasksBox!.delete('');

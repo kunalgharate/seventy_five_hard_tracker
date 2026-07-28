@@ -209,7 +209,8 @@ void main() {
         'progress.challengeCompletions correctly', () {
       // Read the source to verify the fix (task 4) has been applied:
       // progress.challengeCompletions (not progress?.challengeCompletions)
-      final sourceFile = File('lib/features/challenges/presentation/bloc/challenge_bloc.dart');
+      final sourceFile =
+          File('lib/features/challenges/presentation/bloc/challenge_bloc.dart');
       final source = sourceFile.readAsStringSync();
 
       // Find the _checkForMissedDays method

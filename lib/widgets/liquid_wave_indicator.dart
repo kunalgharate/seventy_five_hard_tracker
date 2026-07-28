@@ -98,7 +98,7 @@ class _WavePainter extends CustomPainter {
 
     final path = Path();
     final yOffset = size.height - (size.height * fillValue);
-    
+
     path.moveTo(0, size.height);
     path.lineTo(0, yOffset);
 
@@ -106,13 +106,19 @@ class _WavePainter extends CustomPainter {
     for (double i = 0; i <= size.width; i += 4) {
       path.lineTo(
         i,
-        yOffset + math.sin((i / size.width * 2 * math.pi) + (animationValue * 2 * math.pi)) * 8,
+        yOffset +
+            math.sin((i / size.width * 2 * math.pi) +
+                    (animationValue * 2 * math.pi)) *
+                8,
       );
     }
     // Close to the right edge
     path.lineTo(
       size.width,
-      yOffset + math.sin((size.width / size.width * 2 * math.pi) + (animationValue * 2 * math.pi)) * 8,
+      yOffset +
+          math.sin((size.width / size.width * 2 * math.pi) +
+                  (animationValue * 2 * math.pi)) *
+              8,
     );
 
     path.lineTo(size.width, size.height);
@@ -125,7 +131,7 @@ class _WavePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WavePainter oldDelegate) {
     return oldDelegate.animationValue != animationValue ||
-           oldDelegate.fillValue != fillValue ||
-           oldDelegate.color != color;
+        oldDelegate.fillValue != fillValue ||
+        oldDelegate.color != color;
   }
 }

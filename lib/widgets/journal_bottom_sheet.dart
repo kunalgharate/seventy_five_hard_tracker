@@ -45,103 +45,103 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
         widget.existingNote != null && widget.existingNote!.isNotEmpty;
 
     return SafeArea(
-      top: false,
-      child: Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        left: 16,
-        right: 16,
-        top: 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle bar
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          Row(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.book, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Daily Journal',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-              if (hasExistingNote && widget.onDelete != null)
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () {
-                    widget.onDelete!();
-                    Navigator.pop(context);
-                  },
-                  tooltip: 'Delete',
-                ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            maxLines: 8,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'How was your day? Write your thoughts...',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(  
-            children: [
-              if (hasExistingNote)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      _controller.clear();
-                      setState(() {
-                        _hasChanges = true;
-                      });
-                    },
-                    child: const Text('Clear'),
+              Row(
+                children: [
+                  const Icon(Icons.book, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Daily Journal',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
+                  if (hasExistingNote && widget.onDelete != null)
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () {
+                        widget.onDelete!();
+                        Navigator.pop(context);
+                      },
+                      tooltip: 'Delete',
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _controller,
+                maxLines: 8,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'How was your day? Write your thoughts...',
+                  border: OutlineInputBorder(),
                 ),
-              if (hasExistingNote) const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _hasChanges || !hasExistingNote
-                      ? () {
-                          widget.onSave(_controller.text);
-                          Navigator.pop(context);
-                        }
-                      : null,
-                  child: Text(hasExistingNote ? 'Update' : 'Save'),
-                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  if (hasExistingNote)
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() {
+                            _hasChanges = true;
+                          });
+                        },
+                        child: const Text('Clear'),
+                      ),
+                    ),
+                  if (hasExistingNote) const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _hasChanges || !hasExistingNote
+                          ? () {
+                              widget.onSave(_controller.text);
+                              Navigator.pop(context);
+                            }
+                          : null,
+                      child: Text(hasExistingNote ? 'Update' : 'Save'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    ));
+        ));
   }
 }

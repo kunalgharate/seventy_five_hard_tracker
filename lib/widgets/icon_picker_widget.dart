@@ -47,44 +47,43 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final availableHeight = MediaQuery.of(context).size.height
-        - viewInsets.bottom
-        - bottomPadding;
+    final availableHeight =
+        MediaQuery.of(context).size.height - viewInsets.bottom - bottomPadding;
 
     return SafeArea(
-      top: false,
-      child: Container(
-      constraints: BoxConstraints(
-        maxHeight: availableHeight * 0.85,
-      ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: availableHeight * 0.85,
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeader(),
-          _buildTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildPredefinedIconsTab(),
-                _buildCustomImageTab(),
-              ],
-            ),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -5),
+              ),
+            ],
           ),
-        ],
-      ),
-    ));
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildHeader(),
+              _buildTabBar(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildPredefinedIconsTab(),
+                    _buildCustomImageTab(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ));
   }
 
   Widget _buildHeader() {

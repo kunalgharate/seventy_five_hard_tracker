@@ -50,7 +50,8 @@ void main() {
         // The notification service uses challengeId.hashCode directly,
         // leveraging the full int hash space rather than a modulo.
         expect(
-          source.contains('challengeId.hashCode') || source.contains('challenge.id.hashCode'),
+          source.contains('challengeId.hashCode') ||
+              source.contains('challenge.id.hashCode'),
           isTrue,
           reason:
               'Notification ID should be derived from challengeId.hashCode. '
@@ -138,7 +139,8 @@ void main() {
           '_computeCurrentDay should clamp to session.totalDaysTarget, not 75',
           () {
         // Read the source code of challenge_bloc.dart
-        final sourceFile = File('lib/features/challenges/presentation/bloc/challenge_bloc.dart');
+        final sourceFile = File(
+            'lib/features/challenges/presentation/bloc/challenge_bloc.dart');
         final source = sourceFile.readAsStringSync();
 
         // Find the _computeCurrentDay method
@@ -191,7 +193,8 @@ void main() {
 
         // Now verify the ACTUAL source code uses the correct clamp.
         // This is the assertion that FAILS on unfixed code.
-        final sourceFile = File('lib/features/challenges/presentation/bloc/challenge_bloc.dart');
+        final sourceFile = File(
+            'lib/features/challenges/presentation/bloc/challenge_bloc.dart');
         final source = sourceFile.readAsStringSync();
         final methodStart =
             source.indexOf('int _computeCurrentDay(ChallengeSession session)');

@@ -29,12 +29,14 @@ class JournalTimelineScreen extends StatelessWidget {
             final bloc = context.read<ChallengeBloc>();
             final allProgress = <DailyProgress>[];
             for (final session in state.allSessions) {
-              final sessionProgress = bloc.repository.getProgressForSession(session.startDate);
+              final sessionProgress =
+                  bloc.repository.getProgressForSession(session.startDate);
               allProgress.addAll(sessionProgress);
             }
 
             final entries = allProgress
-                .where((p) => p.journalNote != null && p.journalNote!.trim().isNotEmpty)
+                .where((p) =>
+                    p.journalNote != null && p.journalNote!.trim().isNotEmpty)
                 .toList()
               ..sort((a, b) => b.date.compareTo(a.date)); // Newest first
 
@@ -42,7 +44,8 @@ class JournalTimelineScreen extends StatelessWidget {
               return _buildEmptyState(context);
             }
 
-            return _buildTimeline(context, state.activeSession, state.allSessions, entries);
+            return _buildTimeline(
+                context, state.activeSession, state.allSessions, entries);
           }
           return _buildEmptyState(context);
         },
@@ -59,7 +62,8 @@ class JournalTimelineScreen extends StatelessWidget {
             Icons.menu_book_outlined,
             size: 100,
             color: Colors.grey[300],
-          ).animate().scale(delay: 200.ms, duration: 600.ms, curve: Curves.easeOutBack),
+          ).animate().scale(
+              delay: 200.ms, duration: 600.ms, curve: Curves.easeOutBack),
           const SizedBox(height: 24),
           Text(
             'The Pages Are Blank',
@@ -83,7 +87,8 @@ class JournalTimelineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeline(BuildContext context, ChallengeSession? activeSession, List<ChallengeSession> allSessions, List<DailyProgress> entries) {
+  Widget _buildTimeline(BuildContext context, ChallengeSession? activeSession,
+      List<ChallengeSession> allSessions, List<DailyProgress> entries) {
     return AnimationLimiter(
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -91,19 +96,21 @@ class JournalTimelineScreen extends StatelessWidget {
         itemBuilder: (context, index) {
           final progress = entries[index];
           // Normalize to date-only to avoid time-of-day drift in day calculation
-          final progressDate = DateTime(progress.date.year, progress.date.month, progress.date.day);
-          
+          final progressDate = DateTime(
+              progress.date.year, progress.date.month, progress.date.day);
+
           // Find the session this entry belongs to
           int dayNumber = index + 1;
           for (final session in allSessions) {
-            final startDate = DateTime(session.startDate.year, session.startDate.month, session.startDate.day);
+            final startDate = DateTime(session.startDate.year,
+                session.startDate.month, session.startDate.day);
             final diff = progressDate.difference(startDate).inDays;
             if (diff >= 0 && diff < 75) {
               dayNumber = diff + 1;
               break;
             }
           }
-          
+
           return AnimationConfiguration.staggeredList(
             position: index,
             duration: const Duration(milliseconds: 600),
@@ -183,7 +190,7 @@ class _TimelineCard extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Card Content
           Expanded(
             child: Padding(
@@ -210,7 +217,8 @@ class _TimelineCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: AppColors.primary.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(20),
@@ -243,13 +251,14 @@ class _TimelineCard extends StatelessWidget {
                           color: Colors.black87,
                         ),
                       ),
-                      
+
                       // Extra flair if day was fully completed
                       if (progress.isCompleted) ...[
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            const Icon(Icons.workspace_premium, color: Colors.amber, size: 20),
+                            const Icon(Icons.workspace_premium,
+                                color: Colors.amber, size: 20),
                             const SizedBox(width: 6),
                             Text(
                               'Flawless Day Completed',

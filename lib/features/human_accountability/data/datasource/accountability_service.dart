@@ -367,7 +367,8 @@ class AccountabilityService {
 
   /// Finds an accepted partnership between the current user and [otherUid].
   /// Returns the partnership if found and accepted, otherwise null.
-  Future<AccountabilityPartner?> findAcceptedPartnership(String otherUid) async {
+  Future<AccountabilityPartner?> findAcceptedPartnership(
+      String otherUid) async {
     if (!_isReady) return null;
     try {
       final myUid = currentUid!;
@@ -409,7 +410,8 @@ class AccountabilityService {
       final existing = await findAcceptedPartnership(otherUid);
       if (existing != null) {
         if (kDebugMode) {
-          debugPrint('[AccountabilityService] ensurePartnership: existing partnership ${existing.id}');
+          debugPrint(
+              '[AccountabilityService] ensurePartnership: existing partnership ${existing.id}');
         }
         return existing.id;
       }
@@ -420,7 +422,8 @@ class AccountabilityService {
       final now = DateTime.now();
 
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] ensurePartnership: creating new partnership with $otherUid ($otherName)');
+        debugPrint(
+            '[AccountabilityService] ensurePartnership: creating new partnership with $otherUid ($otherName)');
       }
 
       await docRef.set({
@@ -436,7 +439,8 @@ class AccountabilityService {
       });
 
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] ensurePartnership: created ${docRef.id}');
+        debugPrint(
+            '[AccountabilityService] ensurePartnership: created ${docRef.id}');
       }
       return docRef.id;
     } catch (e) {
@@ -838,7 +842,8 @@ class AccountabilityService {
 
   /// Returns Map<challengeId, AccountabilityTaskStatus> for tasks where
   /// the current user is the accountable person. Used to show status chips.
-  Future<Map<String, AccountabilityTaskStatus>> fetchMyAccountabilityTaskStatuses() async {
+  Future<Map<String, AccountabilityTaskStatus>>
+      fetchMyAccountabilityTaskStatuses() async {
     if (!_isReady) return {};
     try {
       final snap = await _db
@@ -902,7 +907,8 @@ class AccountabilityService {
   Future<AccountabilityTask?> fetchTaskById(String taskId) async {
     if (!_isReady) return null;
     try {
-      final doc = await _db.collection('accountability_tasks').doc(taskId).get();
+      final doc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
       if (!doc.exists) return null;
       return AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
     } catch (e) {
@@ -994,7 +1000,8 @@ class AccountabilityService {
           .update({'status': AccountabilityTaskStatus.declined.name});
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] cancelAccountabilityTask error: $e');
+        debugPrint(
+            '[AccountabilityService] cancelAccountabilityTask error: $e');
       }
     }
   }
@@ -1538,8 +1545,7 @@ class AccountabilityService {
       getTaskCollaborators(String taskId) async {
     if (!_isReady) return null;
     try {
-      final doc =
-          await _db.collection('task_collaborators').doc(taskId).get();
+      final doc = await _db.collection('task_collaborators').doc(taskId).get();
       if (!doc.exists) {
         final me = currentUserAsCollaborator;
         if (me == null) return null;
@@ -1549,7 +1555,8 @@ class AccountabilityService {
       final ownerData = data['owner'] as Map<String, dynamic>?;
       final owner = ownerData != null
           ? Collaborator.fromFirestore(ownerData)
-          : currentUserAsCollaborator ?? const Collaborator(uid: '', email: '', name: 'Unknown');
+          : currentUserAsCollaborator ??
+              const Collaborator(uid: '', email: '', name: 'Unknown');
       final rawList = data['collaborators'] as List<dynamic>? ?? [];
       final collaborators = rawList
           .map((e) => Collaborator.fromFirestore(e as Map<String, dynamic>))
@@ -1584,8 +1591,7 @@ class AccountabilityService {
       return true;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] saveTaskCollaborators error: $e');
+        debugPrint('[AccountabilityService] saveTaskCollaborators error: $e');
       }
       return false;
     }
@@ -1672,12 +1678,14 @@ class AccountabilityService {
   }) async {
     if (!_isReady) {
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] submitTaskProof: service not ready');
+        debugPrint(
+            '[AccountabilityService] submitTaskProof: service not ready');
       }
       return false;
     }
     if (kDebugMode) {
-      debugPrint('[AccountabilityService] submitTaskProof: taskId=$taskId proofUrl=$proofUrl');
+      debugPrint(
+          '[AccountabilityService] submitTaskProof: taskId=$taskId proofUrl=$proofUrl');
     }
     try {
       final now = DateTime.now();
@@ -1687,13 +1695,15 @@ class AccountabilityService {
         'proofSubmittedAt': now.toIso8601String(),
       });
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] submitTaskProof: SUCCESS — Firestore doc $taskId updated');
+        debugPrint(
+            '[AccountabilityService] submitTaskProof: SUCCESS — Firestore doc $taskId updated');
       }
       return true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] submitTaskProof error: $e');
-        debugPrint('[AccountabilityService] submitTaskProof error type: ${e.runtimeType}');
+        debugPrint(
+            '[AccountabilityService] submitTaskProof error type: ${e.runtimeType}');
       }
       return false;
     }
@@ -1812,7 +1822,8 @@ class AccountabilityService {
           .toList();
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] fetchAssignedTasksCompleted error: $e');
+        debugPrint(
+            '[AccountabilityService] fetchAssignedTasksCompleted error: $e');
       }
       return [];
     }
@@ -1820,8 +1831,7 @@ class AccountabilityService {
 
   /// Fetch an accountability task by a challengeId.
   /// Returns the first matching task, or null if none found.
-  Future<AccountabilityTask?> fetchTaskByChallengeId(
-      String challengeId) async {
+  Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId) async {
     if (!_isReady) return null;
     try {
       final snap = await _db
@@ -1836,8 +1846,7 @@ class AccountabilityService {
       );
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] fetchTaskByChallengeId error: $e');
+        debugPrint('[AccountabilityService] fetchTaskByChallengeId error: $e');
       }
       return null;
     }

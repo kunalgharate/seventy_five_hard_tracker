@@ -266,9 +266,11 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                               ),
                             ],
                           ),
-                          if ((_taskCollaborators[task.id]?.isNotEmpty ?? false)) ...[
+                          if ((_taskCollaborators[task.id]?.isNotEmpty ??
+                              false)) ...[
                             const SizedBox(height: 4),
-                            _buildCollaboratorAvatars(_taskCollaborators[task.id]!),
+                            _buildCollaboratorAvatars(
+                                _taskCollaborators[task.id]!),
                           ],
                         ],
                       ),
@@ -280,9 +282,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                         (_taskCollaborators[task.id]?.isNotEmpty ?? false)
                             ? Icons.person_add_alt_1
                             : Icons.person_add_alt_1_outlined,
-                        color: (_taskCollaborators[task.id]?.isNotEmpty ?? false)
-                            ? const Color(0xFFFFA726)
-                            : Colors.grey[500],
+                        color:
+                            (_taskCollaborators[task.id]?.isNotEmpty ?? false)
+                                ? const Color(0xFFFFA726)
+                                : Colors.grey[500],
                         size: 16,
                       ),
                       padding: EdgeInsets.zero,
@@ -345,12 +348,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     const btnSize = 22.0;
     const iconS = 16.0;
 
-    Widget iconBtn(IconData icon, Color color, VoidCallback? onPressed, String tooltip) {
+    Widget iconBtn(
+        IconData icon, Color color, VoidCallback? onPressed, String tooltip) {
       return IconButton(
         onPressed: onPressed,
         icon: Icon(icon, color: color, size: iconS),
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
         tooltip: tooltip,
       );
     }
@@ -358,15 +363,19 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     // ── CREATOR (assigned this task) — camera is here ──
     if (iAmAssigner) {
       if (proofStatus == ProofStatus.not_required) {
-        return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!, () => _submitProof(task), 'Upload Photo Proof');
+        return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!,
+            () => _submitProof(task), 'Upload Photo Proof');
       }
       switch (proofStatus) {
         case ProofStatus.submitted:
-          return iconBtn(Icons.hourglass_bottom, Colors.orange[600]!, null, 'Awaiting Review');
+          return iconBtn(Icons.hourglass_bottom, Colors.orange[600]!, null,
+              'Awaiting Review');
         case ProofStatus.approved:
-          return iconBtn(Icons.check_circle, Colors.green[600]!, null, 'View Approved Proof');
+          return iconBtn(Icons.check_circle, Colors.green[600]!, null,
+              'View Approved Proof');
         case ProofStatus.rejected:
-          return iconBtn(Icons.camera_alt, Colors.red[400]!, () => _submitProof(task), 'Resubmit Photo Proof');
+          return iconBtn(Icons.camera_alt, Colors.red[400]!,
+              () => _submitProof(task), 'Resubmit Photo Proof');
         default:
           return const SizedBox.shrink();
       }
@@ -378,9 +387,11 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     }
     switch (proofStatus) {
       case ProofStatus.submitted:
-        return iconBtn(Icons.rate_review_outlined, Colors.orange[600]!, () => _reviewProof(task), 'Review Photo Proof');
+        return iconBtn(Icons.rate_review_outlined, Colors.orange[600]!,
+            () => _reviewProof(task), 'Review Photo Proof');
       case ProofStatus.approved:
-        return iconBtn(Icons.check_circle, Colors.green[600]!, null, 'View Approved Proof');
+        return iconBtn(Icons.check_circle, Colors.green[600]!, null,
+            'View Approved Proof');
       case ProofStatus.rejected:
         return iconBtn(Icons.cancel, Colors.red[400]!, null, 'Proof Rejected');
       default:
@@ -726,8 +737,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                     if (createdTask != null && mounted) {
                       setState(() {
                         _assignedPartnerNames[task.id] = p.partnerName;
-                        _accountabilityStatuses[task.id] =
-                            createdTask.status;
+                        _accountabilityStatuses[task.id] = createdTask.status;
                         _tasksIAssigned.add(task.id);
                       });
                     }
@@ -740,4 +750,3 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     );
   }
 }
-

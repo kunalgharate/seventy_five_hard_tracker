@@ -53,9 +53,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Auth status card
-                      _buildAuthActionCard().animate().fadeIn(duration: 300.ms).slideY(begin: 0.2),
+                      _buildAuthActionCard()
+                          .animate()
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: 0.2),
                       const SizedBox(height: 24),
-                      
+
                       if (isLoaded) ...[
                         // Achievements
                         AchievementsShowcase(state: state)
@@ -63,21 +66,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             .fadeIn(duration: 300.ms)
                             .slideY(begin: 0.2),
                         const SizedBox(height: 24),
-                        
+
                         // Discipline Grade
                         _buildDisciplineGradeCard()
                             .animate(delay: 200.ms)
                             .fadeIn(duration: 300.ms)
                             .slideY(begin: 0.2),
                         const SizedBox(height: 24),
-                        
+
                         // Stats Grid
                         _buildPremiumStatsGrid(state)
                             .animate(delay: 700.ms)
                             .fadeIn(duration: 300.ms)
                             .slideY(begin: 0.1),
                         const SizedBox(height: 16),
-                        
+
                         _buildJournalTimelineButton()
                             .animate(delay: 800.ms)
                             .fadeIn(duration: 300.ms)
@@ -89,26 +92,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                            side: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.2)),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(20),
                             child: DisciplineHeatmap(
                               progressList: state.currentProgress,
-                              challengeTaskIds: state.activeSession
-                                  ?.challenges
+                              challengeTaskIds: state.activeSession?.challenges
                                   .where((c) => c.taskType != 'regular')
                                   .map((c) => c.id)
                                   .toSet(),
                             ),
                           ),
-                        ).animate(delay: 400.ms).fadeIn(duration: 300.ms).slideY(begin: 0.2),
+                        )
+                            .animate(delay: 400.ms)
+                            .fadeIn(duration: 300.ms)
+                            .slideY(begin: 0.2),
                         const SizedBox(height: 24),
                       ],
 
-                      _buildSyncStatusCard().animate(delay: 500.ms).fadeIn(duration: 300.ms).slideY(begin: 0.2),
+                      _buildSyncStatusCard()
+                          .animate(delay: 500.ms)
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: 0.2),
                       const SizedBox(height: 16),
-                      _buildPrivacyCard().animate(delay: 600.ms).fadeIn(duration: 300.ms).slideY(begin: 0.2),
+                      _buildPrivacyCard()
+                          .animate(delay: 600.ms)
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: 0.2),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -142,7 +154,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   end: Alignment.bottomRight,
                   colors: [
                     AppColors.primary,
-                    AppColors.primary.withBlue(255), // gradient end (shifted blue channel)
+                    AppColors.primary
+                        .withBlue(255), // gradient end (shifted blue channel)
                   ],
                 ),
               ),
@@ -162,18 +175,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: CircleAvatar(
                             radius: 45,
                             backgroundColor: Colors.white,
-                            backgroundImage: (isSignedIn && user.photoURL != null)
-                                ? NetworkImage(user.photoURL!)
-                                : null,
+                            backgroundImage:
+                                (isSignedIn && user.photoURL != null)
+                                    ? NetworkImage(user.photoURL!)
+                                    : null,
                             child: (isSignedIn && user.photoURL != null)
                                 ? null
-                                : const Icon(Icons.person, size: 50, color: AppColors.primary),
+                                : const Icon(Icons.person,
+                                    size: 50, color: AppColors.primary),
                           ),
                         ),
-                      ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+                      )
+                          .animate()
+                          .scale(duration: 400.ms, curve: Curves.easeOutBack),
                       const SizedBox(height: 12),
                       Text(
-                        isSignedIn ? (user.displayName ?? 'Signed In') : 'Local Challenger',
+                        isSignedIn
+                            ? (user.displayName ?? 'Signed In')
+                            : 'Local Challenger',
                         style: GoogleFonts.poppins(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -218,12 +237,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Card(
           elevation: 0,
           color: AppColors.primary.withValues(alpha: 0.1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Icon(Icons.cloud_upload, color: AppColors.primary, size: 28),
+                const Icon(Icons.cloud_upload,
+                    color: AppColors.primary, size: 28),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -245,7 +266,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
                   ),
                   child: const Text('Sign In'),
                 ),
@@ -263,7 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return BlocBuilder<DisciplineScoreBloc, DisciplineScoreState>(
       builder: (context, state) {
         if (state is! DisciplineScoreLoaded) return const SizedBox.shrink();
-        
+
         final grade = state.grade;
         Color gradeColor;
         if (grade.startsWith('A')) {
@@ -284,7 +306,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: gradeColor.withValues(alpha: 0.3), width: 1.5),
+            border: Border.all(
+                color: gradeColor.withValues(alpha: 0.3), width: 1.5),
           ),
           padding: const EdgeInsets.all(24),
           child: Row(
@@ -349,7 +372,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildPremiumStatsGrid(ChallengeLoaded state) {
     final totalSessions = state.allSessions.length;
-    final completedSessions = state.allSessions.where((s) => s.isCompleted).length;
+    final completedSessions =
+        state.allSessions.where((s) => s.isCompleted).length;
     // Aggregate days across all sessions for lifetime scope
     int totalDaysTracked = 0;
     int completedDays = 0;
@@ -357,7 +381,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       totalDaysTracked += session.currentDay;
     }
     // currentProgress may have more detail for the active session
-    final activeCompleted = state.currentProgress.where((p) => p.isCompleted).length;
+    final activeCompleted =
+        state.currentProgress.where((p) => p.isCompleted).length;
     completedDays = activeCompleted;
     // Add completed days from past completed sessions
     for (final session in state.allSessions) {
@@ -371,22 +396,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Text(
           'Journey Overview',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+          style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800]),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            _buildGlassTile('Sessions', '$totalSessions', Icons.replay, Colors.blue),
+            _buildGlassTile(
+                'Sessions', '$totalSessions', Icons.replay, Colors.blue),
             const SizedBox(width: 12),
-            _buildGlassTile('Completed', '$completedSessions', Icons.emoji_events, Colors.amber),
+            _buildGlassTile('Completed', '$completedSessions',
+                Icons.emoji_events, Colors.amber),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            _buildGlassTile('Days Tracked', '$totalDaysTracked', Icons.calendar_today, Colors.teal),
+            _buildGlassTile('Days Tracked', '$totalDaysTracked',
+                Icons.calendar_today, Colors.teal),
             const SizedBox(width: 12),
-            _buildGlassTile('Perfect Days', '$completedDays', Icons.check_circle, Colors.green),
+            _buildGlassTile('Perfect Days', '$completedDays',
+                Icons.check_circle, Colors.green),
           ],
         ),
       ],
@@ -400,7 +432,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const JournalTimelineScreen()),
+            MaterialPageRoute(
+                builder: (context) => const JournalTimelineScreen()),
           );
         },
         borderRadius: BorderRadius.circular(16),
@@ -429,7 +462,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.auto_stories, color: Colors.white, size: 24),
+                child: const Icon(Icons.auto_stories,
+                    color: Colors.white, size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -454,7 +488,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+              const Icon(Icons.arrow_forward_ios,
+                  color: Colors.white, size: 16),
             ],
           ),
         ),
@@ -462,7 +497,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildGlassTile(String label, String value, IconData icon, Color color) {
+  Widget _buildGlassTile(
+      String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
@@ -522,10 +558,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Row(
               children: [
-                Text('Cloud Backup', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('Cloud Backup',
+                    style: GoogleFonts.poppins(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
                 if (_isSyncing)
-                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                 else
                   Icon(
                     isSignedIn ? Icons.cloud_done : Icons.cloud_off,
@@ -547,7 +588,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
                   const SizedBox(width: 4),
-                  Text('Last synced: ${_formatSyncTime(_lastSync!)}', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                  Text('Last synced: ${_formatSyncTime(_lastSync!)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 ],
               ),
             ],
@@ -572,9 +614,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Privacy & Security', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+            Text('Privacy & Security',
+                style: GoogleFonts.poppins(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
-            _privacyRow(Icons.lock, 'AES-256 encryption — task names & all data'),
+            _privacyRow(
+                Icons.lock, 'AES-256 encryption — task names & all data'),
             _privacyRow(Icons.key, 'Only you can decrypt your data'),
             _privacyRow(Icons.visibility_off, 'We cannot read your content'),
             _privacyRow(Icons.phone_android, 'Works fully offline'),
@@ -592,7 +637,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Icon(icon, size: 16, color: Colors.green),
           const SizedBox(width: 12),
-          Expanded(child: Text(text, style: TextStyle(fontSize: 12, color: Colors.grey[700]))),
+          Expanded(
+              child: Text(text,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]))),
         ],
       ),
     );
@@ -622,7 +669,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
-        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+        child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
       ),
     );
 
@@ -635,10 +683,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _triggerAutoSync();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Cloud backup enabled for ${user.displayName ?? user.email}'),
+            content: Text(
+                'Cloud backup enabled for ${user.displayName ?? user.email}'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -660,7 +710,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       setState(() => _lastSync = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed out'), backgroundColor: Colors.grey),
+        const SnackBar(
+            content: Text('Signed out'), backgroundColor: Colors.grey),
       );
     }
   }
@@ -675,7 +726,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loadLastSync();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sync failed. Please try again.'), backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text('Sync failed. Please try again.'),
+              backgroundColor: Colors.red),
         );
       }
       setState(() => _isSyncing = false);
@@ -683,7 +736,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() => _isSyncing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sync error: ${error.toString().substring(0, 80)}'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Sync error: ${error.toString().substring(0, 80)}'),
+            backgroundColor: Colors.red),
       );
     });
   }
@@ -704,20 +759,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Before enabling backup, here\'s what you need to know:', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text('Before enabling backup, here\'s what you need to know:',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             SizedBox(height: 12),
-            _ConsentPoint(icon: Icons.lock_outline, text: 'Task names and data are encrypted with AES-256.'),
+            _ConsentPoint(
+                icon: Icons.lock_outline,
+                text: 'Task names and data are encrypted with AES-256.'),
             SizedBox(height: 8),
-            _ConsentPoint(icon: Icons.key, text: 'Only you can decrypt your data.'),
+            _ConsentPoint(
+                icon: Icons.key, text: 'Only you can decrypt your data.'),
             SizedBox(height: 8),
-            _ConsentPoint(icon: Icons.sync, text: 'Backup happens automatically when online.'),
+            _ConsentPoint(
+                icon: Icons.sync,
+                text: 'Backup happens automatically when online.'),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not Now')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Not Now')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white),
             child: const Text('Enable Backup'),
           ),
         ],
@@ -740,7 +805,9 @@ class _ConsentPoint extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: Colors.green[600]),
         const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4))),
+        Expanded(
+            child:
+                Text(text, style: const TextStyle(fontSize: 13, height: 1.4))),
       ],
     );
   }

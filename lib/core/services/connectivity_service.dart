@@ -53,7 +53,7 @@ class ConnectivityService {
         FlutterError.onError =
             FirebaseCrashlytics.instance.recordFlutterFatalError;
       }
-      
+
       _firebaseInitialized = true;
 
       // Init dependent services in background — never block

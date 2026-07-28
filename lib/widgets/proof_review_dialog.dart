@@ -85,11 +85,12 @@ class _ProofReviewDialogState extends State<ProofReviewDialog> {
             ),
             const SizedBox(height: 4),
             Text(
-              widget.task.title.isNotEmpty ? widget.task.title : 'Untitled Task',
+              widget.task.title.isNotEmpty
+                  ? widget.task.title
+                  : 'Untitled Task',
               style: TextStyle(fontSize: 13, color: Colors.grey[500]),
             ),
             const SizedBox(height: 16),
-
             if (widget.task.proofUrl != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -122,9 +123,7 @@ class _ProofReviewDialogState extends State<ProofReviewDialog> {
                   ),
                 ),
               ),
-
             const SizedBox(height: 16),
-
             TextField(
               controller: _commentController,
               maxLines: 3,
@@ -146,14 +145,13 @@ class _ProofReviewDialogState extends State<ProofReviewDialog> {
                 contentPadding: const EdgeInsets.all(12),
               ),
             ),
-
             const SizedBox(height: 20),
-
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _processing ? null : () => _review(approved: false),
+                    onPressed:
+                        _processing ? null : () => _review(approved: false),
                     icon: const Icon(Icons.close, size: 18),
                     label: const Text('Reject'),
                     style: OutlinedButton.styleFrom(
@@ -169,7 +167,8 @@ class _ProofReviewDialogState extends State<ProofReviewDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _processing ? null : () => _review(approved: true),
+                    onPressed:
+                        _processing ? null : () => _review(approved: true),
                     icon: const Icon(Icons.check, size: 18),
                     label: const Text('Approve'),
                     style: ElevatedButton.styleFrom(

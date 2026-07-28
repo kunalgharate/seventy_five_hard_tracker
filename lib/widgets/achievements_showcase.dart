@@ -25,7 +25,8 @@ class AchievementsShowcase extends StatelessWidget {
     }
 
     // Use actual completed-day count from current progress
-    final currentDays = state.currentProgress.where((p) => p.isCompleted).length;
+    final currentDays =
+        state.currentProgress.where((p) => p.isCompleted).length;
     if (currentDays > maxDays) maxDays = currentDays;
 
     final achievements = [
@@ -101,17 +102,22 @@ class AchievementsShowcase extends StatelessWidget {
 
   Widget _buildBadge(_Achievement a) {
     return Semantics(
-      label: '${a.title} achievement: ${a.description}. ${a.isUnlocked ? "Unlocked" : "Locked"}',
+      label:
+          '${a.title} achievement: ${a.description}. ${a.isUnlocked ? "Unlocked" : "Locked"}',
       excludeSemantics: true,
       child: Tooltip(
         message: '${a.title}\n${a.description}',
         child: Container(
           width: 80,
           decoration: BoxDecoration(
-            color: a.isUnlocked ? a.color.withValues(alpha: 0.15) : Colors.grey[200],
+            color: a.isUnlocked
+                ? a.color.withValues(alpha: 0.15)
+                : Colors.grey[200],
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: a.isUnlocked ? a.color.withValues(alpha: 0.5) : Colors.transparent,
+              color: a.isUnlocked
+                  ? a.color.withValues(alpha: 0.5)
+                  : Colors.transparent,
               width: 2,
             ),
           ),

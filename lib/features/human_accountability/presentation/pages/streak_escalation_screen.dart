@@ -300,7 +300,8 @@ class _StreakEscalationScreenState extends State<StreakEscalationScreen> {
                   ),
                 ),
                 Text(
-                  DateFormat('MMM d').format(action.createdAt ?? DateTime.now()),
+                  DateFormat('MMM d')
+                      .format(action.createdAt ?? DateTime.now()),
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],

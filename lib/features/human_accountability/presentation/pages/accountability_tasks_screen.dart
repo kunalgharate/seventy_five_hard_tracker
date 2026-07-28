@@ -322,7 +322,6 @@ class _ChallengeTaskCard extends StatelessWidget {
   }
 }
 
-
 class _StatPill extends StatelessWidget {
   final String label;
   final String value;

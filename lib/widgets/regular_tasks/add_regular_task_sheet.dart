@@ -13,7 +13,6 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/dat
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/regular_task_sheet_helpers.dart';
 
-
 class AddRegularTaskSheet extends StatefulWidget {
   final RegularTaskBloc bloc;
   const AddRegularTaskSheet({super.key, required this.bloc});
@@ -579,4 +578,3 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
     Navigator.pop(context);
   }
 }
-

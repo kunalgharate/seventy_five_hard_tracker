@@ -199,12 +199,12 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           ' taskId=${state.taskId} challengeId=${state.challengeId}');
       if (state.challengeId != null) {
         try {
-          debugPrint('[AccountabilityScreen] Dispatching LoadChallengeData to ChallengeBloc');
-          context
-              .read<ChallengeBloc>()
-              .add(LoadChallengeData());
+          debugPrint(
+              '[AccountabilityScreen] Dispatching LoadChallengeData to ChallengeBloc');
+          context.read<ChallengeBloc>().add(LoadChallengeData());
         } catch (e) {
-          debugPrint('[AccountabilityScreen] Failed to dispatch LoadChallengeData: $e');
+          debugPrint(
+              '[AccountabilityScreen] Failed to dispatch LoadChallengeData: $e');
         }
       }
     } else if (state is TaskRequestDeclined) {
@@ -643,16 +643,17 @@ class _PartnersTab extends StatelessWidget {
       children: [
         const SizedBox(height: 20),
 
-          // ── Partner cards ─────────────────────────────────────────
+        // ── Partner cards ─────────────────────────────────────────
         ...accepted.map((p) => _AcceptedPartnerCard(partner: p)),
         if (accepted.isNotEmpty) const SizedBox(height: 20),
 
         // ── Pending invites I sent ───────────────────────────────
         ...() {
           final myUid = AccountabilityService().currentUid;
-          final pending = partners.where((p) =>
-              p.status == PartnershipStatus.pending &&
-              p.ownerUid == myUid).toList();
+          final pending = partners
+              .where((p) =>
+                  p.status == PartnershipStatus.pending && p.ownerUid == myUid)
+              .toList();
           if (pending.isEmpty) return const <Widget>[];
           return [
             _SectionLabel(
@@ -668,10 +669,15 @@ class _PartnersTab extends StatelessWidget {
         }(),
 
         // ── Empty state ──────────────────────────────────────────
-        if (accepted.isEmpty && !hasCodeRequests && !hasTaskRequests && !hasEmailInvites &&
-            partners.where((p) =>
-                p.status == PartnershipStatus.pending &&
-                p.ownerUid == AccountabilityService().currentUid).isEmpty)
+        if (accepted.isEmpty &&
+            !hasCodeRequests &&
+            !hasTaskRequests &&
+            !hasEmailInvites &&
+            partners
+                .where((p) =>
+                    p.status == PartnershipStatus.pending &&
+                    p.ownerUid == AccountabilityService().currentUid)
+                .isEmpty)
           const _EmptyState(
             icon: Icons.people_outline,
             title: 'No Partners Yet',
@@ -686,7 +692,9 @@ class _PartnersTab extends StatelessWidget {
             title: 'Requests for You',
             icon: Icons.mark_email_unread_outlined,
             color: Colors.blue,
-            count: incomingRequests.length + emailInvitations.length + taskRequests.length,
+            count: incomingRequests.length +
+                emailInvitations.length +
+                taskRequests.length,
           ),
           const SizedBox(height: 10),
           // Code-based incoming partnership requests
@@ -821,256 +829,264 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         }
       },
       child: Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Theme(
-        // Remove default divider from ExpansionTile
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          onExpansionChanged: (v) {
-            setState(() => _expanded = v);
-            if (v) _loadTasks(forceRefresh: true);
-          },
-          leading: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Theme(
+          // Remove default divider from ExpansionTile
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            onExpansionChanged: (v) {
+              setState(() => _expanded = v);
+              if (v) _loadTasks(forceRefresh: true);
+            },
+            leading: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(widget.partner.role.emoji,
+                    style: const TextStyle(fontSize: 24)),
+              ),
             ),
-            child: Center(
-              child: Text(widget.partner.role.emoji,
-                  style: const TextStyle(fontSize: 24)),
+            title: Text(
+              widget.partner.partnerName,
+              style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w700, fontSize: 15),
             ),
-          ),
-          title: Text(
-            widget.partner.partnerName,
-            style:
-                GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 15),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.partner.role.label,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                        color: Colors.green, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 5),
-                  const Text('Active Partner',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.green,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: Icon(Icons.chat_bubble_outline,
-                    color: AppColors.primary.withValues(alpha: 0.7), size: 20),
-                tooltip: 'Message',
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) =>
-                            AccountabilityChatScreen(partner: widget.partner))),
-              ),
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 22),
-                onSelected: (v) => _onMenu(context, v),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'progress',
-                    child: Row(children: [
-                      Icon(Icons.bar_chart_outlined,
-                          size: 18, color: Colors.blue),
-                      SizedBox(width: 10),
-                      Text('View Progress'),
-                    ]),
-                  ),
-                  const PopupMenuItem(
-                    value: 'weekly',
-                    child: Row(children: [
-                      Icon(Icons.summarize_outlined,
-                          size: 18, color: Colors.purple),
-                      SizedBox(width: 10),
-                      Text('Weekly Summary'),
-                    ]),
-                  ),
-                  const PopupMenuItem(
-                    value: 'review',
-                    child: Row(children: [
-                      Icon(Icons.rate_review_outlined,
-                          size: 18, color: Colors.orange),
-                      SizedBox(width: 10),
-                      Text('Review Progress'),
-                    ]),
-                  ),
-                  const PopupMenuItem(
-                    value: 'escalate',
-                    child: Row(children: [
-                      Icon(Icons.flag_outlined, size: 18, color: Colors.red),
-                      SizedBox(width: 10),
-                      Text('Flag / Escalate'),
-                    ]),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'remove',
-                    child: Row(children: [
-                      Icon(Icons.person_remove_outlined,
-                          size: 18, color: Colors.grey),
-                      SizedBox(width: 10),
-                      Text('Remove Partner'),
-                    ]),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          // ── Expanded section ───────────────────────────────────
-          children: [
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-            // Partner info row
-            Row(
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.calendar_today_outlined,
-                    size: 14, color: Colors.grey),
-                const SizedBox(width: 6),
-                Text(
-                  widget.partner.acceptedAt != null
-                      ? 'Partner since ${DateFormat('MMM d, yyyy').format(widget.partner.acceptedAt!)}'
-                      : 'Active partner',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                Text(widget.partner.role.label,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                          color: Colors.green, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text('Active Partner',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            // Tasks heading
-            Text('Accountability Tasks',
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600, fontSize: 13)),
-            const SizedBox(height: 8),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              )
-            else ...[
-              ...() {
-                final myUid = AccountabilityService().currentUid;
-                final visibleTasks = _accountabilityTasks.where((t) =>
-                    t.partnershipId == widget.partner.id &&
-                    (t.assignedByUid == myUid || t.accountableUid == myUid)).toList();
-                if (visibleTasks.isEmpty) {
-                  return [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              size: 16, color: Colors.grey[400]),
-                          const SizedBox(width: 8),
-                          Text('No tasks yet.',
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[500])),
-                        ],
-                      ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.chat_bubble_outline,
+                      color: AppColors.primary.withValues(alpha: 0.7),
+                      size: 20),
+                  tooltip: 'Message',
+                  onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => AccountabilityChatScreen(
+                              partner: widget.partner))),
+                ),
+                PopupMenuButton<String>(
+                  icon:
+                      Icon(Icons.more_vert, color: Colors.grey[600], size: 22),
+                  onSelected: (v) => _onMenu(context, v),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'progress',
+                      child: Row(children: [
+                        Icon(Icons.bar_chart_outlined,
+                            size: 18, color: Colors.blue),
+                        SizedBox(width: 10),
+                        Text('View Progress'),
+                      ]),
                     ),
-                  ];
-                }
-                return visibleTasks.map((task) {
-                  final isCompleted =
-                      task.status == AccountabilityTaskStatus.completed;
-                  final proofStatus = task.proofStatus;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? Colors.green.withValues(alpha: 0.06)
-                          : Colors.orange.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isCompleted
-                            ? Colors.green.withValues(alpha: 0.3)
-                            : Colors.orange.withValues(alpha: 0.25),
-                      ),
+                    const PopupMenuItem(
+                      value: 'weekly',
+                      child: Row(children: [
+                        Icon(Icons.summarize_outlined,
+                            size: 18, color: Colors.purple),
+                        SizedBox(width: 10),
+                        Text('Weekly Summary'),
+                      ]),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                    const PopupMenuItem(
+                      value: 'review',
+                      child: Row(children: [
+                        Icon(Icons.rate_review_outlined,
+                            size: 18, color: Colors.orange),
+                        SizedBox(width: 10),
+                        Text('Review Progress'),
+                      ]),
+                    ),
+                    const PopupMenuItem(
+                      value: 'escalate',
+                      child: Row(children: [
+                        Icon(Icons.flag_outlined, size: 18, color: Colors.red),
+                        SizedBox(width: 10),
+                        Text('Flag / Escalate'),
+                      ]),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Row(children: [
+                        Icon(Icons.person_remove_outlined,
+                            size: 18, color: Colors.grey),
+                        SizedBox(width: 10),
+                        Text('Remove Partner'),
+                      ]),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            // ── Expanded section ───────────────────────────────────
+            children: [
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              // Partner info row
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      size: 14, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.partner.acceptedAt != null
+                        ? 'Partner since ${DateFormat('MMM d, yyyy').format(widget.partner.acceptedAt!)}'
+                        : 'Active partner',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Tasks heading
+              Text('Accountability Tasks',
+                  style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child:
+                      Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else ...[
+                ...() {
+                  final myUid = AccountabilityService().currentUid;
+                  final visibleTasks = _accountabilityTasks
+                      .where((t) =>
+                          t.partnershipId == widget.partner.id &&
+                          (t.assignedByUid == myUid ||
+                              t.accountableUid == myUid))
+                      .toList();
+                  if (visibleTasks.isEmpty) {
+                    return [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey[200]!),
+                        ),
+                        child: Row(
                           children: [
-                            Icon(
-                              isCompleted
-                                  ? Icons.check_circle_rounded
-                                  : Icons.radio_button_unchecked,
-                              size: 18,
-                              color: isCompleted ? Colors.green : Colors.orange,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(task.title,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500)),
-                                  if (task.description != null &&
-                                      task.description!.isNotEmpty)
-                                    Text(task.description!,
-                                        style: TextStyle(
-                                            fontSize: 11, color: Colors.grey[500])),
-                                ],
-                              ),
-                            ),
-                            _buildPartnerTaskStatusChip(
-                                isCompleted, proofStatus, task.status),
+                            Icon(Icons.info_outline,
+                                size: 16, color: Colors.grey[400]),
+                            const SizedBox(width: 8),
+                            Text('No tasks yet.',
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey[500])),
                           ],
                         ),
-                        if (!isCompleted)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: _buildPartnerTaskAction(task),
+                      ),
+                    ];
+                  }
+                  return visibleTasks.map((task) {
+                    final isCompleted =
+                        task.status == AccountabilityTaskStatus.completed;
+                    final proofStatus = task.proofStatus;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? Colors.green.withValues(alpha: 0.06)
+                            : Colors.orange.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isCompleted
+                              ? Colors.green.withValues(alpha: 0.3)
+                              : Colors.orange.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                isCompleted
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked,
+                                size: 18,
+                                color:
+                                    isCompleted ? Colors.green : Colors.orange,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(task.title,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500)),
+                                    if (task.description != null &&
+                                        task.description!.isNotEmpty)
+                                      Text(task.description!,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey[500])),
+                                  ],
+                                ),
+                              ),
+                              _buildPartnerTaskStatusChip(
+                                  isCompleted, proofStatus, task.status),
+                            ],
                           ),
-                      ],
-                    ),
-                  );
-                });
-              }(),
-              const SizedBox(height: 8),
+                          if (!isCompleted)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: _buildPartnerTaskAction(task),
+                            ),
+                        ],
+                      ),
+                    );
+                  });
+                }(),
+                const SizedBox(height: 8),
+              ],
             ],
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
 
-  Widget _buildPartnerTaskStatusChip(
-      bool isCompleted, ProofStatus? proofStatus,
+  Widget _buildPartnerTaskStatusChip(bool isCompleted, ProofStatus? proofStatus,
       AccountabilityTaskStatus status) {
     if (isCompleted || status == AccountabilityTaskStatus.completed) {
       return Container(
@@ -1239,8 +1255,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           child: OutlinedButton.icon(
             onPressed: null,
             icon: Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
-            label: Text('Approved',
-                style: TextStyle(color: Colors.green[700])),
+            label: Text('Approved', style: TextStyle(color: Colors.green[700])),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.green,
               shape: RoundedRectangleBorder(
@@ -1255,13 +1270,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       child: ElevatedButton.icon(
         onPressed: () async {
           setState(() => _loading = true);
-          final ok = await AccountabilityService()
-              .completeAccountabilityTask(task.id);
+          final ok =
+              await AccountabilityService().completeAccountabilityTask(task.id);
           if (mounted) setState(() => _loading = false);
           if (ok && context.mounted) {
-            context
-                .read<AccountabilityBloc>()
-                .add(LoadAccountabilityData());
+            context.read<AccountabilityBloc>().add(LoadAccountabilityData());
             if (task.challengeId != null) {
               try {
                 context.read<ChallengeBloc>().add(UpdateDailyProgress(
@@ -1280,8 +1293,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );
@@ -1298,9 +1311,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           onPressed: () async {
             final ok = await ProofReviewDialog.show(context, task);
             if (ok == true && context.mounted) {
-              context
-                  .read<AccountabilityBloc>()
-                  .add(LoadAccountabilityData());
+              context.read<AccountabilityBloc>().add(LoadAccountabilityData());
             }
           },
           icon: const Icon(Icons.rate_review_outlined, size: 16),
@@ -1308,8 +1319,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.orange,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       );
@@ -1342,9 +1353,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               date: DateTime.now(),
             );
             if (ok == true && context.mounted) {
-              context
-                  .read<AccountabilityBloc>()
-                  .add(LoadAccountabilityData());
+              context.read<AccountabilityBloc>().add(LoadAccountabilityData());
             }
           },
           icon: Icon(
@@ -1358,8 +1367,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       );
@@ -3248,9 +3257,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
         ),
         child: const Text('Task Request',
             style: TextStyle(
-                fontSize: 11,
-                color: Colors.teal,
-                fontWeight: FontWeight.w600)),
+                fontSize: 11, color: Colors.teal, fontWeight: FontWeight.w600)),
       );
     }
     return _buildProofStatusChip(task);
@@ -3340,8 +3347,8 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
           label: const Text('Awaiting Review'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.blue[400],
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       );
@@ -3357,9 +3364,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
             date: DateTime.now(),
           );
           if (ok == true && context.mounted) {
-            context
-                .read<AccountabilityBloc>()
-                .add(LoadAccountabilityData());
+            context.read<AccountabilityBloc>().add(LoadAccountabilityData());
           }
         },
         icon: const Icon(Icons.check, size: 16),
@@ -3369,8 +3374,8 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );

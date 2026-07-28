@@ -27,7 +27,24 @@ class WaterReminderWidget extends StatefulWidget {
 class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   bool _isExpanded = false;
 
-  final List<int> _defaultHours = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+  final List<int> _defaultHours = [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+  ];
 
   int get _completedCount {
     return widget.completedTimes
@@ -90,11 +107,12 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                     Positioned.fill(
                       child: LiquidWaveIndicator(
                         value: percent,
-                        valueColor: isDone ? Colors.blue[400]! : Colors.blue[300]!,
+                        valueColor:
+                            isDone ? Colors.blue[400]! : Colors.blue[300]!,
                         backgroundColor: Colors.blue[50]!,
                       ),
                     ),
-                    
+
                     // The foreground content
                     Padding(
                       padding: const EdgeInsets.all(16),
@@ -114,7 +132,8 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                             ),
                             child: Icon(
                               Icons.water_drop,
-                              color: isDone ? Colors.blue[600] : Colors.blue[400],
+                              color:
+                                  isDone ? Colors.blue[600] : Colors.blue[400],
                               size: 24,
                             ),
                           ),
@@ -129,21 +148,28 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                                   style: GoogleFonts.poppins(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: isDone ? Colors.white : Colors.black87,
+                                    color:
+                                        isDone ? Colors.white : Colors.black87,
                                   ),
                                 ),
                                 Text(
-                                  isDone ? 'Hydration complete!' : '$count of 8 glasses',
+                                  isDone
+                                      ? 'Hydration complete!'
+                                      : '$count of 8 glasses',
                                   style: GoogleFonts.inter(
                                     fontSize: 14,
-                                    color: isDone ? Colors.white.withValues(alpha: 0.9) : Colors.black54,
+                                    color: isDone
+                                        ? Colors.white.withValues(alpha: 0.9)
+                                        : Colors.black54,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           Icon(
-                            _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                            _isExpanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
                             color: isDone ? Colors.white : Colors.grey[600],
                           ),
                         ],
@@ -153,7 +179,7 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                 ),
               ),
             ),
-            
+
             // Expanded content with staggered animations
             AnimatedCrossFade(
               firstChild: const SizedBox(width: double.infinity, height: 0),
@@ -209,24 +235,33 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       children: _defaultHours.map((hour) {
                         final isCompleted = _isTimeCompleted(hour);
                         return InkWell(
-                          onTap: widget.isEditable ? () => _toggleWaterIntake(hour) : null,
+                          onTap: widget.isEditable
+                              ? () => _toggleWaterIntake(hour)
+                              : null,
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
                             width: 70,
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: isCompleted ? Colors.blue[50] : Colors.grey[50],
+                              color: isCompleted
+                                  ? Colors.blue[50]
+                                  : Colors.grey[50],
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: isCompleted ? Colors.blue[200]! : Colors.grey[300]!,
+                                color: isCompleted
+                                    ? Colors.blue[200]!
+                                    : Colors.grey[300]!,
                                 width: isCompleted ? 2 : 1,
                               ),
                             ),
                             child: Column(
                               children: [
                                 Icon(
-                                  isCompleted ? Icons.water_drop : Icons.water_drop_outlined,
-                                  color: isCompleted ? Colors.blue : Colors.grey,
+                                  isCompleted
+                                      ? Icons.water_drop
+                                      : Icons.water_drop_outlined,
+                                  color:
+                                      isCompleted ? Colors.blue : Colors.grey,
                                   size: 20,
                                 ),
                                 const SizedBox(height: 4),
@@ -234,8 +269,12 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                                   _formatHour(hour),
                                   style: TextStyle(
                                     fontSize: 12,
-                                    fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
-                                    color: isCompleted ? Colors.blue[700] : Colors.grey[600],
+                                    fontWeight: isCompleted
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: isCompleted
+                                        ? Colors.blue[700]
+                                        : Colors.grey[600],
                                   ),
                                 ),
                               ],
@@ -250,7 +289,10 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                       const SizedBox(height: 12),
                       Text(
                         'Custom entries',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700]),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700]),
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -277,7 +319,9 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
                   ],
                 ).animate().fadeIn().slideY(begin: 0.1),
               ),
-              crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+              crossFadeState: _isExpanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
               duration: const Duration(milliseconds: 300),
             ),
           ],

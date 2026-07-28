@@ -100,7 +100,8 @@ class ApiNinjasQuoteService {
     try {
       final uri = Uri.parse(ApiConstants.quotesEndpoint);
 
-      final response = await http.get(uri).timeout(ApiConstants.quoteRequestTimeout);
+      final response =
+          await http.get(uri).timeout(ApiConstants.quoteRequestTimeout);
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);

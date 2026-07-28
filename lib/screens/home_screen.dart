@@ -41,8 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Whether a challenge should render as a water tracker card.
   /// Only challenges explicitly categorized as 'water' use the tracker.
-  bool _isWaterChallenge(Challenge challenge) =>
-      challenge.category == 'water';
+  bool _isWaterChallenge(Challenge challenge) => challenge.category == 'water';
 
   @override
   void initState() {
@@ -373,8 +372,10 @@ class _HomeScreenState extends State<HomeScreen> {
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
 
     final isToday = _isSameDay(_selectedDay, DateTime.now());
-    final isFutureDate = _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
-    final isBeforeStart = _normalizeDate(_selectedDay).isBefore(_normalizeDate(session.startDate));
+    final isFutureDate =
+        _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
+    final isBeforeStart = _normalizeDate(_selectedDay)
+        .isBefore(_normalizeDate(session.startDate));
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -397,7 +398,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (selectedProgress?.isCompleted == true)
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    child:
+                        Icon(Icons.check_circle, color: Colors.green, size: 32),
                   ),
               ],
             ),
@@ -441,35 +443,37 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         child: RepaintBoundary(
                           child: _isWaterChallenge(challenge)
-                            ? _buildWaterTracker(challenge, isToday, selectedProgress)
-                            : DailyTaskCard(
-                                challenge: challenge,
-                                isCompleted: isCompleted,
-                                isEditable: isToday,
-                                onToggle: (completed) {
-                                  context.read<ChallengeBloc>().add(
-                                        UpdateDailyProgress(
-                                          date: _selectedDay,
-                                          challengeId: challenge.id,
-                                          isCompleted: completed,
-                                        ),
-                                      );
-                                },
-                                onReminderUpdate: (updatedChallenge) {
-                                  context.read<ChallengeBloc>().add(
-                                        UpdateChallenge(updatedChallenge),
-                                      );
-                                },
-                                onRemove: () {
-                                  context.read<ChallengeBloc>().add(
-                                        RemoveChallengeFromSession(challenge.id),
-                                      );
-                                },
-                                proofStatus: _proofStatuses[challenge.id],
-                                onSubmitProof: () => _submitProof(challenge),
-                                onReviewProof: () => _reviewProof(challenge),
-                                onViewProof: () => _viewProof(challenge),
-                              ),
+                              ? _buildWaterTracker(
+                                  challenge, isToday, selectedProgress)
+                              : DailyTaskCard(
+                                  challenge: challenge,
+                                  isCompleted: isCompleted,
+                                  isEditable: isToday,
+                                  onToggle: (completed) {
+                                    context.read<ChallengeBloc>().add(
+                                          UpdateDailyProgress(
+                                            date: _selectedDay,
+                                            challengeId: challenge.id,
+                                            isCompleted: completed,
+                                          ),
+                                        );
+                                  },
+                                  onReminderUpdate: (updatedChallenge) {
+                                    context.read<ChallengeBloc>().add(
+                                          UpdateChallenge(updatedChallenge),
+                                        );
+                                  },
+                                  onRemove: () {
+                                    context.read<ChallengeBloc>().add(
+                                          RemoveChallengeFromSession(
+                                              challenge.id),
+                                        );
+                                  },
+                                  proofStatus: _proofStatuses[challenge.id],
+                                  onSubmitProof: () => _submitProof(challenge),
+                                  onReviewProof: () => _reviewProof(challenge),
+                                  onViewProof: () => _viewProof(challenge),
+                                ),
                         ),
                       ),
                     ),
@@ -485,7 +489,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWaterTracker(Challenge challenge, bool isToday, DailyProgress? selectedProgress) {
+  Widget _buildWaterTracker(
+      Challenge challenge, bool isToday, DailyProgress? selectedProgress) {
     // Parse completed times from taskNotes — skip individual invalid tokens
     List<DateTime> completedTimes = [];
     final noteString = selectedProgress?.taskNotes?[challenge.id];
@@ -528,21 +533,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 1. Save timestamps first so a stale rebuild doesn't overwrite them
     context.read<ChallengeBloc>().add(
-      AddTaskNote(
-        date: _selectedDay,
-        challengeId: challenge.id,
-        note: newString, 
-      ),
-    );
-    
+          AddTaskNote(
+            date: _selectedDay,
+            challengeId: challenge.id,
+            note: newString,
+          ),
+        );
+
     // 2. Update the overall completion boolean
     context.read<ChallengeBloc>().add(
-      UpdateDailyProgress(
-        date: _selectedDay,
-        challengeId: challenge.id,
-        isCompleted: isCompleted,
-      ),
-    );
+          UpdateDailyProgress(
+            date: _selectedDay,
+            challengeId: challenge.id,
+            isCompleted: isCompleted,
+          ),
+        );
   }
 
   Widget _buildDateProgressIndicator(ChallengeLoaded state) {

@@ -268,8 +268,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     await context.read<ChallengeBloc>().stream.firstWhere(
-      (state) => state is ChallengeLoaded && state.hasActiveSession,
-    );
+          (state) => state is ChallengeLoaded && state.hasActiveSession,
+        );
 
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
@@ -550,8 +550,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     // The new Login Button
                     _buildAnimatedButton(
                       text: 'Sign In & Start Setup',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/login'), 
+                      onPressed: () => Navigator.pushNamed(context, '/login'),
                       gradient: const LinearGradient(
                           colors: [Colors.orange, Colors.red]),
                     ),
@@ -1720,10 +1719,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                     for (int i = _challenges.length - 1;
                                         i >= 0;
                                         i--) {
-                                      if (_challenges[i]
-                                          .title
-                                          .trim()
-                                          .isEmpty) {
+                                      if (_challenges[i].title.trim().isEmpty) {
                                         blankIndices.add(i);
                                       }
                                     }

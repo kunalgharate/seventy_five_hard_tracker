@@ -106,7 +106,9 @@ void main() {
             'ACTUAL: blue=$blue. '
             'Bug: storyboard has white background (blue=1) instead of orange (blue≈0.149).',
       );
-    }, skip: 'Known bug: storyboard uses white background instead of #FFA726 orange');
+    },
+        skip:
+            'Known bug: storyboard uses white background instead of #FFA726 orange');
 
     test(
         'Validates: Requirements 2.2 — '
