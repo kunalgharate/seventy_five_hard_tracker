@@ -509,11 +509,14 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       onWaterRemoved: (dt) {
         if (!isToday) return;
-        completedTimes.removeWhere((e) =>
+        // Remove only the first entry matching this exact timestamp (minute-level identity)
+        final idx = completedTimes.indexWhere((e) =>
             e.year == dt.year &&
             e.month == dt.month &&
             e.day == dt.day &&
-            e.hour == dt.hour);
+            e.hour == dt.hour &&
+            e.minute == dt.minute);
+        if (idx != -1) completedTimes.removeAt(idx);
         _updateWaterProgress(challenge, completedTimes);
       },
     );
