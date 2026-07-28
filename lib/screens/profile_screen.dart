@@ -95,6 +95,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             padding: const EdgeInsets.all(20),
                             child: DisciplineHeatmap(
                               progressList: state.currentProgress,
+                              challengeTaskIds: state.activeSession
+                                  ?.challenges
+                                  .where((c) => c.taskType != 'regular')
+                                  .map((c) => c.id)
+                                  .toSet(),
                             ),
                           ),
                         ).animate(delay: 400.ms).fadeIn(duration: 300.ms).slideY(begin: 0.2),

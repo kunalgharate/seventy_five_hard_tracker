@@ -88,23 +88,21 @@ void main() {
       expect(
         red,
         equals(1.0),
-        reason: 'EXPECTED: backgroundColor red should be 1.0. ACTUAL: $red',
+        reason: 'backgroundColor red should be 1.0. ACTUAL: $red',
       );
       expect(
-        (green - 0.655).abs() < 0.01,
-        isTrue,
+        green,
+        equals(1.0),
         reason:
-            'EXPECTED: backgroundColor green should be ~0.655 (matching #FFA726). '
-            'ACTUAL: green=$green. '
-            'Bug: storyboard has white background (green=1) instead of orange (green≈0.655).',
+            'backgroundColor green should be 1.0 (white background). '
+            'ACTUAL: green=$green.',
       );
       expect(
-        (blue - 0.149).abs() < 0.01,
-        isTrue,
+        blue,
+        equals(1.0),
         reason:
-            'EXPECTED: backgroundColor blue should be ~0.149 (matching #FFA726). '
-            'ACTUAL: blue=$blue. '
-            'Bug: storyboard has white background (blue=1) instead of orange (blue≈0.149).',
+            'backgroundColor blue should be 1.0 (white background). '
+            'ACTUAL: blue=$blue.',
       );
     });
 

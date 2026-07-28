@@ -25,8 +25,14 @@ class JournalTimelineScreen extends StatelessWidget {
       body: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
           if (state is ChallengeLoaded) {
-            // Source journal entries from all sessions' progress
-            final allProgress = state.currentProgress;
+            // Load journal entries from ALL sessions, not just active
+            final bloc = context.read<ChallengeBloc>();
+            final allProgress = <DailyProgress>[];
+            for (final session in state.allSessions) {
+              final sessionProgress = bloc.repository.getProgressForSession(session.startDate);
+              allProgress.addAll(sessionProgress);
+            }
+
             final entries = allProgress
                 .where((p) => p.journalNote != null && p.journalNote!.trim().isNotEmpty)
                 .toList()
@@ -36,9 +42,7 @@ class JournalTimelineScreen extends StatelessWidget {
               return _buildEmptyState(context);
             }
 
-            // Use the active session for day-number calculation if available,
-            // otherwise pass null and compute from the entry's own date.
-            return _buildTimeline(context, state.activeSession, entries);
+            return _buildTimeline(context, state.activeSession, state.allSessions, entries);
           }
           return _buildEmptyState(context);
         },
@@ -79,7 +83,7 @@ class JournalTimelineScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeline(BuildContext context, ChallengeSession? session, List<DailyProgress> entries) {
+  Widget _buildTimeline(BuildContext context, ChallengeSession? activeSession, List<ChallengeSession> allSessions, List<DailyProgress> entries) {
     return AnimationLimiter(
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -88,12 +92,16 @@ class JournalTimelineScreen extends StatelessWidget {
           final progress = entries[index];
           // Normalize to date-only to avoid time-of-day drift in day calculation
           final progressDate = DateTime(progress.date.year, progress.date.month, progress.date.day);
-          int dayNumber;
-          if (session != null) {
+          
+          // Find the session this entry belongs to
+          int dayNumber = index + 1;
+          for (final session in allSessions) {
             final startDate = DateTime(session.startDate.year, session.startDate.month, session.startDate.day);
-            dayNumber = progressDate.difference(startDate).inDays + 1;
-          } else {
-            dayNumber = index + 1;
+            final diff = progressDate.difference(startDate).inDays;
+            if (diff >= 0 && diff < 75) {
+              dayNumber = diff + 1;
+              break;
+            }
           }
           
           return AnimationConfiguration.staggeredList(

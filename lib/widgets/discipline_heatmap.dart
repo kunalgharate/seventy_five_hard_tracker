@@ -6,11 +6,15 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 class DisciplineHeatmap extends StatelessWidget {
   final List<DailyProgress> progressList;
   final int daysToShow;
+  /// If provided, only these challenge IDs are counted in the ratio.
+  /// Use to exclude Regular tasks from the discipline calculation.
+  final Set<String>? challengeTaskIds;
 
   const DisciplineHeatmap({
     super.key,
     required this.progressList,
     this.daysToShow = 70, // 10 weeks
+    this.challengeTaskIds,
   });
 
   @override
@@ -27,9 +31,14 @@ class DisciplineHeatmap extends StatelessWidget {
     final Map<String, double> ratios = {};
     for (final p in progressList) {
       final dateStr = DateFormat('yyyy-MM-dd').format(p.date);
-      final total = p.challengeCompletions.length;
+      // Filter completions to only challenge tasks if IDs are provided
+      final entries = challengeTaskIds != null
+          ? Map.fromEntries(
+              p.challengeCompletions.entries.where((e) => challengeTaskIds!.contains(e.key)))
+          : p.challengeCompletions;
+      final total = entries.length;
       if (total > 0) {
-        final completed = p.challengeCompletions.values.where((v) => v).length;
+        final completed = entries.values.where((v) => v).length;
         ratios[dateStr] = completed / total;
       }
       // Empty collections left absent — renders as "No data"

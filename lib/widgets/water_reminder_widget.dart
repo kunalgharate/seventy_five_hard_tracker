@@ -160,46 +160,121 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
               secondChild: Container(
                 color: Colors.white,
                 padding: const EdgeInsets.all(16),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 12,
-                  children: _defaultHours.map((hour) {
-                    final isCompleted = _isTimeCompleted(hour);
-                    return InkWell(
-                      onTap: widget.isEditable ? () => _toggleWaterIntake(hour) : null,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        width: 70,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isCompleted ? Colors.blue[50] : Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isCompleted ? Colors.blue[200]! : Colors.grey[300]!,
-                            width: isCompleted ? 2 : 1,
-                          ),
-                        ),
-                        child: Column(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Log Now / Custom Time button
+                    if (widget.isEditable)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
                           children: [
-                            Icon(
-                              isCompleted ? Icons.water_drop : Icons.water_drop_outlined,
-                              color: isCompleted ? Colors.blue : Colors.grey,
-                              size: 20,
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _logNow,
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Log Now'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue[700],
+                                  side: BorderSide(color: Colors.blue[300]!),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _formatHour(hour),
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
-                                color: isCompleted ? Colors.blue[700] : Colors.grey[600],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _addCustomTime,
+                                icon: const Icon(Icons.access_time, size: 18),
+                                label: const Text('Custom'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue[700],
+                                  side: BorderSide(color: Colors.blue[300]!),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  }).toList(),
+
+                    // Preset hour chips
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 12,
+                      children: _defaultHours.map((hour) {
+                        final isCompleted = _isTimeCompleted(hour);
+                        return InkWell(
+                          onTap: widget.isEditable ? () => _toggleWaterIntake(hour) : null,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: 70,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isCompleted ? Colors.blue[50] : Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isCompleted ? Colors.blue[200]! : Colors.grey[300]!,
+                                width: isCompleted ? 2 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  isCompleted ? Icons.water_drop : Icons.water_drop_outlined,
+                                  color: isCompleted ? Colors.blue : Colors.grey,
+                                  size: 20,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _formatHour(hour),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
+                                    color: isCompleted ? Colors.blue[700] : Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+
+                    // Show custom-time entries (outside 7-22 range)
+                    if (_customTimeEntries.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Custom entries',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700]),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _customTimeEntries.map((dt) {
+                          return Chip(
+                            label: Text(
+                              _formatTime(dt),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            deleteIcon: widget.isEditable
+                                ? const Icon(Icons.close, size: 16)
+                                : null,
+                            onDeleted: widget.isEditable
+                                ? () => widget.onWaterRemoved(dt)
+                                : null,
+                            backgroundColor: Colors.blue[50],
+                            side: BorderSide(color: Colors.blue[200]!),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
                 ).animate().fadeIn().slideY(begin: 0.1),
               ),
               crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
@@ -209,6 +284,51 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
         ),
       ),
     ).animate(target: isDone ? 1 : 0).shimmer(duration: 2000.ms);
+  }
+
+  /// Entries logged at times outside the default 7-22 preset range.
+  List<DateTime> get _customTimeEntries {
+    return widget.completedTimes.where((time) {
+      if (time.day != widget.selectedDate.day ||
+          time.month != widget.selectedDate.month ||
+          time.year != widget.selectedDate.year) {
+        return false;
+      }
+      // Not covered by any preset hour
+      return !_defaultHours.any((h) => time.hour == h);
+    }).toList()
+      ..sort((a, b) => a.compareTo(b));
+  }
+
+  void _logNow() {
+    if (!widget.isEditable) return;
+    widget.onWaterLogged(DateTime.now());
+  }
+
+  void _addCustomTime() {
+    showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    ).then((time) {
+      if (time != null && widget.isEditable) {
+        final dateTime = DateTime(
+          widget.selectedDate.year,
+          widget.selectedDate.month,
+          widget.selectedDate.day,
+          time.hour,
+          time.minute,
+        );
+        widget.onWaterLogged(dateTime);
+      }
+    });
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour;
+    final minute = dt.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
   }
 
   String _formatHour(int hour) {
