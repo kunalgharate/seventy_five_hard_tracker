@@ -31,9 +31,8 @@ class DisciplineHeatmap extends StatelessWidget {
       if (total > 0) {
         final completed = p.challengeCompletions.values.where((v) => v).length;
         ratios[dateStr] = completed / total;
-      } else {
-        ratios[dateStr] = 0.0;
       }
+      // Empty collections left absent — renders as "No data"
     }
 
     // Split into columns of 7 days (weeks)

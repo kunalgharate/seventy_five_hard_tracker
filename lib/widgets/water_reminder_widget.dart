@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'liquid_wave_indicator.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -63,8 +64,8 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   @override
   Widget build(BuildContext context) {
     final int count = _completedCount;
-    final double percent = (count / 8.0).clamp(0.0, 1.0);
-    final bool isDone = count >= 8;
+    final double percent = (count / kWaterGoal).clamp(0.0, 1.0);
+    final bool isDone = count >= kWaterGoal;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -211,9 +212,8 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   }
 
   String _formatHour(int hour) {
-    final time = TimeOfDay(hour: hour, minute: 0);
-    final now = DateTime.now();
-    final dt = DateTime(now.year, now.month, now.day, time.hour, time.minute);
-    return "${dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour)} ${dt.hour >= 12 ? 'PM' : 'AM'}";
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$displayHour $period';
   }
 }

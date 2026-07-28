@@ -23,6 +23,7 @@ import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -37,6 +38,11 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+
+  /// Whether a challenge should render as a water tracker card.
+  /// Only challenges explicitly categorized as 'water' use the tracker.
+  bool _isWaterChallenge(Challenge challenge) =>
+      challenge.category == 'water';
 
   @override
   void initState() {
@@ -434,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
-                          child: (challenge.iconName == 'water_drop' || challenge.category == 'water')
+                          child: _isWaterChallenge(challenge)
                             ? _buildWaterTracker(challenge, isToday, selectedProgress)
                             : DailyTaskCard(
                                 challenge: challenge,
@@ -515,7 +521,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _updateWaterProgress(Challenge challenge, List<DateTime> times) {
     final newString = times.map((e) => e.toIso8601String()).join(',');
-    final isCompleted = times.length >= 8;
+    final isCompleted = times.length >= kWaterGoal;
 
     // 1. Save timestamps first so a stale rebuild doesn't overwrite them
     context.read<ChallengeBloc>().add(

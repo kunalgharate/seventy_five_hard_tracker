@@ -122,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return StreamBuilder<User?>(
       stream: _syncService.authStateChanges,
       builder: (context, snapshot) {
-        final user = _syncService.currentUser;
+        final user = snapshot.data;
         final isSignedIn = user != null;
 
         return SliverAppBar(
@@ -137,7 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   end: Alignment.bottomRight,
                   colors: [
                     AppColors.primary,
-                    AppColors.primary.withBlue(255), // lighter blue
+                    AppColors.primary.withBlue(255), // gradient end (shifted blue channel)
                   ],
                 ),
               ),
@@ -198,7 +198,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return StreamBuilder<User?>(
       stream: _syncService.authStateChanges,
       builder: (context, snapshot) {
-        final isSignedIn = _syncService.currentUser != null;
+        final isSignedIn = snapshot.data != null;
         if (isSignedIn) {
           return Align(
             alignment: Alignment.centerRight,

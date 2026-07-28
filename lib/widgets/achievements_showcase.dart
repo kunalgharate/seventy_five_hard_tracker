@@ -100,38 +100,42 @@ class AchievementsShowcase extends StatelessWidget {
   }
 
   Widget _buildBadge(_Achievement a) {
-    return Tooltip(
-      message: '${a.title}\n${a.description}',
-      child: Container(
-        width: 80,
-        decoration: BoxDecoration(
-          color: a.isUnlocked ? a.color.withValues(alpha: 0.15) : Colors.grey[200],
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: a.isUnlocked ? a.color.withValues(alpha: 0.5) : Colors.transparent,
-            width: 2,
+    return Semantics(
+      label: '${a.title} achievement: ${a.description}. ${a.isUnlocked ? "Unlocked" : "Locked"}',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: '${a.title}\n${a.description}',
+        child: Container(
+          width: 80,
+          decoration: BoxDecoration(
+            color: a.isUnlocked ? a.color.withValues(alpha: 0.15) : Colors.grey[200],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: a.isUnlocked ? a.color.withValues(alpha: 0.5) : Colors.transparent,
+              width: 2,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              a.icon,
-              size: 32,
-              color: a.isUnlocked ? a.color : Colors.grey[400],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              a.title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: a.isUnlocked ? Colors.grey[800] : Colors.grey[400],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                a.icon,
+                size: 32,
+                color: a.isUnlocked ? a.color : Colors.grey[400],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                a.title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: a.isUnlocked ? Colors.grey[800] : Colors.grey[400],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

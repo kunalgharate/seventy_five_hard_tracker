@@ -5,14 +5,13 @@ import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bl
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/widgets/challenge_icon_widget.dart';
-import 'package:seventy_five_hard_tracker/widgets/icon_picker_widget.dart';
-import 'package:seventy_five_hard_tracker/widgets/reminder_bottom_sheet.dart';
 import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
+import 'package:seventy_five_hard_tracker/widgets/regular_tasks/regular_task_sheet_helpers.dart';
 
 
 class AddRegularTaskSheet extends StatefulWidget {
@@ -23,12 +22,18 @@ class AddRegularTaskSheet extends StatefulWidget {
   State<AddRegularTaskSheet> createState() => _AddRegularTaskSheetState();
 }
 
-class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
+class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
+    with RegularTaskSheetHelpers {
   final _controller = TextEditingController();
   late Challenge _challenge;
   String? _taskNameError;
   AccountabilityPartner? _selectedPartner;
   List<AccountabilityPartner> _availablePartners = [];
+
+  @override
+  Challenge get sheetChallenge => _challenge;
+  @override
+  set sheetChallenge(Challenge value) => _challenge = value;
 
   @override
   void initState() {
@@ -46,13 +51,18 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
   }
 
   Future<void> _loadPartners() async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    if (!mounted) return;
-    setState(() {
-      _availablePartners = partners
-          .where((p) => p.status == PartnershipStatus.accepted)
-          .toList();
-    });
+    try {
+      final partners = await AccountabilityService().fetchMyPartnerships();
+      if (!mounted) return;
+      setState(() {
+        _availablePartners = partners
+            .where((p) => p.status == PartnershipStatus.accepted)
+            .toList();
+      });
+    } catch (e) {
+      // Degrade gracefully — partner picker will show empty list
+      debugPrint('[AddRegularTaskSheet] Failed to load partners: $e');
+    }
   }
 
   @override
@@ -119,7 +129,7 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
                         children: [
                           // Icon picker
                           GestureDetector(
-                            onTap: _showIconPicker,
+                            onTap: showIconPicker,
                             child: Container(
                               width: 60,
                               height: 60,
@@ -276,7 +286,7 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
                         const SizedBox(height: 16),
                         // Reminder button
                         GestureDetector(
-                          onTap: _showReminderSetup,
+                          onTap: showReminderSetup,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 12),
@@ -456,40 +466,6 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
         ));
   }
 
-  void _showIconPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => IconPickerWidget(
-        selectedIconName: _challenge.iconName,
-        selectedImagePath: _challenge.imagePath,
-        onSelectionChanged: (iconName, imagePath) {
-          setState(() {
-            _challenge = Challenge(
-              id: _challenge.id,
-              title: _challenge.title,
-              reminderTime: _challenge.reminderTime,
-              isReminderEnabled: _challenge.isReminderEnabled,
-              imagePath: imagePath,
-              iconName: iconName,
-              iconColor: _challenge.iconColor,
-              category: _challenge.category,
-              taskType: _challenge.taskType,
-              reminderType: _challenge.reminderType,
-              reminderStartHour: _challenge.reminderStartHour,
-              reminderEndHour: _challenge.reminderEndHour,
-              allowNightReminders: _challenge.allowNightReminders,
-              reminderIntervalMinutes: _challenge.reminderIntervalMinutes,
-              photoRequired: _challenge.photoRequired,
-              showInRegularTab: _challenge.showInRegularTab,
-            );
-          });
-        },
-      ),
-    );
-  }
-
   void _showPartnerPicker() {
     showModalBottomSheet(
       context: context,
@@ -543,20 +519,6 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showReminderSetup() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => ReminderBottomSheet(
-        challenge: _challenge,
-        onSave: (updated) {
-          setState(() => _challenge = updated);
-        },
       ),
     );
   }

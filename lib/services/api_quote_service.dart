@@ -92,13 +92,13 @@ class ApiNinjasQuoteService {
 
   // ── Public API ───────────────────────────────────────────────────
 
-  /// Fetches a fresh quote from API-Ninjas.
+  /// Fetches a fresh quote from ZenQuotes.
   ///
   /// Returns [QuoteSuccess] on success, [QuoteFailure] on any error.
   /// Never throws.
   Future<QuoteResult> fetchQuote() async {
     try {
-      final uri = Uri.parse('https://zenquotes.io/api/random');
+      final uri = Uri.parse(ApiConstants.quotesEndpoint);
 
       final response = await http.get(uri).timeout(ApiConstants.quoteRequestTimeout);
 
