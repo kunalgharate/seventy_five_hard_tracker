@@ -98,12 +98,9 @@ class ApiNinjasQuoteService {
   /// Never throws.
   Future<QuoteResult> fetchQuote() async {
     try {
-      final uri = Uri.parse(ApiConstants.quotesEndpoint);
+      final uri = Uri.parse('https://zenquotes.io/api/random');
 
-      final response = await http.get(
-        uri,
-        headers: {'X-Api-Key': ApiConstants.apiNinjasKey},
-      ).timeout(ApiConstants.quoteRequestTimeout);
+      final response = await http.get(uri).timeout(ApiConstants.quoteRequestTimeout);
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);

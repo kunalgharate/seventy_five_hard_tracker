@@ -26,10 +26,15 @@ class Quote extends Equatable {
 
   /// Parse a single quote object from the JSON map.
   factory Quote.fromJson(Map<String, dynamic> json) {
+    // Check if using the original format or the ZenQuotes format ('q' for quote, 'a' for author)
+    final q = json['q'] ?? json['quote'];
+    final a = json['a'] ?? json['author'];
+    final c = json['category'];
+    
     return Quote(
-      quote: (json['quote'] as String? ?? '').trim(),
-      author: (json['author'] as String? ?? 'Unknown').trim(),
-      category: (json['category'] as String? ?? '').trim(),
+      quote: (q as String? ?? '').trim(),
+      author: (a as String? ?? 'Unknown').trim(),
+      category: (c as String? ?? 'inspirational').trim(),
     );
   }
 

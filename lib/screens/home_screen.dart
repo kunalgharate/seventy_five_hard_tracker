@@ -15,6 +15,7 @@ import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_s
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import '../widgets/daily_task_card.dart';
+import '../widgets/water_reminder_widget.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
@@ -433,34 +434,36 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
-                          child: DailyTaskCard(
-                            challenge: challenge,
-                            isCompleted: isCompleted,
-                            isEditable: isToday,
-                            onToggle: (completed) {
-                              context.read<ChallengeBloc>().add(
-                                    UpdateDailyProgress(
-                                      date: _selectedDay,
-                                      challengeId: challenge.id,
-                                      isCompleted: completed,
-                                    ),
-                                  );
-                            },
-                            onReminderUpdate: (updatedChallenge) {
-                              context.read<ChallengeBloc>().add(
-                                    UpdateChallenge(updatedChallenge),
-                                  );
-                            },
-                            onRemove: () {
-                              context.read<ChallengeBloc>().add(
-                                    RemoveChallengeFromSession(challenge.id),
-                                  );
-                            },
-                            proofStatus: _proofStatuses[challenge.id],
-                            onSubmitProof: () => _submitProof(challenge),
-                            onReviewProof: () => _reviewProof(challenge),
-                            onViewProof: () => _viewProof(challenge),
-                          ),
+                          child: (challenge.iconName == 'water_drop' || challenge.category == 'water')
+                            ? _buildWaterTracker(challenge, isToday, selectedProgress)
+                            : DailyTaskCard(
+                                challenge: challenge,
+                                isCompleted: isCompleted,
+                                isEditable: isToday,
+                                onToggle: (completed) {
+                                  context.read<ChallengeBloc>().add(
+                                        UpdateDailyProgress(
+                                          date: _selectedDay,
+                                          challengeId: challenge.id,
+                                          isCompleted: completed,
+                                        ),
+                                      );
+                                },
+                                onReminderUpdate: (updatedChallenge) {
+                                  context.read<ChallengeBloc>().add(
+                                        UpdateChallenge(updatedChallenge),
+                                      );
+                                },
+                                onRemove: () {
+                                  context.read<ChallengeBloc>().add(
+                                        RemoveChallengeFromSession(challenge.id),
+                                      );
+                                },
+                                proofStatus: _proofStatuses[challenge.id],
+                                onSubmitProof: () => _submitProof(challenge),
+                                onReviewProof: () => _reviewProof(challenge),
+                                onViewProof: () => _viewProof(challenge),
+                              ),
                         ),
                       ),
                     ),
@@ -472,6 +475,60 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: 120), // Space for FAB to avoid covering content
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildWaterTracker(Challenge challenge, bool isToday, DailyProgress? selectedProgress) {
+    // Parse completed times from taskNotes
+    List<DateTime> completedTimes = [];
+    final noteString = selectedProgress?.taskNotes?[challenge.id];
+    if (noteString != null && noteString.isNotEmpty) {
+      try {
+        completedTimes = noteString.split(',').map((e) => DateTime.parse(e)).toList();
+      } catch (_) {}
+    }
+
+    return WaterReminderWidget(
+      selectedDate: _selectedDay,
+      completedTimes: completedTimes,
+      isEditable: isToday,
+      onWaterLogged: (dt) {
+        if (!isToday) return;
+        completedTimes.add(dt);
+        _updateWaterProgress(challenge, completedTimes);
+      },
+      onWaterRemoved: (dt) {
+        if (!isToday) return;
+        completedTimes.removeWhere((e) =>
+            e.year == dt.year &&
+            e.month == dt.month &&
+            e.day == dt.day &&
+            e.hour == dt.hour);
+        _updateWaterProgress(challenge, completedTimes);
+      },
+    );
+  }
+
+  void _updateWaterProgress(Challenge challenge, List<DateTime> times) {
+    final newString = times.map((e) => e.toIso8601String()).join(',');
+    final isCompleted = times.length >= 8;
+
+    // 1. Update the overall completion boolean
+    context.read<ChallengeBloc>().add(
+      UpdateDailyProgress(
+        date: _selectedDay,
+        challengeId: challenge.id,
+        isCompleted: isCompleted,
+      ),
+    );
+    
+    // 2. Save the array of timestamps into the task's notes field
+    context.read<ChallengeBloc>().add(
+      AddTaskNote(
+        date: _selectedDay,
+        challengeId: challenge.id,
+        note: newString, 
       ),
     );
   }

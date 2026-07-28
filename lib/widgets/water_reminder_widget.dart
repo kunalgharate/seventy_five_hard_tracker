@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'liquid_wave_indicator.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class WaterReminderWidget extends StatefulWidget {
   final DateTime selectedDate;
@@ -25,25 +26,16 @@ class WaterReminderWidget extends StatefulWidget {
 class _WaterReminderWidgetState extends State<WaterReminderWidget> {
   bool _isExpanded = false;
 
-  // Default hourly reminders from 7 AM to 10 PM
-  final List<int> _defaultHours = [
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22
-  ];
+  final List<int> _defaultHours = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+
+  int get _completedCount {
+    return widget.completedTimes
+        .where((time) =>
+            time.day == widget.selectedDate.day &&
+            time.month == widget.selectedDate.month &&
+            time.year == widget.selectedDate.year)
+        .length;
+  }
 
   bool _isTimeCompleted(int hour) {
     return widget.completedTimes.any((time) =>
@@ -68,334 +60,160 @@ class _WaterReminderWidgetState extends State<WaterReminderWidget> {
     }
   }
 
-  void _addCustomTime() {
-    showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            timePickerTheme: const TimePickerThemeData(
-              backgroundColor: Colors.white,
-              hourMinuteTextColor: Color(0xFFFFA726),
-              dayPeriodTextColor: Color(0xFFFFA726),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    ).then((time) {
-      if (time != null) {
-        final dateTime = DateTime(
-          widget.selectedDate.year,
-          widget.selectedDate.month,
-          widget.selectedDate.day,
-          time.hour,
-          time.minute,
-        );
-        widget.onWaterLogged(dateTime);
-      }
-    });
-  }
-
-  int get _completedCount {
-    return widget.completedTimes
-        .where((time) =>
-            time.day == widget.selectedDate.day &&
-            time.month == widget.selectedDate.month &&
-            time.year == widget.selectedDate.year)
-        .length;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isToday = DateTime.now().day == widget.selectedDate.day &&
-        DateTime.now().month == widget.selectedDate.month &&
-        DateTime.now().year == widget.selectedDate.year;
+    final int count = _completedCount;
+    final double percent = (count / 8.0).clamp(0.0, 1.0);
+    final bool isDone = count >= 8;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          InkWell(
-            onTap: () {
-              setState(() {
-                _isExpanded = !_isExpanded;
-              });
-            },
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.blue[100]!.withValues(alpha: 0.3),
-                    Colors.cyan[50]!.withValues(alpha: 0.2),
-                  ],
-                ),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[500],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.water_drop,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Water Intake Tracker',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          '$_completedCount glasses logged today',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Progress indicator
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _completedCount >= 8
-                          ? Colors.green[100]
-                          : Colors.orange[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$_completedCount/8',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _completedCount >= 8
-                            ? Colors.green[700]
-                            : Colors.orange[700],
+      elevation: isDone ? 8 : 2,
+      shadowColor: isDone ? Colors.blue.withValues(alpha: 0.4) : null,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _isExpanded = !_isExpanded;
+                });
+              },
+              child: SizedBox(
+                height: 100,
+                child: Stack(
+                  children: [
+                    // The animated liquid wave background
+                    Positioned.fill(
+                      child: LiquidWaveIndicator(
+                        value: percent,
+                        valueColor: isDone ? Colors.blue[400]! : Colors.blue[300]!,
+                        backgroundColor: Colors.blue[50]!,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: Colors.grey[600],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Content
-          if (_isExpanded)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Hourly Water Reminders',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Hourly grid
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      childAspectRatio: 1.2,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    itemCount: _defaultHours.length,
-                    itemBuilder: (context, index) {
-                      final hour = _defaultHours[index];
-                      final isCompleted = _isTimeCompleted(hour);
-                      final isPast = isToday && DateTime.now().hour > hour;
-
-                      return InkWell(
-                        onTap: widget.isEditable
-                            ? () => _toggleWaterIntake(hour)
-                            : null,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isCompleted
-                                ? Colors.blue[500]
-                                : isPast
-                                    ? Colors.red[100]
-                                    : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isCompleted
-                                  ? Colors.blue[700]!
-                                  : isPast
-                                      ? Colors.red[300]!
-                                      : Colors.grey[300]!,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isCompleted
-                                    ? Icons.water_drop
-                                    : Icons.water_drop_outlined,
-                                color: isCompleted
-                                    ? Colors.white
-                                    : isPast
-                                        ? Colors.red[600]
-                                        : Colors.grey[600],
-                                size: 20,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                DateFormat('h a')
-                                    .format(DateTime(2024, 1, 1, hour)),
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                  color: isCompleted
-                                      ? Colors.white
-                                      : isPast
-                                          ? Colors.red[600]
-                                          : Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Custom time and quick actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: widget.isEditable ? _addCustomTime : null,
-                          icon: const Icon(Icons.add_alarm, size: 18),
-                          label: Text(
-                            'Custom Time',
-                            style:
-                                GoogleFonts.inter(fontWeight: FontWeight.w500),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.blue[600],
-                            side: BorderSide(color: Colors.blue[300]!),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: widget.isEditable
-                              ? () => _toggleWaterIntake(DateTime.now().hour)
-                              : null,
-                          icon: const Icon(Icons.water_drop, size: 18),
-                          label: Text(
-                            'Log Now',
-                            style:
-                                GoogleFonts.inter(fontWeight: FontWeight.w500),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[500],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Progress bar
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    
+                    // The foreground content
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
                         children: [
-                          Text(
-                            'Daily Goal Progress',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey[700],
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 4,
+                                )
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.water_drop,
+                              color: isDone ? Colors.blue[600] : Colors.blue[400],
+                              size: 24,
                             ),
                           ),
-                          Text(
-                            '${(_completedCount / 8 * 100).round()}%',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _completedCount >= 8
-                                  ? Colors.green[700]
-                                  : Colors.blue[700],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '1 Gallon Water',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDone ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                                Text(
+                                  isDone ? 'Hydration complete!' : '$count of 8 glasses',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    color: isDone ? Colors.white.withValues(alpha: 0.9) : Colors.black54,
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                          Icon(
+                            _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                            color: isDone ? Colors.white : Colors.grey[600],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: (_completedCount / 8).clamp(0.0, 1.0),
-                        backgroundColor: Colors.grey[200],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          _completedCount >= 8
-                              ? Colors.green[500]!
-                              : Colors.blue[500]!,
-                        ),
-                        minHeight: 6,
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
-        ],
+            
+            // Expanded content with staggered animations
+            AnimatedCrossFade(
+              firstChild: const SizedBox(width: double.infinity, height: 0),
+              secondChild: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 12,
+                  children: _defaultHours.map((hour) {
+                    final isCompleted = _isTimeCompleted(hour);
+                    return InkWell(
+                      onTap: widget.isEditable ? () => _toggleWaterIntake(hour) : null,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: 70,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isCompleted ? Colors.blue[50] : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isCompleted ? Colors.blue[200]! : Colors.grey[300]!,
+                            width: isCompleted ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              isCompleted ? Icons.water_drop : Icons.water_drop_outlined,
+                              color: isCompleted ? Colors.blue : Colors.grey,
+                              size: 20,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatHour(hour),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
+                                color: isCompleted ? Colors.blue[700] : Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ).animate().fadeIn().slideY(begin: 0.1),
+              ),
+              crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 300),
+            ),
+          ],
+        ),
       ),
-    );
+    ).animate(target: isDone ? 1 : 0).shimmer(duration: 2000.ms);
+  }
+
+  String _formatHour(int hour) {
+    final time = TimeOfDay(hour: hour, minute: 0);
+    final now = DateTime.now();
+    final dt = DateTime(now.year, now.month, now.day, time.hour, time.minute);
+    return "${dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour)} ${dt.hour >= 12 ? 'PM' : 'AM'}";
   }
 }
