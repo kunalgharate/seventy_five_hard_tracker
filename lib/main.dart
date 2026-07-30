@@ -382,19 +382,37 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   Future<void> _initApp() async {
-    // Quote fetch + app prep run in parallel
-    await Future.wait([_fetchQuote(), _prepareApp()]);
+    // Fetch quote in background (non-blocking)
+    unawaited(_fetchQuote());
 
-    // Minimum display time so user can read the quote
+    // Initialize local database and permissions
+    try {
+      await SmartNotificationService().requestPermissions();
+    } catch (_) {}
+
+    // Check if user has existing local data (guest or returning user)
+    final bloc = context.read<ChallengeBloc>();
+    await bloc.repository.init();
+    final hasLocalData = await bloc.repository.hasActiveSession();
+
+    // Minimum splash display time
     await Future.delayed(_kSplashDuration);
-
     if (!mounted) return;
 
-    // 3. Fade out before navigating
+    // Fade out
     await _exitCtrl.forward();
+    if (!mounted) return;
 
-    if (mounted) {
+    // ROUTING DECISION:
+    // - Firebase user exists → /home (returning signed-in user)
+    // - Local Hive data exists → /home (guest who already set up challenges)
+    // - Neither → /onboarding (brand new user)
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser != null || hasLocalData) {
       Navigator.of(context).pushReplacementNamed('/home');
+    } else {
+      Navigator.of(context).pushReplacementNamed('/onboarding');
     }
   }
 
@@ -415,25 +433,6 @@ class _InitialScreenState extends State<InitialScreen>
         if (kDebugMode) debugPrint('[Splash] Quote error: $message');
     }
     _quoteCtrl.forward();
-  }
-
-  Future<void> _prepareApp() async {
-    try {
-      await SmartNotificationService().requestPermissions();
-    } catch (_) {}
-
-    // 3. THE DECISION POINT: Check Firebase session
-    final currentUser = FirebaseAuth.instance.currentUser;
-
-    if (mounted) {
-      if (currentUser != null) {
-        // User is already logged in, go to Dashboard
-        Navigator.of(context).pushReplacementNamed('/home');
-      } else {
-        // User is new or logged out, go to Welcome gate
-        Navigator.of(context).pushReplacementNamed('/onboarding');
-      }
-    }
   }
 
   @override
