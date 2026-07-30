@@ -141,7 +141,60 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     );
   }
 
-  Widget _buildFab() => const SizedBox.shrink();
+  Widget _buildFab() {
+    return FloatingActionButton.extended(
+      onPressed: _showInviteDialog,
+      icon: const Icon(Icons.person_add),
+      label: const Text('Invite Partner'),
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
+    );
+  }
+
+  void _showInviteDialog() {
+    // Navigate user to invite flow — check if already handled elsewhere
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Invite Accountability Partner',
+              style: Theme.of(ctx).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Sign in with Google first to invite partners and sync your data.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                // Navigate to profile where sign-in is available
+                Navigator.pushNamed(context, '/home');
+              },
+              icon: const Icon(Icons.person),
+              label: const Text('Go to Profile to Sign In'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildError(String message) {
     return Center(
