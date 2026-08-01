@@ -21,6 +21,7 @@ import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
+import '../widgets/add_challenge_sheet.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
@@ -37,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
   final Map<String, GlobalKey> _taskCardKeys = {};
+  final GlobalKey _tasksSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -172,23 +174,9 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, state) {
           if (state is ChallengeLoaded) {
             if (!state.hasActiveSession) {
-              return FloatingActionButton.extended(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/onboarding');
-                },
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text(
-                  'Start Challenge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
+              // No duplicate CTA needed — the empty state already shows
+              // "Create 75 Hard Challenge".
+              return const SizedBox.shrink();
             } else {
               // Journal FAB for active session
               final selectedProgress = state.currentProgress
@@ -371,6 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isBeforeStart = _normalizeDate(_selectedDay).isBefore(_normalizeDate(session.startDate));
 
     return Card(
+      key: _tasksSectionKey,
       margin: const EdgeInsets.all(16),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -472,8 +461,49 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               }),
 
+            const SizedBox(height: 16),
+            if (isToday) _buildAddTaskButton(),
+
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddTaskButton() {
+    return InkWell(
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const AddChallengeSheet(),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.green[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green[400]!, width: 1.2),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 8),
+            Text(
+              'Add Task',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -508,66 +538,100 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final session = state.activeSession;
+    final nonRegular =
+        session?.challenges.where((c) => c.taskType != 'regular').toList() ??
+            [];
+    final incompleteChallenges = nonRegular
+        .where((c) => progress.challengeCompletions[c.id] != true)
+        .toList();
+    final incompleteTitles =
+        incompleteChallenges.map((c) => c.title).toList();
+
+    final isCompleted = progress.isCompleted;
+
     return GestureDetector(
-      onTap: progress.isCompleted
+      onTap: (isCompleted || incompleteTitles.isEmpty)
           ? null
-          : () {
-              final session = context.read<ChallengeBloc>().state;
-              if (session is ChallengeLoaded && session.activeSession != null) {
-                final nonRegular = session.activeSession!.challenges
-                    .where((c) => c.taskType != 'regular')
-                    .toList();
-                for (final challenge in nonRegular) {
-                  if (progress.challengeCompletions[challenge.id] != true) {
-                    final key = _taskCardKeys[challenge.id];
-                    if (key != null && key.currentContext != null) {
-                      Scrollable.ensureVisible(
-                        key.currentContext!,
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeInOut,
-                        alignment: 0.1,
-                      );
-                    }
-                    break;
-                  }
-                }
-              }
-            },
+          : () => _focusIncompleteTasks(incompleteChallenges),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+          color: isCompleted ? Colors.green[50] : Colors.red[50],
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
+            color: isCompleted ? Colors.green[300]! : Colors.red[300]!,
           ),
         ),
         child: Row(
           children: [
             Icon(
-              progress.isCompleted ? Icons.check_circle : Icons.cancel,
-              color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
+              isCompleted ? Icons.check_circle : Icons.cancel,
+              color: isCompleted ? Colors.green[600] : Colors.red[600],
               size: 20,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                progress.isCompleted
+                isCompleted
                     ? 'All tasks completed!'
-                    : 'Some tasks incomplete — tap to find incomplete tasks',
+                    : incompleteTitles.isEmpty
+                        ? 'Some tasks are incomplete'
+                        : '${incompleteTitles.length} of ${nonRegular.length} tasks are incomplete',
                 style: TextStyle(
-                  color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
+                  color: isCompleted ? Colors.green[700] : Colors.red[700],
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            if (!progress.isCompleted)
-              Icon(Icons.chevron_right, color: Colors.red[400], size: 20),
+            if (!isCompleted && incompleteTitles.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.keyboard_arrow_down,
+                  color: Colors.red[400], size: 20),
+              Text(
+                'Tap to view',
+                style: TextStyle(
+                  color: Colors.red[400],
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// Scrolls to the first incomplete task card and lists which tasks are
+  /// incomplete in a SnackBar.
+  void _focusIncompleteTasks(List<Challenge> incomplete) {
+    // Scroll directly to the first incomplete task card.
+    for (final challenge in incomplete) {
+      final key = _taskCardKeys[challenge.id];
+      if (key != null && key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+        break;
+      }
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Incomplete: ${incomplete.map((c) => c.title).join(', ')}',
+          ),
+          backgroundColor: Colors.red[700],
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
   }
 
   Future<void> _submitProof(Challenge challenge) async {

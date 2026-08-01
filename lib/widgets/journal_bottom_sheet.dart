@@ -39,6 +39,31 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
     super.dispose();
   }
 
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Journal Entry?'),
+        content: const Text('This journal entry will be permanently deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      widget.onDelete?.call();
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasExistingNote =
@@ -89,10 +114,7 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
               if (hasExistingNote && widget.onDelete != null)
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () {
-                    widget.onDelete!();
-                    Navigator.pop(context);
-                  },
+                  onPressed: () => _confirmDelete(),
                   tooltip: 'Delete',
                 ),
               IconButton(

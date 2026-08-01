@@ -306,6 +306,10 @@ class _InitialScreenState extends State<InitialScreen>
   _QuoteState _quoteState = _QuoteState.loading;
   Quote? _quote;
 
+  /// Destination route chosen by [_prepareApp]. The splash navigates exactly
+  /// once, using this, to avoid double-push black screens.
+  String _destinationRoute = '/home';
+
   // Logo: elastic scale-in
   late final AnimationController _logoCtrl;
   late final Animation<double> _logoScale;
@@ -397,7 +401,7 @@ class _InitialScreenState extends State<InitialScreen>
     await _exitCtrl.forward();
 
     if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/home');
+      Navigator.of(context).pushReplacementNamed(_destinationRoute);
     }
   }
 
@@ -425,18 +429,12 @@ class _InitialScreenState extends State<InitialScreen>
       await SmartNotificationService().requestPermissions();
     } catch (_) {}
 
-    // 3. THE DECISION POINT: Check Firebase session
+    // THE DECISION POINT: Check Firebase session and pick the destination.
+    // The actual navigation happens once in _initApp after the splash delay.
     final currentUser = FirebaseAuth.instance.currentUser;
 
-    if (mounted) {
-      if (currentUser != null) {
-        // User is already logged in, go to Dashboard
-        Navigator.of(context).pushReplacementNamed('/home');
-      } else {
-        // User is new or logged out, go to Welcome gate
-        Navigator.of(context).pushReplacementNamed('/onboarding');
-      }
-    }
+    _destinationRoute =
+        currentUser != null ? '/home' : '/onboarding';
   }
 
   @override

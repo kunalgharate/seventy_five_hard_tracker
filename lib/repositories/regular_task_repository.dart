@@ -108,4 +108,30 @@ class RegularTaskRepository {
   String _dateToKey(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
+
+  Future<void> clearAllData() async {
+    await _ensureInitialized();
+    await _tasksBox!.clear();
+    await _completionsBox!.clear();
+  }
+
+  Future<void> restoreFromJson(Map<String, dynamic> data) async {
+    await _ensureInitialized();
+    await clearAllData();
+
+    final tasks = (data['regularTasks'] as List?) ?? [];
+    for (final t in tasks) {
+      final task = RegularTask.fromJson(t as Map<String, dynamic>);
+      if (task.id.isNotEmpty) {
+        await _tasksBox!.put(task.id, task);
+      }
+    }
+
+    final completions = (data['regularCompletions'] as List?) ?? [];
+    for (final c in completions) {
+      final completion =
+          RegularTaskCompletion.fromJson(c as Map<String, dynamic>);
+      await _completionsBox!.put(completion.dateKey, completion);
+    }
+  }
 }

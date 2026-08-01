@@ -156,6 +156,32 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     ).then((_) => _loadCollaborators());
   }
 
+  void _confirmRemove() {
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Task?'),
+        content: Text(
+            'Remove "${widget.challenge.title}" from this challenge?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) {
+        widget.onRemove?.call();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -429,6 +455,17 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (widget.isEditable && _hasAccountabilityConnection) {
       actions.add(_buildProofButton());
+    }
+
+    if (widget.isEditable && widget.onRemove != null) {
+      actions.add(IconButton(
+        onPressed: _confirmRemove,
+        icon: Icon(Icons.delete_outline, color: Colors.red[400], size: iconSize),
+        padding: EdgeInsets.zero,
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        tooltip: 'Remove Task',
+      ));
     }
 
     if (actions.isEmpty) return const SizedBox.shrink();

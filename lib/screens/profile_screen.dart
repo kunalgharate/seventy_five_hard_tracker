@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -7,7 +7,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import '../main.dart';
 
@@ -21,12 +23,20 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _syncService = CloudSyncService();
   bool _isSyncing = false;
+  bool _isSigningIn = false;
+  bool _consentGiven = false;
   String? _lastSync;
 
   @override
   void initState() {
     super.initState();
     _loadLastSync();
+    _loadConsentState();
+  }
+
+  Future<void> _loadConsentState() async {
+    final consent = await _syncService.hasConsentBeenGiven();
+    if (mounted) setState(() => _consentGiven = consent);
   }
 
   Future<void> _loadLastSync() async {
@@ -103,23 +113,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 4),
                 Text(
                   isSignedIn
-                      ? 'Your data is automatically backed up to the cloud.'
+                      ? (_consentGiven
+                          ? 'Your data is automatically backed up to the cloud.'
+                          : 'Signed in. Enable Cloud Backup to back up your data automatically.')
                       : 'Your data is stored only on this device. Sign in to enable automatic backup.',
                   style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                if (!isSignedIn)
-                  ElevatedButton.icon(
-                    onPressed: _signIn,
-                    icon: const Icon(Icons.cloud_upload),
-                    label: const Text('Enable Cloud Backup'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+                if (!isSignedIn) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSigningIn ? null : _signIn,
+                      icon: _isSigningIn
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.cloud_upload),
+                      label: Text(
+                          _isSigningIn ? 'Signing in...' : 'Enable Cloud Backup'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
-                  )
-                else
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isSigningIn
+                          ? null
+                          : () => _signIn(enableBackup: false),
+                      icon: const Icon(Icons.login),
+                      label: const Text('Sign In'),
+                    ),
+                  ),
+                ] else
                   OutlinedButton.icon(
                     onPressed: _signOut,
                     icon: const Icon(Icons.logout),
@@ -241,17 +277,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )
                 else
                   Icon(
-                    isSignedIn ? Icons.cloud_done : Icons.cloud_off,
-                    color: isSignedIn ? Colors.green : Colors.grey,
+                    isSignedIn && _consentGiven
+                        ? Icons.cloud_done
+                        : isSignedIn
+                            ? Icons.cloud
+                            : Icons.cloud_off,
+                    color: isSignedIn && _consentGiven
+                        ? Colors.green
+                        : Colors.grey,
                     size: 22,
                   ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              isSignedIn
+              isSignedIn && _consentGiven
                   ? 'Automatic backup is active. Your data is encrypted with AES-256 before it leaves your device.'
-                  : 'Sign in to enable automatic encrypted cloud backup.',
+                  : isSignedIn
+                      ? 'Cloud backup is not enabled yet. Tap "Back Up Now" below to save your data, or re-run "Enable Cloud Backup".'
+                      : 'Sign in to enable automatic encrypted cloud backup.',
               style: TextStyle(fontSize: 13, color: Colors.grey[600]),
             ),
             if (_lastSync != null && isSignedIn) ...[
@@ -265,6 +309,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                   ),
                 ],
+              ),
+            ],
+            if (isSignedIn) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isSyncing ? null : _backUpNow,
+                  icon: const Icon(Icons.cloud_upload, size: 18),
+                  label: const Text('Back Up Now'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isSyncing ? null : _restoreFromCloud,
+                  icon: const Icon(Icons.cloud_download, size: 18),
+                  label: const Text('Restore'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.teal[700],
+                    side: BorderSide(color: Colors.teal[400]!),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Back Up Now saves this device\'s latest data to the cloud. '
+                'Restore downloads the cloud backup and replaces the data on '
+                'this device.',
+                style: TextStyle(fontSize: 12, color: Colors.grey[500], height: 1.4),
               ),
             ],
             if (!isSignedIn) ...[
@@ -329,51 +412,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ── Auth actions ─────────────────────────────────────────────────────────
 
-  Future<void> _signIn() async {
-    // Show consent dialog first if not yet given
-    final consentGiven = await _syncService.hasConsentBeenGiven();
-    if (!consentGiven && mounted) {
-      final accepted = await _showConsentDialog();
-      if (!accepted) return;
-      await _syncService.recordConsent();
+  /// Signs in with Google.
+  ///
+  /// When [enableBackup] is true (the "Enable Cloud Backup" button) the user
+  /// is first asked for encryption consent and a backup is triggered after
+  /// sign-in. When false (the "Sign In" button) it is a plain sign-in that
+  /// skips the consent dialog.
+  Future<void> _signIn({bool enableBackup = true}) async {
+    if (_isSigningIn) return;
+
+    // Show consent dialog first if not yet given (backup flow only)
+    if (enableBackup) {
+      final consentGiven = await _syncService.hasConsentBeenGiven();
+      if (!consentGiven && mounted) {
+        final accepted = await _showConsentDialog();
+        if (!accepted) return;
+        await _syncService.recordConsent();
+        if (mounted) setState(() => _consentGiven = true);
+      } else if (consentGiven && mounted) {
+        setState(() => _consentGiven = true);
+      }
     }
 
     if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-        ),
-      ),
-    );
+    setState(() => _isSigningIn = true);
 
     try {
-      final user = await _syncService.signInWithGoogle();
+      final user = await _syncService
+          .signInWithGoogle()
+          .timeout(const Duration(seconds: 60));
+
       if (!mounted) return;
-      Navigator.pop(context); // Dismiss spinner
 
       if (user != null) {
-        // Auto-sync immediately after sign-in
-        _triggerAutoSync();
+        // If the user previously consented, back up even via plain sign-in.
+        final consentGiven = await _syncService.hasConsentBeenGiven();
+        if (!mounted) return;
+        if (enableBackup || consentGiven) {
+          // Auto-sync immediately after sign-in
+          _triggerAutoSync();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Cloud backup enabled for ${user.displayName ?? user.email}'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Signed in as ${user.displayName ?? user.email}'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-                'Cloud backup enabled for ${user.displayName ?? user.email}'),
-            backgroundColor: Colors.green,
+                'Sign-in was cancelled or could not be completed. Please try again.'),
+            backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 4),
+            margin: EdgeInsets.fromLTRB(16, 0, 16, 100),
           ),
         );
       }
-      // null = user cancelled — no snack needed
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign-in timed out. Please check your connection and try again.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.fromLTRB(16, 0, 16, 100),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Sign-in failed: $e'),
@@ -382,6 +507,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
         ),
       );
+    } finally {
+      if (mounted) setState(() => _isSigningIn = false);
     }
   }
 
@@ -408,6 +535,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loadLastSync();
       setState(() => _isSyncing = false);
     });
+  }
+
+  /// Manual "Back Up Now" action.
+  Future<void> _backUpNow() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
+      final success = await _syncService.syncToCloud(db, taskRepo);
+      await _loadLastSync();
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('Backup completed successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ));
+      } else {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('Backup failed. Check your connection and try again.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ));
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  /// Manual "Restore" action — downloads cloud data and replaces local data.
+  Future<void> _restoreFromCloud() async {
+    if (_isSyncing) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore from Cloud?'),
+        content: const Text(
+            'This will overwrite your current local data with the cloud backup. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSyncing = true);
+    try {
+      final data = await _syncService
+          .syncFromCloud()
+          .timeout(const Duration(seconds: 60));
+      if (!mounted) return;
+
+      if (data == null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('No cloud backup found to restore.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ));
+        return;
+      }
+
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
+      await db.restoreFromJson(data);
+      await taskRepo.restoreFromJson(data);
+
+      if (!mounted) return;
+
+      // Reload blocs so the UI reflects the restored data
+      context.read<ChallengeBloc>().add(LoadChallengeData());
+      context.read<RegularTaskBloc>().add(LoadRegularTasks());
+
+      await _loadLastSync();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Data restored successfully'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ));
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Restore timed out. Please try again.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Restore failed: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   // ── Consent dialog ───────────────────────────────────────────────────────
@@ -497,69 +742,6 @@ class _ConsentPoint extends StatelessWidget {
           child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
         ),
       ],
-    );
-  }
-}
-
-// ── Info row with copy button ─────────────────────────────────────────────────
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final BuildContext context;
-
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    required this.context,
-  });
-
-  @override
-  Widget build(BuildContext _) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: value));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('$label copied!'),
-                  duration: const Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            child: Icon(Icons.copy_outlined, size: 16, color: Colors.grey[500]),
-          ),
-        ],
-      ),
     );
   }
 }
