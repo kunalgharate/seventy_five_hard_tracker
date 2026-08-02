@@ -11,6 +11,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:async';
 import 'models/quote.dart';
 import 'repositories/database_repository.dart';
@@ -72,6 +73,11 @@ void main() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // Initialize Google Sign-In (required before any authenticate() call)
+    await GoogleSignIn.instance.initialize(
+      serverClientId:
+          '496007025535-vcfvp99s1kva06b042i74rnb8cg6fhrc.apps.googleusercontent.com',
     );
     await connectivity.initFirebase();
   } catch (e) {

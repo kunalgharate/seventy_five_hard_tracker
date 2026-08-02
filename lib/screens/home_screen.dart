@@ -18,6 +18,7 @@ import '../widgets/daily_task_card.dart';
 import '../widgets/water_reminder_widget.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
+import '../main.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
@@ -481,6 +482,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               }),
 
+            const SizedBox(height: 12),
+
+            // Add Task button — allows expanding the challenge mid-session
+            if (isToday)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: OutlinedButton.icon(
+                  onPressed: () => _showAddTaskDialog(session),
+                  icon: const Icon(Icons.add_circle_outline, size: 18),
+                  label: const Text('Add Task'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[600],
+                    side: BorderSide(color: Colors.grey[300]!),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content
           ],
@@ -703,6 +724,66 @@ class _HomeScreenState extends State<HomeScreen> {
 
   DateTime _normalizeDate(DateTime date) {
     return DateTime(date.year, date.month, date.day);
+  }
+
+  void _showAddTaskDialog(ChallengeSession session) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add New Task'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Add a new daily task to your active challenge. It will appear starting today.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'e.g., "Drink 3L water"',
+                border: OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final title = controller.text.trim();
+              if (title.isEmpty) return;
+              Navigator.pop(ctx);
+              context.read<ChallengeBloc>().add(
+                    AddChallengeToSession(Challenge(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      title: title,
+                      category: 'general',
+                      taskType: 'hard',
+                      reminderType: 'once',
+                      reminderStartHour: 8,
+                      reminderEndHour: 22,
+                      allowNightReminders: true,
+                      isReminderEnabled: false,
+                    )),
+                  );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showResetDialog(ChallengeReset state) {
