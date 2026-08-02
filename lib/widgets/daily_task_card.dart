@@ -133,35 +133,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     super.dispose();
   }
 
-  void _confirmRemoveTask() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove Task?'),
-        content: const Text(
-          'This will remove the task from your active challenge. Your existing progress for other tasks will be preserved.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              widget.onRemove!();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showGenericReminderSetup() {
     if (widget.onReminderUpdate == null) return;
     showModalBottomSheet(
@@ -457,19 +428,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (widget.isEditable && _hasAccountabilityConnection) {
       actions.add(_buildProofButton());
-    }
-
-    // Remove task option (long-press or explicit button)
-    if (widget.isEditable && widget.onRemove != null) {
-      actions.add(IconButton(
-        onPressed: () => _confirmRemoveTask(),
-        icon:
-            Icon(Icons.delete_outline, color: Colors.red[300], size: iconSize),
-        padding: EdgeInsets.zero,
-        constraints:
-            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
-        tooltip: 'Remove Task',
-      ));
     }
 
     if (actions.isEmpty) return const SizedBox.shrink();
