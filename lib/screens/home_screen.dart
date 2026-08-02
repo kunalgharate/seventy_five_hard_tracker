@@ -178,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (state is ChallengeLoaded) {
             if (!state.hasActiveSession) {
               return FloatingActionButton.extended(
+                heroTag: 'startChallenge',
                 onPressed: () {
                   Navigator.pushReplacementNamed(context, '/onboarding');
                 },

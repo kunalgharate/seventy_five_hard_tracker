@@ -143,6 +143,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
 
   Widget _buildFab() {
     return FloatingActionButton.extended(
+      heroTag: 'invitePartner',
       onPressed: _showInviteDialog,
       icon: const Icon(Icons.person_add),
       label: const Text('Invite Partner'),
