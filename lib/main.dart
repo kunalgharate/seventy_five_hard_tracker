@@ -397,33 +397,29 @@ class _InitialScreenState extends State<InitialScreen>
       await SmartNotificationService().requestPermissions();
     } catch (_) {}
 
-    // Check if user has existing local data (guest or returning user)
     final bloc = context.read<ChallengeBloc>();
     final taskRepo = context.read<RegularTaskBloc>().repository;
     await bloc.repository.init();
     await taskRepo.init();
-    bool hasLocalData = await bloc.repository.hasActiveSession();
 
-    // If user is signed in but has NO local data, try restoring from cloud.
-    // This handles the reinstall scenario.
+    // If user is signed in but has NO local data, restore from cloud.
     final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser != null && !hasLocalData) {
-      try {
-        final syncSvc = CloudSyncService();
-        final cloudData = await syncSvc.syncFromCloud();
-        if (cloudData != null &&
-            (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-          await bloc.repository.restoreFromJson(cloudData);
-          await taskRepo.restoreFromJson(cloudData);
-          hasLocalData = true;
-          // Reload BLoCs with restored data
-          if (mounted) {
-            bloc.add(LoadChallengeData());
-            context.read<RegularTaskBloc>().add(LoadRegularTasks());
+    if (currentUser != null) {
+      final hasLocalData = await bloc.repository.hasActiveSession();
+      if (!hasLocalData) {
+        try {
+          final syncSvc = CloudSyncService();
+          final cloudData = await syncSvc.syncFromCloud();
+          if (cloudData != null &&
+              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+            await bloc.repository.restoreFromJson(cloudData);
+            await taskRepo.restoreFromJson(cloudData);
+            if (mounted) {
+              bloc.add(LoadChallengeData());
+              context.read<RegularTaskBloc>().add(LoadRegularTasks());
+            }
           }
-        }
-      } catch (_) {
-        // Cloud restore failed — proceed normally, user can set up again
+        } catch (_) {}
       }
     }
 
@@ -435,14 +431,11 @@ class _InitialScreenState extends State<InitialScreen>
     await _exitCtrl.forward();
     if (!mounted) return;
 
-    // ROUTING DECISION:
-    // - Firebase user exists OR local data exists → /home
-    // - Neither → /onboarding (brand new user)
-    if (currentUser != null || hasLocalData) {
-      Navigator.of(context).pushReplacementNamed('/home');
-    } else {
-      Navigator.of(context).pushReplacementNamed('/onboarding');
-    }
+    // ALWAYS go to /home. The home screen handles:
+    // - Active session → shows challenges and daily tasks
+    // - No session → shows "Start 75 Hard Challenge" button
+    // The onboarding/setup wizard is triggered FROM home, not before it.
+    Navigator.of(context).pushReplacementNamed('/home');
   }
 
   Future<void> _fetchQuote() async {

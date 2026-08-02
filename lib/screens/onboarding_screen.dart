@@ -309,8 +309,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       await syncSvc.recordConsent();
 
       // 4. Check if cloud backup exists (reinstall scenario)
-      //    If data exists in the cloud, restore it locally and go to /home.
-      //    If not, this is a fresh account — advance to challenge setup.
+      //    Restore if found, then always go to /home.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
@@ -321,34 +320,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           final cloudData = await syncSvc.syncFromCloud();
           if (cloudData != null &&
               (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-            // Cloud data found — restore locally
             await db.restoreFromJson(cloudData);
             await taskRepo.restoreFromJson(cloudData);
-
-            // Reload BLoC state from restored data
             if (mounted) {
               context.read<ChallengeBloc>().add(LoadChallengeData());
               context.read<RegularTaskBloc>().add(LoadRegularTasks());
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Welcome back, ${user.displayName ?? 'there'}! Your data has been restored.',
-                  ),
-                  backgroundColor: Colors.green,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-
-              // Go directly to home — data is already set up
-              Navigator.pushReplacementNamed(context, '/home');
             }
-            setState(() => _isLoggingIn = false);
-            return;
+          } else {
+            // No cloud data yet — sync current (empty) local state
+            await syncSvc.syncToCloud(db, taskRepo);
           }
-
-          // No cloud data — upload any local data (probably empty)
-          await syncSvc.syncToCloud(db, taskRepo);
         } catch (_) {}
       }
 
@@ -364,11 +345,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
 
-      // Advance to challenge setup page (page 1)
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      // Always go to /home after sign-in.
+      // Home shows "Start 75 Hard Challenge" if no active session.
+      Navigator.pushReplacementNamed(context, '/home');
     } on GoogleSignInException catch (e) {
       if (!mounted) return;
       if (e.code != GoogleSignInExceptionCode.canceled &&
