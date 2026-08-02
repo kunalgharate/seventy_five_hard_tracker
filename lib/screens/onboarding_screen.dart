@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
@@ -547,29 +548,43 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
               : Column(
                   children: [
-                    // The new Login Button
-                    _buildAnimatedButton(
-                      text: 'Sign In & Start Setup',
-                      onPressed: () => Navigator.pushNamed(context, '/login'),
-                      gradient: const LinearGradient(
-                          colors: [Colors.orange, Colors.red]),
-                    ),
-                    const SizedBox(height: 12),
-                    // The Guest/Local option
-                    TextButton(
-                      onPressed: () => _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
+                    // Show different button based on auth state
+                    if (FirebaseAuth.instance.currentUser == null) ...[
+                      // Not signed in — offer sign-in
+                      _buildAnimatedButton(
+                        text: 'Sign In & Start Setup',
+                        onPressed: handleInitialLogin,
+                        gradient: const LinearGradient(
+                            colors: [Colors.orange, Colors.red]),
                       ),
-                      child: Text(
-                        'Continue as Guest (Local Only)',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
+                      const SizedBox(height: 12),
+                      // Guest/Local option
+                      TextButton(
+                        onPressed: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        child: Text(
+                          'Continue as Guest (Local Only)',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
-                    ),
+                    ] else ...[
+                      // Already signed in — just advance to setup
+                      _buildAnimatedButton(
+                        text: 'Start Challenge Setup →',
+                        onPressed: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        gradient: const LinearGradient(
+                            colors: [Colors.orange, Colors.red]),
+                      ),
+                    ],
                   ],
                 )
                   .animate()
