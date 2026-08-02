@@ -273,6 +273,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           (state) => state is ChallengeLoaded && state.hasActiveSession,
         );
 
+    // Sync to cloud immediately if user is signed in
+    if (FirebaseAuth.instance.currentUser != null) {
+      try {
+        final syncSvc = CloudSyncService();
+        final db = context.read<ChallengeBloc>().repository;
+        final taskRepo = context.read<RegularTaskBloc>().repository;
+        await syncSvc.syncToCloud(db, taskRepo);
+      } catch (_) {}
+    }
+
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
     }

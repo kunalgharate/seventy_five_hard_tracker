@@ -6,7 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/discipline_heatmap.dart';
@@ -716,31 +718,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _triggerAutoSync() {
+  /// After sign-in, checks if local data is empty. If so, restores from cloud.
+  /// Otherwise uploads local data to cloud.
+  void _triggerAutoSync() async {
     final db = context.read<ChallengeBloc>().repository;
     final taskRepo = context.read<RegularTaskBloc>().repository;
     setState(() => _isSyncing = true);
-    _syncService.syncToCloud(db, taskRepo).then((success) {
-      if (!mounted) return;
-      if (success) {
-        _loadLastSync();
+
+    try {
+      // Check if local database is empty (reinstall scenario)
+      final hasLocalData = await db.hasActiveSession();
+
+      if (!hasLocalData) {
+        // Try restoring from cloud first
+        final cloudData = await _syncService.syncFromCloud();
+        if (cloudData != null &&
+            (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+          await db.restoreFromJson(cloudData);
+          await taskRepo.restoreFromJson(cloudData);
+          if (mounted) {
+            context.read<ChallengeBloc>().add(LoadChallengeData());
+            context.read<RegularTaskBloc>().add(LoadRegularTasks());
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Your data has been restored from cloud!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Sync failed. Please try again.'),
-              backgroundColor: Colors.red),
-        );
+        // Local data exists — sync it up to cloud
+        final success = await _syncService.syncToCloud(db, taskRepo);
+        if (mounted && success) {
+          _loadLastSync();
+        }
       }
-      setState(() => _isSyncing = false);
-    }).catchError((error) {
-      if (!mounted) return;
-      setState(() => _isSyncing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Sync error: ${error.toString().substring(0, 80)}'),
-            backgroundColor: Colors.red),
-      );
-    });
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   Future<bool> _showConsentDialog() async {
