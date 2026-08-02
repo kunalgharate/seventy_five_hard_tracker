@@ -13,6 +13,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
@@ -307,11 +308,46 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       // 3. Record consent
       await syncSvc.recordConsent();
 
-      // 4. Trigger initial sync (creates user_data/{uid})
+      // 4. Check if cloud backup exists (reinstall scenario)
+      //    If data exists in the cloud, restore it locally and go to /home.
+      //    If not, this is a fresh account — advance to challenge setup.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
+          await db.init();
+          await taskRepo.init();
+
+          final cloudData = await syncSvc.syncFromCloud();
+          if (cloudData != null &&
+              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+            // Cloud data found — restore locally
+            await db.restoreFromJson(cloudData);
+            await taskRepo.restoreFromJson(cloudData);
+
+            // Reload BLoC state from restored data
+            if (mounted) {
+              context.read<ChallengeBloc>().add(LoadChallengeData());
+              context.read<RegularTaskBloc>().add(LoadRegularTasks());
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Welcome back, ${user.displayName ?? 'there'}! Your data has been restored.',
+                  ),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+
+              // Go directly to home — data is already set up
+              Navigator.pushReplacementNamed(context, '/home');
+            }
+            setState(() => _isLoggingIn = false);
+            return;
+          }
+
+          // No cloud data — upload any local data (probably empty)
           await syncSvc.syncToCloud(db, taskRepo);
         } catch (_) {}
       }

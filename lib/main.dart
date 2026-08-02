@@ -27,6 +27,7 @@ import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/discipline_score/discipline_score.dart';
+import 'core/services/cloud_sync_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -398,8 +399,33 @@ class _InitialScreenState extends State<InitialScreen>
 
     // Check if user has existing local data (guest or returning user)
     final bloc = context.read<ChallengeBloc>();
+    final taskRepo = context.read<RegularTaskBloc>().repository;
     await bloc.repository.init();
-    final hasLocalData = await bloc.repository.hasActiveSession();
+    await taskRepo.init();
+    bool hasLocalData = await bloc.repository.hasActiveSession();
+
+    // If user is signed in but has NO local data, try restoring from cloud.
+    // This handles the reinstall scenario.
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null && !hasLocalData) {
+      try {
+        final syncSvc = CloudSyncService();
+        final cloudData = await syncSvc.syncFromCloud();
+        if (cloudData != null &&
+            (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+          await bloc.repository.restoreFromJson(cloudData);
+          await taskRepo.restoreFromJson(cloudData);
+          hasLocalData = true;
+          // Reload BLoCs with restored data
+          if (mounted) {
+            bloc.add(LoadChallengeData());
+            context.read<RegularTaskBloc>().add(LoadRegularTasks());
+          }
+        }
+      } catch (_) {
+        // Cloud restore failed — proceed normally, user can set up again
+      }
+    }
 
     // Minimum splash display time
     await Future.delayed(_kSplashDuration);
@@ -410,11 +436,8 @@ class _InitialScreenState extends State<InitialScreen>
     if (!mounted) return;
 
     // ROUTING DECISION:
-    // - Firebase user exists → /home (returning signed-in user)
-    // - Local Hive data exists → /home (guest who already set up challenges)
+    // - Firebase user exists OR local data exists → /home
     // - Neither → /onboarding (brand new user)
-    final currentUser = FirebaseAuth.instance.currentUser;
-
     if (currentUser != null || hasLocalData) {
       Navigator.of(context).pushReplacementNamed('/home');
     } else {
