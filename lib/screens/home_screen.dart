@@ -15,14 +15,15 @@ import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_s
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import '../widgets/daily_task_card.dart';
+import '../widgets/water_reminder_widget.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/horizontal_date_picker.dart';
 import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
-import '../widgets/add_challenge_sheet.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -37,8 +38,10 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
-  final Map<String, GlobalKey> _taskCardKeys = {};
-  final GlobalKey _tasksSectionKey = GlobalKey();
+
+  /// Whether a challenge should render as a water tracker card.
+  /// Only challenges explicitly categorized as 'water' use the tracker.
+  bool _isWaterChallenge(Challenge challenge) => challenge.category == 'water';
 
   @override
   void initState() {
@@ -174,9 +177,24 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, state) {
           if (state is ChallengeLoaded) {
             if (!state.hasActiveSession) {
-              // No duplicate CTA needed — the empty state already shows
-              // "Create 75 Hard Challenge".
-              return const SizedBox.shrink();
+              return FloatingActionButton.extended(
+                heroTag: 'startChallenge',
+                onPressed: () {
+                  Navigator.pushReplacementNamed(context, '/onboarding');
+                },
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text(
+                  'Start Challenge',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
             } else {
               // Journal FAB for active session
               final selectedProgress = state.currentProgress
@@ -355,11 +373,12 @@ class _HomeScreenState extends State<HomeScreen> {
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
 
     final isToday = _isSameDay(_selectedDay, DateTime.now());
-    final isFutureDate = _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
-    final isBeforeStart = _normalizeDate(_selectedDay).isBefore(_normalizeDate(session.startDate));
+    final isFutureDate =
+        _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
+    final isBeforeStart = _normalizeDate(_selectedDay)
+        .isBefore(_normalizeDate(session.startDate));
 
     return Card(
-      key: _tasksSectionKey,
       margin: const EdgeInsets.all(16),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -380,7 +399,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (selectedProgress?.isCompleted == true)
                   const Padding(
                     padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    child:
+                        Icon(Icons.check_circle, color: Colors.green, size: 32),
                   ),
               ],
             ),
@@ -423,37 +443,38 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
-                          child: KeyedSubtree(
-                            key: _taskCardKeys.putIfAbsent(challenge.id, () => GlobalKey()),
-                            child: DailyTaskCard(
-                              challenge: challenge,
-                              isCompleted: isCompleted,
-                              isEditable: isToday,
-                              onToggle: (completed) {
-                                context.read<ChallengeBloc>().add(
-                                      UpdateDailyProgress(
-                                        date: _selectedDay,
-                                        challengeId: challenge.id,
-                                        isCompleted: completed,
-                                      ),
-                                    );
-                              },
-                              onReminderUpdate: (updatedChallenge) {
-                                context.read<ChallengeBloc>().add(
-                                      UpdateChallenge(updatedChallenge),
-                                    );
-                              },
-                              onRemove: () {
-                                context.read<ChallengeBloc>().add(
-                                      RemoveChallengeFromSession(challenge.id),
-                                    );
-                              },
-                              proofStatus: _proofStatuses[challenge.id],
-                              onSubmitProof: () => _submitProof(challenge),
-                              onReviewProof: () => _reviewProof(challenge),
-                              onViewProof: () => _viewProof(challenge),
-                            ),
-                          ),
+                          child: _isWaterChallenge(challenge)
+                              ? _buildWaterTracker(
+                                  challenge, isToday, selectedProgress)
+                              : DailyTaskCard(
+                                  challenge: challenge,
+                                  isCompleted: isCompleted,
+                                  isEditable: isToday,
+                                  onToggle: (completed) {
+                                    context.read<ChallengeBloc>().add(
+                                          UpdateDailyProgress(
+                                            date: _selectedDay,
+                                            challengeId: challenge.id,
+                                            isCompleted: completed,
+                                          ),
+                                        );
+                                  },
+                                  onReminderUpdate: (updatedChallenge) {
+                                    context.read<ChallengeBloc>().add(
+                                          UpdateChallenge(updatedChallenge),
+                                        );
+                                  },
+                                  onRemove: () {
+                                    context.read<ChallengeBloc>().add(
+                                          RemoveChallengeFromSession(
+                                              challenge.id),
+                                        );
+                                  },
+                                  proofStatus: _proofStatuses[challenge.id],
+                                  onSubmitProof: () => _submitProof(challenge),
+                                  onReviewProof: () => _reviewProof(challenge),
+                                  onViewProof: () => _viewProof(challenge),
+                                ),
                         ),
                       ),
                     ),
@@ -461,8 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               }),
 
-            const SizedBox(height: 16),
-            if (isToday) _buildAddTaskButton(),
+            const SizedBox(height: 12),
 
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content
@@ -472,42 +492,65 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildAddTaskButton() {
-    return InkWell(
-      onTap: () {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => const AddChallengeSheet(),
-        );
+  Widget _buildWaterTracker(
+      Challenge challenge, bool isToday, DailyProgress? selectedProgress) {
+    // Parse completed times from taskNotes — skip individual invalid tokens
+    List<DateTime> completedTimes = [];
+    final noteString = selectedProgress?.taskNotes?[challenge.id];
+    if (noteString != null && noteString.isNotEmpty) {
+      for (final token in noteString.split(',')) {
+        final trimmed = token.trim();
+        if (trimmed.isEmpty) continue;
+        final parsed = DateTime.tryParse(trimmed);
+        if (parsed != null) completedTimes.add(parsed);
+      }
+    }
+
+    return WaterReminderWidget(
+      selectedDate: _selectedDay,
+      completedTimes: completedTimes,
+      isEditable: isToday,
+      onWaterLogged: (dt) {
+        if (!isToday) return;
+        completedTimes.add(dt);
+        _updateWaterProgress(challenge, completedTimes);
       },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.green[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green[400]!, width: 1.2),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add, size: 18, color: Colors.green[700]),
-            const SizedBox(width: 8),
-            Text(
-              'Add Task',
-              style: TextStyle(
-                color: Colors.green[700],
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+      onWaterRemoved: (dt) {
+        if (!isToday) return;
+        // Remove only the first entry matching this exact timestamp (minute-level identity)
+        final idx = completedTimes.indexWhere((e) =>
+            e.year == dt.year &&
+            e.month == dt.month &&
+            e.day == dt.day &&
+            e.hour == dt.hour &&
+            e.minute == dt.minute);
+        if (idx != -1) completedTimes.removeAt(idx);
+        _updateWaterProgress(challenge, completedTimes);
+      },
     );
+  }
+
+  void _updateWaterProgress(Challenge challenge, List<DateTime> times) {
+    final newString = times.map((e) => e.toIso8601String()).join(',');
+    final isCompleted = times.length >= kWaterGoal;
+
+    // 1. Save timestamps first so a stale rebuild doesn't overwrite them
+    context.read<ChallengeBloc>().add(
+          AddTaskNote(
+            date: _selectedDay,
+            challengeId: challenge.id,
+            note: newString,
+          ),
+        );
+
+    // 2. Update the overall completion boolean
+    context.read<ChallengeBloc>().add(
+          UpdateDailyProgress(
+            date: _selectedDay,
+            challengeId: challenge.id,
+            isCompleted: isCompleted,
+          ),
+        );
   }
 
   Widget _buildDateProgressIndicator(ChallengeLoaded state) {
@@ -538,100 +581,36 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final session = state.activeSession;
-    final nonRegular =
-        session?.challenges.where((c) => c.taskType != 'regular').toList() ??
-            [];
-    final incompleteChallenges = nonRegular
-        .where((c) => progress.challengeCompletions[c.id] != true)
-        .toList();
-    final incompleteTitles =
-        incompleteChallenges.map((c) => c.title).toList();
-
-    final isCompleted = progress.isCompleted;
-
-    return GestureDetector(
-      onTap: (isCompleted || incompleteTitles.isEmpty)
-          ? null
-          : () => _focusIncompleteTasks(incompleteChallenges),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isCompleted ? Colors.green[50] : Colors.red[50],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isCompleted ? Colors.green[300]! : Colors.red[300]!,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isCompleted ? Icons.check_circle : Icons.cancel,
-              color: isCompleted ? Colors.green[600] : Colors.red[600],
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                isCompleted
-                    ? 'All tasks completed!'
-                    : incompleteTitles.isEmpty
-                        ? 'Some tasks are incomplete'
-                        : '${incompleteTitles.length} of ${nonRegular.length} tasks are incomplete',
-                style: TextStyle(
-                  color: isCompleted ? Colors.green[700] : Colors.red[700],
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            if (!isCompleted && incompleteTitles.isNotEmpty) ...[
-              const SizedBox(width: 4),
-              Icon(Icons.keyboard_arrow_down,
-                  color: Colors.red[400], size: 20),
-              Text(
-                'Tap to view',
-                style: TextStyle(
-                  color: Colors.red[400],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
         ),
       ),
-    );
-  }
-
-  /// Scrolls to the first incomplete task card and lists which tasks are
-  /// incomplete in a SnackBar.
-  void _focusIncompleteTasks(List<Challenge> incomplete) {
-    // Scroll directly to the first incomplete task card.
-    for (final challenge in incomplete) {
-      final key = _taskCardKeys[challenge.id];
-      if (key != null && key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeInOut,
-          alignment: 0.1,
-        );
-        break;
-      }
-    }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            'Incomplete: ${incomplete.map((c) => c.title).join(', ')}',
+      child: Row(
+        children: [
+          Icon(
+            progress.isCompleted ? Icons.check_circle : Icons.cancel,
+            color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
+            size: 20,
           ),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+          const SizedBox(width: 8),
+          Text(
+            progress.isCompleted
+                ? 'All tasks completed!'
+                : 'Some tasks incomplete',
+            style: TextStyle(
+              color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _submitProof(Challenge challenge) async {

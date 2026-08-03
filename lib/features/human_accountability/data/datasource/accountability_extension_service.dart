@@ -445,8 +445,11 @@ class AccountabilityExtensionService {
           totalTasks == 0 ? 0.0 : completedTasks / totalTasks * 100;
 
       // Streak trend: list of booleans for each day (chronological: oldest first)
-      final streakTrend =
-          days.map((d) => d['dayCompleted'] as bool? ?? false).toList().reversed.toList();
+      final streakTrend = days
+          .map((d) => d['dayCompleted'] as bool? ?? false)
+          .toList()
+          .reversed
+          .toList();
 
       return {
         'completionPct': completionPct,

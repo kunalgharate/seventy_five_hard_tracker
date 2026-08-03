@@ -82,9 +82,8 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final availableHeight = MediaQuery.of(context).size.height
-        - viewInsets.bottom
-        - bottomPadding;
+    final availableHeight =
+        MediaQuery.of(context).size.height - viewInsets.bottom - bottomPadding;
 
     return SafeArea(
         top: false,
@@ -114,29 +113,29 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Icon(Icons.notifications, color: Colors.orange[600]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Set Reminder',
-                style: GoogleFonts.poppins(
-                    fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-            ),
-            SizedBox(
-              width: 40,
-              height: 40,
-              child: IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ),
-          ],
-        ),
+                child: Row(
+                  children: [
+                    Icon(Icons.notifications, color: Colors.orange[600]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Set Reminder',
+                        style: GoogleFonts.poppins(
+                            fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Expanded(
                 child: SingleChildScrollView(

@@ -5,12 +5,10 @@ import '../../data/services/ai_companion_service.dart';
 import 'ai_companion_event.dart';
 import 'ai_companion_state.dart';
 
-class AICompanionBloc
-    extends Bloc<AICompanionEvent, AICompanionState> {
+class AICompanionBloc extends Bloc<AICompanionEvent, AICompanionState> {
   final AICompanionService service;
 
-  AICompanionBloc(this.service)
-      : super(AICompanionInitial()) {
+  AICompanionBloc(this.service) : super(AICompanionInitial()) {
     on<LoadAIMessage>(_onLoadMessage);
   }
 

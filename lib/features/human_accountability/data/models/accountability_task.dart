@@ -1,7 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-enum AccountabilityTaskStatus { requested, pending, completed, declined, approved }
+enum AccountabilityTaskStatus {
+  requested,
+  pending,
+  completed,
+  declined,
+  approved
+}
 
 extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
   String get label {
@@ -193,8 +199,9 @@ class AccountabilityTask extends Equatable {
         proofReviewComment: d['proofReviewComment'] as String?,
         proofSubmittedAt: _parseDate(d['proofSubmittedAt']),
         proofReviewedAt: _parseDate(d['proofReviewedAt']),
-        accountableUserIds: (d['accountableUserIds'] as List<dynamic>?)
-                ?.cast<String>() ?? [d['accountableUid'] as String],
+        accountableUserIds:
+            (d['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
+                [d['accountableUid'] as String],
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -215,10 +222,12 @@ class AccountabilityTask extends Equatable {
         'proofStatus': proofStatus.name,
         'proofUrl': proofUrl,
         'proofReviewComment': proofReviewComment,
-        'proofSubmittedAt':
-            proofSubmittedAt != null ? Timestamp.fromDate(proofSubmittedAt!) : null,
-        'proofReviewedAt':
-            proofReviewedAt != null ? Timestamp.fromDate(proofReviewedAt!) : null,
+        'proofSubmittedAt': proofSubmittedAt != null
+            ? Timestamp.fromDate(proofSubmittedAt!)
+            : null,
+        'proofReviewedAt': proofReviewedAt != null
+            ? Timestamp.fromDate(proofReviewedAt!)
+            : null,
         'accountableUserIds': accountableUserIds,
       };
 
@@ -245,4 +254,3 @@ class AccountabilityTask extends Equatable {
         proofReviewedAt,
       ];
 }
-

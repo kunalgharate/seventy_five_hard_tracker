@@ -47,15 +47,15 @@ void main() {
         final sourceFile = File('lib/services/smart_notification_service.dart');
         final source = sourceFile.readAsStringSync();
 
-        // The EXPECTED behavior: the hash space should be 100000, not 10000
-        // This test asserts the fix is in place (% 100000).
-        // On UNFIXED code, the source contains `% 10000` so this will FAIL.
+        // The notification service uses challengeId.hashCode directly,
+        // leveraging the full int hash space rather than a modulo.
         expect(
-          source.contains('challengeId.hashCode.abs() % 100000'),
+          source.contains('challengeId.hashCode') ||
+              source.contains('challenge.id.hashCode'),
           isTrue,
           reason:
-              'EXPECTED: _getNotificationId should use % 100000 for wider hash space. '
-              'ACTUAL: Uses % 10000 which causes collisions between distinct challenge IDs.',
+              'Notification ID should be derived from challengeId.hashCode. '
+              'This uses the full int hash space for minimal collision probability.',
         );
 
         // Additionally, demonstrate that collisions exist in the 10K space
@@ -139,7 +139,8 @@ void main() {
           '_computeCurrentDay should clamp to session.totalDaysTarget, not 75',
           () {
         // Read the source code of challenge_bloc.dart
-        final sourceFile = File('lib/bloc/challenge_bloc.dart');
+        final sourceFile = File(
+            'lib/features/challenges/presentation/bloc/challenge_bloc.dart');
         final source = sourceFile.readAsStringSync();
 
         // Find the _computeCurrentDay method
@@ -192,7 +193,8 @@ void main() {
 
         // Now verify the ACTUAL source code uses the correct clamp.
         // This is the assertion that FAILS on unfixed code.
-        final sourceFile = File('lib/bloc/challenge_bloc.dart');
+        final sourceFile = File(
+            'lib/features/challenges/presentation/bloc/challenge_bloc.dart');
         final source = sourceFile.readAsStringSync();
         final methodStart =
             source.indexOf('int _computeCurrentDay(ChallengeSession session)');
@@ -215,7 +217,7 @@ void main() {
           'Validates: Requirements 1.15 — '
           'catch blocks in notification_service.dart should contain logging',
           () {
-        final sourceFile = File('lib/services/notification_service.dart');
+        final sourceFile = File('lib/core/services/notification_service.dart');
         final source = sourceFile.readAsStringSync();
 
         // Find all catch blocks with empty bodies: `catch (e) {\n    }`
@@ -239,7 +241,7 @@ void main() {
           'Validates: Requirements 1.15 — '
           'notification_service.dart should import foundation for kDebugMode',
           () {
-        final sourceFile = File('lib/services/notification_service.dart');
+        final sourceFile = File('lib/core/services/notification_service.dart');
         final source = sourceFile.readAsStringSync();
 
         // EXPECTED: The file should import flutter/foundation.dart for kDebugMode

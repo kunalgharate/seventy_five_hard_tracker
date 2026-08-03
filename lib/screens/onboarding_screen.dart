@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
@@ -12,6 +13,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
@@ -299,8 +301,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     await context.read<ChallengeBloc>().stream.firstWhere(
-      (state) => state is ChallengeLoaded && state.hasActiveSession,
-    );
+          (state) => state is ChallengeLoaded && state.hasActiveSession,
+        );
+
+    // Sync to cloud immediately if user is signed in
+    if (FirebaseAuth.instance.currentUser != null) {
+      try {
+        final syncSvc = CloudSyncService();
+        final db = context.read<ChallengeBloc>().repository;
+        final taskRepo = context.read<RegularTaskBloc>().repository;
+        await syncSvc.syncToCloud(db, taskRepo);
+      } catch (_) {}
+    }
 
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
@@ -337,12 +349,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       // 3. Record consent
       await syncSvc.recordConsent();
 
-      // 4. Trigger initial sync (creates user_data/{uid})
+      // 4. Check if cloud backup exists (reinstall scenario)
+      //    Restore if found, then always go to /home.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
-          await syncSvc.syncToCloud(db, taskRepo);
+          await db.init();
+          await taskRepo.init();
+
+          final cloudData = await syncSvc.syncFromCloud();
+          if (cloudData != null &&
+              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+            await db.restoreFromJson(cloudData);
+            await taskRepo.restoreFromJson(cloudData);
+            if (mounted) {
+              context.read<ChallengeBloc>().add(LoadChallengeData());
+              context.read<RegularTaskBloc>().add(LoadRegularTasks());
+            }
+          } else {
+            // No cloud data yet — sync current (empty) local state
+            await syncSvc.syncToCloud(db, taskRepo);
+          }
         } catch (_) {}
       }
 
@@ -358,11 +386,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
 
-      // Advance to challenge setup page (page 1)
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      // Always go to /home after sign-in.
+      // Home shows "Start 75 Hard Challenge" if no active session.
+      Navigator.pushReplacementNamed(context, '/home');
     } on GoogleSignInException catch (e) {
       if (!mounted) return;
       if (e.code != GoogleSignInExceptionCode.canceled &&
@@ -578,30 +604,43 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
               : Column(
                   children: [
-                    // The new Login Button
-                    _buildAnimatedButton(
-                      text: 'Sign In & Start Setup',
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/login'), 
-                      gradient: const LinearGradient(
-                          colors: [Colors.orange, Colors.red]),
-                    ),
-                    const SizedBox(height: 12),
-                    // The Guest/Local option
-                    TextButton(
-                      onPressed: () => _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
+                    // Show different button based on auth state
+                    if (FirebaseAuth.instance.currentUser == null) ...[
+                      // Not signed in — offer sign-in
+                      _buildAnimatedButton(
+                        text: 'Sign In & Start Setup',
+                        onPressed: handleInitialLogin,
+                        gradient: const LinearGradient(
+                            colors: [Colors.orange, Colors.red]),
                       ),
-                      child: Text(
-                        'Continue as Guest (Local Only)',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
+                      const SizedBox(height: 12),
+                      // Guest/Local option
+                      TextButton(
+                        onPressed: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        child: Text(
+                          'Continue as Guest (Local Only)',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
-                    ),
+                    ] else ...[
+                      // Already signed in — just advance to setup
+                      _buildAnimatedButton(
+                        text: 'Start Challenge Setup →',
+                        onPressed: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        ),
+                        gradient: const LinearGradient(
+                            colors: [Colors.orange, Colors.red]),
+                      ),
+                    ],
                   ],
                 )
                   .animate()
@@ -1756,10 +1795,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                     for (int i = _challenges.length - 1;
                                         i >= 0;
                                         i--) {
-                                      if (_challenges[i]
-                                          .title
-                                          .trim()
-                                          .isEmpty) {
+                                      if (_challenges[i].title.trim().isEmpty) {
                                         blankIndices.add(i);
                                       }
                                     }

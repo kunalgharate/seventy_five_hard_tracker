@@ -46,22 +46,24 @@ jobs:
 
       - name: Create key.properties
         run: |
-          cat > android/key.properties <<EOF
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=upload-keystore.jks
-          EOF
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
       # ── Build Release APK ──────────────────────────────────────────
       - name: Build release APK
         run: flutter build apk --release
 
       # ── Upload Artifact ────────────────────────────────────────────
+      - name: Sanitize branch name for artifact
+        id: branch
+        run: echo "name=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> $GITHUB_OUTPUT
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DailyMettle-${{ github.ref_name }}-${{ github.run_number }}
+          name: DailyMettle-${{ steps.branch.outputs.name }}-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 

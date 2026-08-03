@@ -29,7 +29,6 @@ class _AiCompanionScreenState extends State<AiCompanionScreen> {
   final _gemini = GeminiService();
   final _chatCtrl = TextEditingController();
 
-  String? _aiMessage;
   bool _loading = true;
   bool _sending = false;
   final List<_ChatMessage> _messages = [];
@@ -103,7 +102,6 @@ class _AiCompanionScreenState extends State<AiCompanionScreen> {
 
     if (mounted) {
       setState(() {
-        _aiMessage = response.text;
         _messages.add(_ChatMessage(text: response.text, isAi: true));
         _loading = false;
       });

@@ -65,6 +65,14 @@ service cloud.firestore {
                              && request.auth.uid == uid;
     }
 
+    // ── user_data (encrypted cloud backup) ────────────────────────
+    // Only the owner can read/write their own encrypted backup.
+    // This collection stores AES-256-GCM ciphertext — unreadable without the key.
+    match /user_data/{uid} {
+      allow read, write: if request.auth != null
+                          && request.auth.uid == uid;
+    }
+
     // ── invitations ───────────────────────────────────────────────
     // Sender creates. Both sender and recipient can read.
     // Only the recipient can update (accept/reject).

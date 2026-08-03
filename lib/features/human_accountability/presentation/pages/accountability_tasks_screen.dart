@@ -227,6 +227,7 @@ class _AccountabilityTasksScreenState extends State<AccountabilityTasksScreen> {
 
   // ── Helpers ────────────────────────────────────────────────────
 
+  // ignore: unused_element
   void _showAddTaskSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -320,7 +321,6 @@ class _ChallengeTaskCard extends StatelessWidget {
     );
   }
 }
-
 
 class _StatPill extends StatelessWidget {
   final String label;

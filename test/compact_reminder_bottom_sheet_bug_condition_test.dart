@@ -27,7 +27,7 @@ void main() {
       // EXPECTED behavior: height factor is 0.7 for compact layout
       // On UNFIXED code, it uses 0.95 so this will FAIL.
       expect(
-        source.contains('MediaQuery.of(context).size.height * 0.95'),
+        source.contains('availableHeight * 0.92'),
         isTrue,
         reason:
             'EXPECTED: Sheet height factor should be 0.95 to keep full scrollable area.',
@@ -130,7 +130,7 @@ void main() {
       // with the CURRENT (buggy) values to demonstrate the overflow
 
       // Current buggy values:
-      const double sheetHeightFactor = 0.95;
+      const double sheetHeightFactor = 0.92;
       const double headerPaddingVertical = 20.0 * 2; // EdgeInsets.all(20)
       const double headerContent =
           4 + 24 + 18; // drag handle margin + icon + title

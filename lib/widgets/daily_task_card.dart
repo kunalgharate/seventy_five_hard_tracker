@@ -441,9 +441,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           _collaborators.isNotEmpty
               ? Icons.person_add_alt_1
               : Icons.person_add_alt_1_outlined,
-          color: _collaborators.isNotEmpty
-              ? AppColors.primary
-              : Colors.grey[500],
+          color:
+              _collaborators.isNotEmpty ? AppColors.primary : Colors.grey[500],
           size: iconSize,
         ),
         padding: EdgeInsets.zero,
@@ -614,8 +613,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         return iconBtn(Icons.check_circle, Colors.green[600]!,
             widget.onViewProof, 'View Approved Proof');
       case ProofStatus.rejected:
-        return iconBtn(
-            Icons.cancel, Colors.red[400]!, null, 'Proof Rejected');
+        return iconBtn(Icons.cancel, Colors.red[400]!, null, 'Proof Rejected');
       default:
         return const SizedBox.shrink();
     }
