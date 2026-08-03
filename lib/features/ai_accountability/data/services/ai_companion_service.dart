@@ -38,8 +38,7 @@ class AICompanionService {
     if (completedTasks == totalTasks && totalTasks > 0) {
       return AIMessage(
         title: '✅ Excellent Work',
-        message:
-            'You completed all tasks today and maintained your streak.',
+        message: 'You completed all tasks today and maintained your streak.',
         createdAt: DateTime.now(),
       );
     }

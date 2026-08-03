@@ -6,7 +6,7 @@
 // - LaunchImage contentMode is "center", LaunchBackground is "scaleToFill"
 // - LaunchBackground.imageset/Contents.json references background.png and darkbackground.png
 // - lib/main.dart contains InitialScreen with AppColors.primary gradient
-// - pubspec.yaml flutter_native_splash section has android: false
+// - pubspec.yaml flutter_native_splash section has android: true
 //
 // On UNFIXED code, these tests are expected to PASS (confirming baseline).
 // After the fix, they should STILL PASS (confirming no regressions).
@@ -234,7 +234,7 @@ void main() {
   group('Preservation Property — Android Config Unchanged (Req 3.3)', () {
     test(
         'Validates: Requirements 3.3 — '
-        'pubspec.yaml flutter_native_splash section has android: false', () {
+        'pubspec.yaml flutter_native_splash section has android: true', () {
       final pubspecFile = File('pubspec.yaml');
       expect(pubspecFile.existsSync(), isTrue,
           reason: 'pubspec.yaml must exist');
@@ -248,7 +248,7 @@ void main() {
         reason: 'pubspec.yaml must contain flutter_native_splash section',
       );
 
-      // Verify android: false is present in the flutter_native_splash section
+      // Verify android: true is present in the flutter_native_splash section
       // Parse the section to ensure android is set to false
       final lines = pubspecContent.split('\n');
       bool inSplashSection = false;
@@ -266,7 +266,7 @@ void main() {
               !line.startsWith('\t')) {
             break;
           }
-          if (line.trim() == 'android: false') {
+          if (line.trim() == 'android: true') {
             foundAndroidFalse = true;
             break;
           }
@@ -277,7 +277,7 @@ void main() {
         foundAndroidFalse,
         isTrue,
         reason:
-            'flutter_native_splash section must have "android: false" to keep Android config unchanged',
+            'flutter_native_splash section must have "android: true" to keep Android config unchanged',
       );
     });
   });

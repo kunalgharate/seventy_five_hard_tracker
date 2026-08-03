@@ -25,21 +25,31 @@ class Quote extends Equatable {
   });
 
   /// Parse a single quote object from the JSON map.
+  /// Returns a Quote with defaults for missing fields; malformed non-string
+  /// values are treated as absent rather than throwing a cast error.
   factory Quote.fromJson(Map<String, dynamic> json) {
-    return Quote(
-      quote: (json['quote'] as String? ?? '').trim(),
-      author: (json['author'] as String? ?? 'Unknown').trim(),
-      category: (json['category'] as String? ?? '').trim(),
-    );
+    // Support both original format and ZenQuotes format ('q'/'a')
+    final rawQ = json['q'] ?? json['quote'];
+    final rawA = json['a'] ?? json['author'];
+    final rawC = json['category'];
+
+    final q = rawQ is String ? rawQ.trim() : '';
+    final a = rawA is String ? rawA.trim() : 'Unknown';
+    final c = rawC is String ? rawC.trim() : 'inspirational';
+
+    return Quote(quote: q, author: a, category: c);
   }
 
   /// Parse the first element of the API response list.
-  /// Returns `null` if the list is empty or malformed.
+  /// Returns `null` if the list is empty, malformed, or the first entry
+  /// yields an empty quote string.
   static Quote? fromApiResponse(dynamic responseBody) {
     if (responseBody is! List || responseBody.isEmpty) return null;
     final first = responseBody.first;
     if (first is! Map<String, dynamic>) return null;
-    return Quote.fromJson(first);
+    final quote = Quote.fromJson(first);
+    if (quote.quote.isEmpty) return null;
+    return quote;
   }
 
   Map<String, dynamic> toJson() => {

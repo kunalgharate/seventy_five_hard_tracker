@@ -71,18 +71,21 @@ class AccountabilityBloc
     try {
       final activeSession = await _repository.getActiveSession();
       if (activeSession == null) {
-        debugPrint('[AccountabilityBloc] _syncMissingChallenges: no active session');
+        debugPrint(
+            '[AccountabilityBloc] _syncMissingChallenges: no active session');
         return;
       }
       final tasks = await _service.fetchTasksAssignedToMe();
-      debugPrint('[AccountabilityBloc] _syncMissingChallenges: ${tasks.length} tasks, '
+      debugPrint(
+          '[AccountabilityBloc] _syncMissingChallenges: ${tasks.length} tasks, '
           'session has ${activeSession.challenges.length} challenges');
       var changed = false;
       for (final task in tasks) {
         if (task.challengeId == null || task.challengeId!.isEmpty) continue;
         final cid = task.challengeId!;
         if (activeSession.challenges.any((c) => c.id == cid)) continue;
-        debugPrint('[AccountabilityBloc] _syncMissingChallenges: creating local challenge cid=$cid title="${task.title}"');
+        debugPrint(
+            '[AccountabilityBloc] _syncMissingChallenges: creating local challenge cid=$cid title="${task.title}"');
         final challenge = Challenge(
           id: cid,
           title: task.title,
@@ -98,8 +101,8 @@ class AccountabilityBloc
         final today = DateTime.now();
         var todayProgress = _repository.getDailyProgress(today);
         if (todayProgress != null) {
-          final updatedCompletions = Map<String, bool>.from(
-              todayProgress.challengeCompletions);
+          final updatedCompletions =
+              Map<String, bool>.from(todayProgress.challengeCompletions);
           updatedCompletions[cid] = false;
           todayProgress = todayProgress.copyWith(
             challengeCompletions: updatedCompletions,
@@ -118,7 +121,8 @@ class AccountabilityBloc
         await _repository.saveDailyProgress(todayProgress);
         changed = true;
       }
-      debugPrint('[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
+      debugPrint(
+          '[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
       if (changed) {
         // Notify UI to reload challenge data
       }
@@ -325,13 +329,15 @@ class AccountabilityBloc
   ) async {
     try {
       final ok = await _service.acceptTaskRequest(event.taskId);
-      debugPrint('[AccountabilityBloc] acceptTaskRequest("${event.taskId}") → $ok');
+      debugPrint(
+          '[AccountabilityBloc] acceptTaskRequest("${event.taskId}") → $ok');
       if (ok) {
         await _syncMissingChallenges();
 
         final task = await _service.fetchTaskById(event.taskId);
         final challengeId = task?.challengeId;
-        debugPrint('[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
+        debugPrint(
+            '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
 
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
@@ -361,4 +367,3 @@ class AccountabilityBloc
     }
   }
 }
-

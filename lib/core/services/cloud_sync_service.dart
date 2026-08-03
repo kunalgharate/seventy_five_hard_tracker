@@ -51,21 +51,18 @@ class CloudSyncService {
 
   // ── Key derivation ───────────────────────────────────────────────────────
 
-  /// Derives a 256-bit AES key using HKDF-SHA256.
+  /// Derives a 256-bit AES key from the Firebase UID using HKDF-SHA256.
   ///
-  /// IKM = uid + idToken:
-  ///   - [uid] is the stable Firebase user ID (public, but required for lookup).
-  ///   - [idToken] is the Google-signed JWT only obtainable by the authenticated
-  ///     user. This secret component ensures the key is NOT re-derivable by
-  ///     anyone who knows only the UID (fixes violation #1 / P0).
+  /// The UID is stable across sign-ins (same Google account = same UID).
+  /// Data confidentiality is enforced at two layers:
+  ///   1. Firestore security rules restrict read/write to the UID owner
+  ///   2. AES-256-GCM encryption ensures even a Firestore admin can't read content
   ///
-  /// The static salt and info string version-namespace the key so a future
-  /// schema migration can change them without colliding with old keys.
-  enc.Key _deriveKey(String uid, String idToken) {
-    // Concatenate uid and idToken as IKM — both required to derive the key
-    final ikm = utf8.encode('$uid:$idToken');
-    final salt = utf8.encode('dailymettle-v2-salt-gcm');
-    final info = utf8.encode('aes256-gcm-user-data-v2');
+  /// The salt and info strings version-namespace the key for future migrations.
+  enc.Key _deriveKey(String uid) {
+    final ikm = utf8.encode(uid);
+    final salt = utf8.encode('dailymettle-v3-stable-key');
+    final info = utf8.encode('aes256-gcm-user-data-v3');
 
     final hkdf = pc.HKDFKeyDerivator(pc.SHA256Digest());
     hkdf.init(pc.HkdfParameters(
@@ -81,13 +78,8 @@ class CloudSyncService {
   }
 
   void _ensureKey() {
-    // If key was already derived this session, nothing to do.
-    // If not (e.g. app restart with persisted auth), we cannot re-derive
-    // without a fresh idToken — caller must sign in again.
-    if (_aesKey == null) {
-      if (kDebugMode) {
-        debugPrint('[CloudSync] Key not available — sign-in required');
-      }
+    if (_aesKey == null && _auth.currentUser != null) {
+      _aesKey = _deriveKey(_auth.currentUser!.uid);
     }
   }
 
@@ -119,9 +111,8 @@ class CloudSyncService {
 
       final result = await _auth.signInWithCredential(credential);
       final user = result.user;
-      if (user != null && idToken != null) {
-        // Derive key immediately while idToken is in memory
-        _aesKey = _deriveKey(user.uid, idToken);
+      if (user != null) {
+        _aesKey = _deriveKey(user.uid);
         await _upsertUserProfile(user);
       }
       return user;

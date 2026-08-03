@@ -209,7 +209,8 @@ void main() {
         'progress.challengeCompletions correctly', () {
       // Read the source to verify the fix (task 4) has been applied:
       // progress.challengeCompletions (not progress?.challengeCompletions)
-      final sourceFile = File('lib/bloc/challenge_bloc.dart');
+      final sourceFile =
+          File('lib/features/challenges/presentation/bloc/challenge_bloc.dart');
       final source = sourceFile.readAsStringSync();
 
       // Find the _checkForMissedDays method
@@ -375,18 +376,18 @@ void main() {
         'all modified files still exist and are valid Dart files', () {
       // Verify all files that were modified in tasks 3-6 still exist
       final modifiedFiles = [
-        'lib/bloc/challenge_bloc.dart',
+        'lib/features/challenges/presentation/bloc/challenge_bloc.dart',
         'lib/main.dart',
         'lib/repositories/database_repository.dart',
         'lib/screens/home_screen.dart',
-        'lib/services/cloud_sync_service.dart',
-        'lib/services/connectivity_service.dart',
+        'lib/core/services/cloud_sync_service.dart',
+        'lib/core/services/connectivity_service.dart',
         'lib/widgets/horizontal_date_picker.dart',
         'lib/screens/onboarding_screen.dart',
         'lib/widgets/daily_journal_widget.dart',
         // Files to be modified in tasks 7-10:
         'lib/services/smart_notification_service.dart',
-        'lib/services/notification_service.dart',
+        'lib/core/services/notification_service.dart',
       ];
 
       for (final filePath in modifiedFiles) {
@@ -413,7 +414,7 @@ void main() {
         'Validates: Requirements 3.8 — '
         'catch blocks in notification_service.dart still catch exceptions '
         'without re-throwing (resilience preserved)', () {
-      final sourceFile = File('lib/services/notification_service.dart');
+      final sourceFile = File('lib/core/services/notification_service.dart');
       final source = sourceFile.readAsStringSync();
 
       // Count catch blocks — there should be at least 9
@@ -454,7 +455,7 @@ void main() {
         'Validates: Requirements 3.8 — '
         'notification_service.dart does not use kDebugMode-guarded print '
         'in release mode (no additional output)', () {
-      final sourceFile = File('lib/services/notification_service.dart');
+      final sourceFile = File('lib/core/services/notification_service.dart');
       final source = sourceFile.readAsStringSync();
 
       // Currently (unfixed), catch blocks are empty — no print statements.

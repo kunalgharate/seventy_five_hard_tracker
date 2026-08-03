@@ -52,7 +52,8 @@ class RegularTaskRepository {
     // Fix any tasks with empty IDs (legacy data bug)
     for (int i = 0; i < tasks.length; i++) {
       if (tasks[i].id.isEmpty) {
-        final newId = DateTime.now().millisecondsSinceEpoch.toString() + i.toString();
+        final newId =
+            DateTime.now().millisecondsSinceEpoch.toString() + i.toString();
         final fixed = tasks[i].copyWith(id: newId);
         _tasksBox!.put(newId, fixed);
         _tasksBox!.delete('');
@@ -107,5 +108,31 @@ class RegularTaskRepository {
 
   String _dateToKey(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Restores regular tasks and completions from a cloud backup JSON payload.
+  Future<void> restoreFromJson(Map<String, dynamic> data) async {
+    await _ensureInitialized();
+
+    // Restore tasks
+    final tasks = (data['regularTasks'] as List?) ?? [];
+    if (tasks.isNotEmpty) {
+      await _tasksBox!.clear();
+      for (final t in tasks) {
+        final task = RegularTask.fromJson(t as Map<String, dynamic>);
+        await _tasksBox!.put(task.id, task);
+      }
+    }
+
+    // Restore completions
+    final completions = (data['regularCompletions'] as List?) ?? [];
+    if (completions.isNotEmpty) {
+      await _completionsBox!.clear();
+      for (final c in completions) {
+        final completion =
+            RegularTaskCompletion.fromJson(c as Map<String, dynamic>);
+        await _completionsBox!.put(_dateToKey(completion.date), completion);
+      }
+    }
   }
 }

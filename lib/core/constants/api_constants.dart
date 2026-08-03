@@ -8,7 +8,7 @@ class ApiConstants {
   ApiConstants._(); // prevent instantiation
 
   /// API-Ninjas quotes endpoint (plural — /quote returns 404)
-  static const String quotesEndpoint = 'https://api.api-ninjas.com/v1/quotes';
+  static const String quotesEndpoint = 'https://zenquotes.io/api/random';
 
   /// API-Ninjas key — supply via --dart-define=API_NINJAS_KEY=your_key
   static const String apiNinjasKey = String.fromEnvironment(
