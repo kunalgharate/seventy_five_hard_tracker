@@ -735,6 +735,16 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         hasActiveSession: true,
       ));
       debugPrint('🟢 [BLoC] ChallengeLoaded emitted successfully');
+
+      // Schedule reminders if the new task has them enabled
+      if (event.challenge.isReminderEnabled &&
+          event.challenge.reminderTime != null) {
+        await _smartNotifications.scheduleSmartReminders(
+          DateTime.now(),
+          [event.challenge],
+          null,
+        );
+      }
     } catch (e, stack) {
       debugPrint('🔴 [BLoC] Error adding task: $e');
       debugPrint('🔴 [BLoC] Stack: $stack');
