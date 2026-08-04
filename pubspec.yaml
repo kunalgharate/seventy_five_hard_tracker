@@ -53,7 +53,7 @@ dependencies:
   # UI Components
   table_calendar: ^3.1.2
   intl: ^0.19.0
-  google_fonts: ^6.3.2
+  google_fonts: ^6.3.3
   
   # Permissions
   permission_handler: ^11.3.1
@@ -72,7 +72,7 @@ dependencies:
   
   # Icons and Graphics
   flutter_svg: ^2.0.10+1
-  font_awesome_flutter: ^10.9.1
+  font_awesome_flutter: ^11.0.0
   
   # UI Enhancements
   glassmorphism: ^3.0.0
