@@ -601,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             progress.isCompleted
                 ? 'All tasks completed!'
-                : 'Some tasks incomplete',
+                : 'Some tasks are incomplete',
             style: TextStyle(
               color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
               fontSize: 14,

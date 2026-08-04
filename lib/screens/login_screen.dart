@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
@@ -33,9 +32,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
+      if (!mounted) return;
       if (user == null) {
-        if (!mounted) return;
         setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Sign-in was cancelled or could not be completed. Please try again.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
         return;
       }
 
@@ -52,8 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    } on FirebaseAuthException catch (e) {
-      _showError(e.message ?? 'Auth failed');
+    } catch (e) {
+      if (mounted) _showError('Sign-in failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -190,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // GOOGLE SIGN-IN INTERACTION LAYER (CROSS-PLATFORM SAFE)
                     // ──────────────────────────────────────────────────────────
 
-                    // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
+                    // Native route: custom ElevatedButton for mobile devices
                     SizedBox(
                       width: double.infinity,
                       height: 50,

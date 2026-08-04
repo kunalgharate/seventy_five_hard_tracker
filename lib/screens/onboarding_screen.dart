@@ -158,6 +158,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         break;
       }
     }
+    // Fallback: scroll to the first hard task missing a required reminder
+    for (int i = 0; i < _challenges.length; i++) {
+      final c = _challenges[i];
+      if (c.taskType == 'hard' &&
+          c.isReminderEnabled &&
+          c.reminderTime == null) {
+        final key = _cardKeys[i];
+        if (key != null && key.currentContext != null) {
+          Scrollable.ensureVisible(
+            key.currentContext!,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+        }
+        break;
+      }
+    }
   }
 
   void _updateChallenge(
@@ -1805,6 +1823,19 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       _challenges.removeAt(i);
                                     }
 
+                                    // Rebuild card keys and validation errors so
+                                    // indices stay aligned after blank removal
+                                    final newKeys = <int, GlobalKey>{};
+                                    for (int i = 0;
+                                        i < _challenges.length;
+                                        i++) {
+                                      newKeys[i] = GlobalKey();
+                                    }
+                                    _cardKeys
+                                      ..clear()
+                                      ..addAll(newKeys);
+                                    _validationErrors.clear();
+
                                     if (_challenges.length >= 10) {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(
@@ -1820,6 +1851,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                         TextEditingController(text: t.title);
                                     _controllers.add(controller);
                                     _challenges.add(challenge);
+                                    _cardKeys[_challenges.length - 1] =
+                                        GlobalKey();
                                     Navigator.pop(context);
                                     setState(() {});
                                   },

@@ -18,9 +18,8 @@ const _kConsentGiven = 'cloudSyncConsentGiven';
 /// Security properties:
 ///   • AES-256-GCM (AEAD) — confidentiality + integrity + authenticity.
 ///     Any tampered ciphertext is rejected at decryption time.
-///   • Key = HKDF-SHA256(uid + idToken, salt, info).
-///     The idToken is a short-lived Google-signed JWT only the authenticated
-///     user can obtain, so the key is NOT re-derivable from public data alone.
+///   • Key = HKDF-SHA256(uid, salt, info) — stable and re-derivable by the
+///     UID owner, so backups can be restored after a reinstall.
 ///   • Random 12-byte nonce per encryption call.
 ///   • 128-bit GCM authentication tag appended to ciphertext.
 ///
@@ -42,7 +41,7 @@ class CloudSyncService {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
 
-  /// Derived AES-256 key. Re-derived on each sign-in using uid + idToken.
+  /// Derived AES-256 key. Derived from the Firebase UID on demand.
   enc.Key? _aesKey;
 
   User? get currentUser => _auth.currentUser;
@@ -96,7 +95,7 @@ class CloudSyncService {
         scopeHint: ['email', 'profile'],
       );
 
-      // idToken: Google-signed JWT. Used in HKDF to make key non-public.
+      // idToken: Google-signed JWT used to build the Firebase credential.
       final idToken = googleUser.authentication.idToken;
 
       final clientAuth = await googleUser.authorizationClient.authorizeScopes([
@@ -186,11 +185,11 @@ class CloudSyncService {
 
   /// Encrypts ALL local data with AES-256-GCM and uploads to Firestore.
   ///
-  /// Fix #2 (P2): Uses [taskRepo.getAllCompletions()] instead of a date-
-  /// bounded loop, so no historical data is truncated.
+  /// Uses [taskRepo.getAllCompletions()] instead of a date-bounded loop,
+  /// so no historical data is truncated.
   ///
-  /// Fix #3 (P1): AES-GCM provides authentication — any payload tampering
-  /// causes decryption to throw, preventing silent data corruption.
+  /// AES-GCM provides authentication — any payload tampering causes
+  /// decryption to throw, preventing silent data corruption.
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -211,7 +210,7 @@ class CloudSyncService {
       }
 
       // Gather ALL regular tasks (including archived) and ALL completions.
-      // Fix #2: getAllCompletions() reads directly from Hive box — no date cap.
+      // getAllCompletions() reads directly from the Hive box — no date cap.
       final regularTasks = taskRepo.getAllTasks();
       final regularCompletions =
           taskRepo.getAllCompletions().map((c) => c.toJson()).toList();
@@ -225,7 +224,7 @@ class CloudSyncService {
         'schemaVersion': 3,
       });
 
-      // AES-256-GCM: confidentiality + integrity + authenticity (fix #3)
+      // AES-256-GCM: confidentiality + integrity + authenticity
       final encrypted = _encryptGcm(payload);
 
       await _firestore.collection('user_data').doc(uid).set({
@@ -250,9 +249,9 @@ class CloudSyncService {
 
   /// Downloads and authenticates + decrypts user data from Firestore.
   ///
-  /// Fix #3: GCM authentication tag is verified during decryption.
-  /// If the ciphertext was tampered with, decryption throws and null is
-  /// returned — the corrupt data is never passed to the app.
+  /// The GCM authentication tag is verified during decryption. If the
+  /// ciphertext was tampered with, decryption throws and null is returned —
+  /// the corrupt data is never passed to the app.
   Future<Map<String, dynamic>?> syncFromCloud() async {
     _ensureKey();
     if (!isSignedIn || _aesKey == null) return null;
@@ -293,7 +292,7 @@ class CloudSyncService {
     return prefs.getString(_kLastSyncTime);
   }
 
-  // ── AES-256-GCM helpers (primary — fix #3) ──────────────────────────────
+  // ── AES-256-GCM helpers ─────────────────────────────────────────────
 
   /// Encrypts [plain] with AES-256-GCM using a cryptographically random
   /// 12-byte nonce. Returns {'cipher': base64(ciphertext+tag), 'nonce': base64}.

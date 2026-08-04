@@ -145,7 +145,7 @@ class MyApp extends StatelessWidget {
             ? [AnalyticsService().getObserver()]
             : [],
         routes: {
-          '/login': (context) => const LoginScreen(), // Add this line
+          '/login': (context) => const LoginScreen(),
           '/onboarding': (context) => const OnboardingScreen(),
           '/home': (context) => const MainNavigationScreen(),
           '/history': (context) => const HistoryScreen(),
@@ -314,8 +314,7 @@ class _InitialScreenState extends State<InitialScreen>
   late final AnimationController _logoCtrl;
   late final Animation<double> _logoScale;
 
-  // Quote card: fade + s
-  //lide up
+  // Quote card: fade + slide up
   late final AnimationController _quoteCtrl;
   late final Animation<double> _quoteFade;
   late final Animation<Offset> _quoteSlide;
@@ -403,7 +402,12 @@ class _InitialScreenState extends State<InitialScreen>
     await taskRepo.init();
 
     // If user is signed in but has NO local data, restore from cloud.
-    final currentUser = FirebaseAuth.instance.currentUser;
+    User? currentUser;
+    try {
+      currentUser = FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      currentUser = null;
+    }
     if (currentUser != null) {
       final hasLocalData = await bloc.repository.hasActiveSession();
       if (!hasLocalData) {

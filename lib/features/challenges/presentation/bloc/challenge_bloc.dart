@@ -737,13 +737,17 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       debugPrint('🟢 [BLoC] ChallengeLoaded emitted successfully');
 
       // Schedule reminders if the new task has them enabled
-      if (event.challenge.isReminderEnabled &&
-          event.challenge.reminderTime != null) {
-        await _smartNotifications.scheduleSmartReminders(
-          DateTime.now(),
-          [event.challenge],
-          null,
-        );
+      try {
+        if (event.challenge.isReminderEnabled &&
+            event.challenge.reminderTime != null) {
+          await _smartNotifications.scheduleSmartReminders(
+            DateTime.now(),
+            [event.challenge],
+            null,
+          );
+        }
+      } catch (e) {
+        debugPrint('🔴 [BLoC] Reminder scheduling failed (non-critical): $e');
       }
     } catch (e, stack) {
       debugPrint('🔴 [BLoC] Error adding task: $e');

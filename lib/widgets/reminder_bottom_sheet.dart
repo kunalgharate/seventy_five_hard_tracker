@@ -93,7 +93,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
             // becomes unusable (e.g. when the keyboard is open).
             maxHeight: availableHeight < 360.0
                 ? availableHeight
-                : (availableHeight * 0.92).clamp(360.0, availableHeight),
+                : (availableHeight * 0.92)
+                    .clamp(360.0, availableHeight)
+                    .toDouble(),
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -283,7 +285,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
               _enabled = v;
               if (v && _time.isEmpty) _time = '09:00';
             }),
-            activeColor: Colors.orange[600],
+            activeThumbColor: Colors.orange[600],
           ),
         ],
       ),

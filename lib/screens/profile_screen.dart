@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -26,6 +28,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _syncService = CloudSyncService();
   bool _isSyncing = false;
+  bool _isSigningIn = false;
   String? _lastSync;
 
   @override
@@ -264,14 +267,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: _signIn,
+                  onPressed: _isSigningIn ? null : _signIn,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20)),
                   ),
-                  child: const Text('Sign In'),
+                  child: _isSigningIn
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Sign In'),
                 ),
               ],
             ),
@@ -666,20 +678,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _syncService.recordConsent();
     }
 
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-      ),
-    );
+    if (!mounted || _isSigningIn) return;
+    setState(() => _isSigningIn = true);
 
     try {
-      final user = await _syncService.signInWithGoogle();
+      final user = await _syncService.signInWithGoogle().timeout(
+            const Duration(seconds: 60),
+          );
       if (!mounted) return;
-      Navigator.pop(context);
 
       if (user != null) {
         _triggerAutoSync();
@@ -693,10 +699,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sign-in cancelled. Please try again.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Sign-in timed out. Check your connection and try again.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Sign-in failed: $e'),
@@ -704,6 +727,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) setState(() => _isSigningIn = false);
     }
   }
 
