@@ -57,7 +57,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<AddChallengeToSession>(_onAddChallengeToSession);
     on<RestartFromHistory>(_onRestartFromHistory);
     on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
-
+    on<EndActiveSession>(_onEndActiveSession);
     _startMidnightTimer();
   }
 
@@ -859,6 +859,27 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       add(LoadChallengeData());
     } catch (e) {
       emit(ChallengeError('Failed to remove challenge: $e'));
+    }
+  }
+
+  Future<void> _onEndActiveSession(
+    EndActiveSession event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
+
+      final endedSession = activeSession.copyWith(
+        isActive: false,
+        endDate: DateTime.now(),
+      );
+      await _repository.updateSession(endedSession);
+      add(LoadChallengeData());
+    } catch (e) {
+      emit(ChallengeError('Failed to end the challenge: $e'));
     }
   }
 

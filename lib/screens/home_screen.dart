@@ -1,20 +1,25 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import '../widgets/daily_task_card.dart';
+import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -26,7 +31,6 @@ import 'package:seventy_five_hard_tracker/services/smart_notification_service.da
 import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
-import '../main.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,6 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _taskKeys = {};
 
   /// Whether a challenge should render as a water tracker card.
   /// Only challenges explicitly categorized as 'water' use the tracker.
@@ -48,6 +54,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -178,56 +190,38 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, state) {
           if (state is ChallengeLoaded) {
             if (!state.hasActiveSession) {
-              return FloatingActionButton.extended(
-                heroTag: 'startChallenge',
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/onboarding');
-                },
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text(
-                  'Start Challenge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
-            } else {
-              // Journal FAB for active session
-              final selectedProgress = state.currentProgress
-                  .where((p) => _isSameDay(p.date, _selectedDay))
-                  .firstOrNull;
-              final hasNote = selectedProgress?.journalNote != null &&
-                  selectedProgress!.journalNote!.isNotEmpty;
-
-              return FloatingActionButton.extended(
-                heroTag: 'journal',
-                onPressed: () => _showJournalBottomSheet(
-                  context,
-                  state,
-                  selectedProgress,
-                ),
-                icon: Icon(
-                  hasNote ? Icons.book : Icons.book_outlined,
-                  size: 20,
-                ),
-                label: Text(
-                  hasNote ? 'View Journal' : 'Add Journal',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.orange,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
+              return const SizedBox.shrink();
             }
+            // Journal FAB for active session
+            final selectedProgress = state.currentProgress
+                .where((p) => _isSameDay(p.date, _selectedDay))
+                .firstOrNull;
+            final hasNote = selectedProgress?.journalNote != null &&
+                selectedProgress!.journalNote!.isNotEmpty;
+
+            return FloatingActionButton.extended(
+              heroTag: 'journal',
+              onPressed: () => _showJournalBottomSheet(
+                context,
+                state,
+                selectedProgress,
+              ),
+              icon: Icon(
+                hasNote ? Icons.book : Icons.book_outlined,
+                size: 20,
+              ),
+              label: Text(
+                hasNote ? 'View Journal' : 'Add Journal',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            );
           }
           return const SizedBox.shrink();
         },
@@ -261,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/onboarding'),
+            onPressed: _handleStartChallenge,
             icon: const Icon(Icons.add),
             label: const Text('Create 75 Hard Challenge'),
             style: ElevatedButton.styleFrom(
@@ -277,6 +271,155 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleStartChallenge() async {
+    User? user;
+    try {
+      user = FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      user = null;
+    }
+    if (user != null) {
+      Navigator.pushNamed(context, '/onboarding');
+      return;
+    }
+
+    final signedIn = await _promptSignInForChallenge();
+    if (signedIn && mounted) {
+      Navigator.pushNamed(context, '/onboarding');
+    }
+  }
+
+  Future<bool> _promptSignInForChallenge() async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock, color: Color(0xFFFFA726), size: 40),
+            const SizedBox(height: 12),
+            Text(
+              'Sign in to create your challenge',
+              style: Theme.of(ctx).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Sign in with Google to start your 75 Hard challenge '
+              'and back up your progress to the cloud.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final ok = await _signInForChallenge();
+                  if (ok && ctx.mounted) Navigator.pop(ctx, true);
+                },
+                icon: const Icon(Icons.login),
+                label: const Text('Sign In with Google'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFA726),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Maybe Later'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<bool> _signInForChallenge() async {
+    try {
+      final syncSvc = CloudSyncService();
+      final user = await syncSvc.signInWithGoogle();
+      if (user == null) return false;
+
+      var backupEnabled = await syncSvc.hasConsentBeenGiven();
+      if (!backupEnabled && mounted) {
+        backupEnabled = await _showBackupConsentDialog();
+      }
+      if (backupEnabled) {
+        await syncSvc.recordConsent();
+        if (mounted) {
+          try {
+            final db = context.read<ChallengeBloc>().repository;
+            final taskRepo = context.read<RegularTaskBloc>().repository;
+            await syncSvc.syncToCloud(db, taskRepo);
+          } catch (_) {}
+        }
+      }
+      return true;
+    } on GoogleSignInException catch (e) {
+      if (mounted &&
+          e.code != GoogleSignInExceptionCode.canceled &&
+          e.code != GoogleSignInExceptionCode.interrupted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign-in failed: ${e.description ?? e.code.name}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<bool> _showBackupConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cloud Backup'),
+        content: const Text(
+          'Your challenge data will be encrypted and backed up to your '
+          'Google account. Enable cloud backup?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enable Backup'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Widget _buildActiveSession(ChallengeLoaded state) {
@@ -308,6 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Calendar
         Expanded(
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             child: Column(
               children: [
@@ -348,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         // Progress indicator for selected date
-                        _buildDateProgressIndicator(state),
+                        _buildDateProgressIndicator(state, session),
                       ],
                     ),
                   ),
@@ -444,6 +588,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
+                          key: _taskKeys.putIfAbsent(
+                              challenge.id, () => GlobalKey()),
                           child: _isWaterChallenge(challenge)
                               ? _buildWaterTracker(
                                   challenge, isToday, selectedProgress)
@@ -466,11 +612,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                         );
                                   },
                                   onRemove: () {
-                                    context.read<ChallengeBloc>().add(
-                                          RemoveChallengeFromSession(
-                                              challenge.id),
-                                        );
+                                    _handleRemoveTask(session, challenge);
                                   },
+                                  onEdit: () => _showTaskSheet(
+                                    context,
+                                    session,
+                                    challenge,
+                                  ),
                                   proofStatus: _proofStatuses[challenge.id],
                                   onSubmitProof: () => _submitProof(challenge),
                                   onReviewProof: () => _reviewProof(challenge),
@@ -505,19 +653,18 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.green[300]!),
+            color: const Color(0xFFFFA726),
             borderRadius: BorderRadius.circular(12),
-            color: Colors.green[50],
           ),
-          child: Row(
+          child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.add, color: Colors.green[700], size: 20),
-              const SizedBox(width: 8),
+              Icon(Icons.add, color: Colors.white, size: 20),
+              SizedBox(width: 8),
               Text(
                 'Add Task',
                 style: TextStyle(
-                  color: Colors.green[700],
+                  color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -530,72 +677,60 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAddTaskSheet() {
-    final controller = TextEditingController();
+    final state = context.read<ChallengeBloc>().state;
+    if (state is! ChallengeLoaded || state.activeSession == null) return;
+    _showTaskSheet(context, state.activeSession!, null);
+  }
+
+  void _showTaskSheet(
+    BuildContext context,
+    ChallengeSession session,
+    Challenge? challenge,
+  ) {
+    final bloc = context.read<ChallengeBloc>();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Add Task',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    labelText: 'Task name',
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (_) => _addTaskFromSheet(controller),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => _addTaskFromSheet(controller),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Add Task'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      builder: (_) => ChallengeTaskSheet(bloc: bloc, challenge: challenge),
     );
   }
 
-  void _addTaskFromSheet(TextEditingController controller) {
-    final name = controller.text.trim();
-    if (name.isEmpty) return;
-    Navigator.pop(context);
-    context.read<ChallengeBloc>().add(
-          AddChallengeToSession(
-            Challenge(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              title: name,
-              taskType: 'hard',
-            ),
+  void _handleRemoveTask(ChallengeSession session, Challenge challenge) {
+    final remaining =
+        session.challenges.where((c) => c.taskType != 'regular').length;
+    if (remaining > 1) {
+      context.read<ChallengeBloc>().add(
+            RemoveChallengeFromSession(challenge.id),
+          );
+      return;
+    }
+
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End Challenge?'),
+        content: Text(
+          '"${challenge.title}" is the only task in this challenge. '
+          'Deleting it will end the challenge.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-        );
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('End Challenge'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) {
+        context.read<ChallengeBloc>().add(const EndActiveSession());
+      }
+    });
   }
 
   Widget _buildWaterTracker(
@@ -659,7 +794,8 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
-  Widget _buildDateProgressIndicator(ChallengeLoaded state) {
+  Widget _buildDateProgressIndicator(
+      ChallengeLoaded state, ChallengeSession session) {
     final progress = state.currentProgress
         .where((p) => _isSameDay(p.date, _selectedDay))
         .firstOrNull;
@@ -687,36 +823,83 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            progress.isCompleted ? Icons.check_circle : Icons.cancel,
-            color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            progress.isCompleted
-                ? 'All tasks completed!'
-                : 'Some tasks are incomplete',
-            style: TextStyle(
-              color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+        onTap: progress.isCompleted
+            ? null
+            : () => _scrollToFirstIncompleteTask(session),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
             ),
           ),
-        ],
+          child: Row(
+            children: [
+              Icon(
+                progress.isCompleted ? Icons.check_circle : Icons.cancel,
+                color:
+                    progress.isCompleted ? Colors.green[600] : Colors.red[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  progress.isCompleted
+                      ? 'All tasks completed!'
+                      : 'Some tasks are incomplete',
+                  style: TextStyle(
+                    color: progress.isCompleted
+                        ? Colors.green[700]
+                        : Colors.red[700],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (!progress.isCompleted)
+                Icon(Icons.keyboard_arrow_down, color: Colors.red[700]),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  void _scrollToFirstIncompleteTask(ChallengeSession session) {
+    Challenge? target;
+    for (final c in session.challenges.where((c) => c.taskType != 'regular')) {
+      final isCompleted = _taskCompletionFor(c);
+      if (!isCompleted) {
+        target = c;
+        break;
+      }
+    }
+    final key = target == null ? null : _taskKeys[target.id];
+    final context2 = key?.currentContext;
+    if (context2 != null) {
+      Scrollable.ensureVisible(
+        context2,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.2,
+      );
+    }
+  }
+
+  bool _taskCompletionFor(Challenge challenge) {
+    final allProgress = context.read<ChallengeBloc>().state;
+    if (allProgress is! ChallengeLoaded) return false;
+    final progress = allProgress.currentProgress
+        .where((p) => _isSameDay(p.date, _selectedDay))
+        .firstOrNull;
+    return progress?.challengeCompletions[challenge.id] ?? false;
   }
 
   Future<void> _submitProof(Challenge challenge) async {

@@ -21,6 +21,7 @@ class DailyTaskCard extends StatefulWidget {
   final Function(bool) onToggle;
   final Function(Challenge)? onReminderUpdate;
   final VoidCallback? onRemove;
+  final VoidCallback? onEdit;
   final int? dayNumber;
   final String? accountablePartnerUid;
   final String? partnerName;
@@ -38,6 +39,7 @@ class DailyTaskCard extends StatefulWidget {
     required this.onToggle,
     this.onReminderUpdate,
     this.onRemove,
+    this.onEdit,
     this.dayNumber,
     this.accountablePartnerUid,
     this.partnerName,
@@ -428,6 +430,18 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (widget.isEditable && _hasAccountabilityConnection) {
       actions.add(_buildProofButton());
+    }
+
+    if (widget.isEditable && widget.onEdit != null) {
+      actions.add(IconButton(
+        onPressed: widget.onEdit,
+        icon:
+            Icon(Icons.edit_outlined, color: Colors.grey[600], size: iconSize),
+        padding: EdgeInsets.zero,
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        tooltip: 'Edit Task',
+      ));
     }
 
     if (widget.isEditable && widget.onRemove != null) {

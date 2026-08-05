@@ -19,10 +19,13 @@ mixin RegularTaskSheetHelpers<T extends StatefulWidget> on State<T> {
         selectedImagePath: sheetChallenge.imagePath,
         onSelectionChanged: (iconName, imagePath) {
           setState(() {
-            sheetChallenge = sheetChallenge.copyWith(
-              iconName: iconName,
-              imagePath: imagePath,
-            );
+            if (iconName == null && imagePath == null) {
+              sheetChallenge =
+                  sheetChallenge.copyWith(iconName: '', imagePath: '');
+            } else {
+              sheetChallenge = sheetChallenge.copyWith(
+                  iconName: iconName, imagePath: imagePath);
+            }
           });
         },
       ),
