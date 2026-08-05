@@ -20,17 +20,6 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final syncSvc = CloudSyncService();
 
-      // 1. Show consent dialog if not yet given
-      if (!await syncSvc.hasConsentBeenGiven()) {
-        if (!mounted) return;
-        final accepted = await _showConsentDialog();
-        if (!accepted) {
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
       if (!mounted) return;
       if (user == null) {
@@ -45,17 +34,33 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 3. Record consent
-      await syncSvc.recordConsent();
+      var backupEnabled = await syncSvc.hasConsentBeenGiven();
+      if (!backupEnabled && mounted) {
+        backupEnabled = await _showConsentDialog();
+      }
+      if (backupEnabled) {
+        await syncSvc.recordConsent();
+      }
 
-      // 4. Trigger initial sync (creates user_data/{uid})
-      if (mounted) {
+      if (backupEnabled && mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
           await syncSvc.syncToCloud(db, taskRepo);
         } catch (_) {}
       }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            backupEnabled
+                ? 'Signed in. Cloud backup is enabled.'
+                : 'Signed in. Enable cloud backup anytime from Profile.',
+          ),
+          backgroundColor: backupEnabled ? Colors.green : Colors.orange,
+        ),
+      );
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {

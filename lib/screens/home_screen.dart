@@ -26,6 +26,7 @@ import 'package:seventy_five_hard_tracker/services/smart_notification_service.da
 import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
+import '../main.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -484,12 +485,117 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 12),
 
+            if (isToday) _buildAddTaskButton(),
+
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildAddTaskButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: InkWell(
+        onTap: _showAddTaskSheet,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.green[300]!),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.green[50],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add, color: Colors.green[700], size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Add Task',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddTaskSheet() {
+    final controller = TextEditingController();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Add Task',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    labelText: 'Task name',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => _addTaskFromSheet(controller),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => _addTaskFromSheet(controller),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Add Task'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _addTaskFromSheet(TextEditingController controller) {
+    final name = controller.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(context);
+    context.read<ChallengeBloc>().add(
+          AddChallengeToSession(
+            Challenge(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              title: name,
+              taskType: 'hard',
+            ),
+          ),
+        );
   }
 
   Widget _buildWaterTracker(
@@ -534,7 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final newString = times.map((e) => e.toIso8601String()).join(',');
     final isCompleted = times.length >= kWaterGoal;
 
-    // 1. Save timestamps first so a stale rebuild doesn't overwrite them
+    // Save timestamps first so a stale rebuild doesn't overwrite them
     context.read<ChallengeBloc>().add(
           AddTaskNote(
             date: _selectedDay,
@@ -543,7 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
 
-    // 2. Update the overall completion boolean
+    // Then update the overall completion boolean
     context.read<ChallengeBloc>().add(
           UpdateDailyProgress(
             date: _selectedDay,

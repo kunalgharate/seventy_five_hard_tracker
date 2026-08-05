@@ -29,12 +29,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _syncService = CloudSyncService();
   bool _isSyncing = false;
   bool _isSigningIn = false;
+  bool _consentGiven = true;
   String? _lastSync;
 
   @override
   void initState() {
     super.initState();
     _loadLastSync();
+    _loadConsentState();
+  }
+
+  Future<void> _loadConsentState() async {
+    final given = await _syncService.hasConsentBeenGiven();
+    if (mounted) setState(() => _consentGiven = given);
   }
 
   Future<void> _loadLastSync() async {
@@ -607,6 +614,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ],
+            if (isSignedIn && !_consentGiven) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _enableBackup,
+                  icon: const Icon(Icons.cloud_upload, size: 18),
+                  label: const Text('Enable Backup'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -671,13 +692,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ── Auth actions ─────────────────────────────────────────────────────────
 
   Future<void> _signIn() async {
-    final consentGiven = await _syncService.hasConsentBeenGiven();
-    if (!consentGiven && mounted) {
-      final accepted = await _showConsentDialog();
-      if (!accepted) return;
-      await _syncService.recordConsent();
-    }
-
     if (!mounted || _isSigningIn) return;
     setState(() => _isSigningIn = true);
 
@@ -687,23 +701,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
       if (!mounted) return;
 
-      if (user != null) {
-        _triggerAutoSync();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Cloud backup enabled for ${user.displayName ?? user.email}'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      } else {
+      if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Sign-in cancelled. Please try again.'),
             backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      var backupEnabled = await _syncService.hasConsentBeenGiven();
+      if (!backupEnabled && mounted) {
+        backupEnabled = await _showConsentDialog();
+      }
+      if (backupEnabled) {
+        await _syncService.recordConsent();
+        _triggerAutoSync();
+      }
+      if (mounted) {
+        setState(() => _consentGiven = backupEnabled);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              backupEnabled
+                  ? 'Cloud backup enabled for ${user.displayName ?? user.email}'
+                  : 'Signed in. Enable cloud backup anytime from this screen.',
+            ),
+            backgroundColor: backupEnabled ? Colors.green : Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -741,6 +767,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             content: Text('Signed out'), backgroundColor: Colors.grey),
       );
     }
+  }
+
+  Future<void> _enableBackup() async {
+    await _syncService.recordConsent();
+    if (!mounted) return;
+    setState(() => _consentGiven = true);
+    _triggerAutoSync();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Cloud backup is now enabled.'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// After sign-in, checks if local data is empty. If so, restores from cloud.

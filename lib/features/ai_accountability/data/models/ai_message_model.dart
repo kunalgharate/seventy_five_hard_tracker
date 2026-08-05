@@ -1,4 +1,4 @@
-// AI Message Model — placeholder
+// AI Message Model
 class AIMessage {
   final String title;
   final String message;

@@ -1,4 +1,4 @@
-// AI Companion BLoC — placeholder
+// AI Companion BLoC
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../data/services/ai_companion_service.dart';
