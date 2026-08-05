@@ -25,11 +25,17 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
   late Challenge _challenge;
   late final TextEditingController _controller;
   String? _taskNameError;
+  bool _userPickedIcon = false;
 
   @override
   Challenge get sheetChallenge => _challenge;
   @override
   set sheetChallenge(Challenge value) => _challenge = value;
+
+  @override
+  void onUserPickedIcon() {
+    _userPickedIcon = true;
+  }
 
   @override
   void initState() {
@@ -58,18 +64,29 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
       (_challenge.imagePath != null && _challenge.imagePath!.isNotEmpty) ||
       (_challenge.iconName != null && _challenge.iconName!.isNotEmpty);
 
-  bool get _isValid =>
-      _challenge.title.trim().isNotEmpty &&
-      _taskNameError == null &&
-      _challenge.isReminderEnabled &&
-      _challenge.reminderTime != null;
+  /// A custom image is always a manual choice — never auto-derive over it.
+  bool get _hasManualImage =>
+      _challenge.imagePath != null && _challenge.imagePath!.isNotEmpty;
+
+  bool get _isValid {
+    if (_challenge.title.trim().isEmpty || _taskNameError != null) {
+      return false;
+    }
+    // New tasks require a reminder. When editing, keep the task's existing
+    // reminder state so tasks saved without a reminder can still be edited.
+    if (_isEdit && !_challenge.isReminderEnabled) return true;
+    return _challenge.isReminderEnabled && _challenge.reminderTime != null;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final double maxHeight = MediaQuery.of(context).size.height * 0.75;
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return SafeArea(
       top: false,
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: maxHeight,
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -200,7 +217,9 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
                                           ? null
                                           : validateTaskName(value);
                                     });
-                                    if (value.isNotEmpty && !_hasCustomIcon) {
+                                    if (value.isNotEmpty &&
+                                        !_userPickedIcon &&
+                                        !_hasManualImage) {
                                       final iconData =
                                           ChallengeIconService.findBestIcon(
                                               value);
@@ -353,6 +372,9 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
                 ),
               ),
             ),
+            SizedBox(
+              height: keyboardHeight.clamp(0.0, maxHeight * 0.75).toDouble(),
+            ),
           ],
         ),
       ),
@@ -360,13 +382,17 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
   }
 
   void _onInvalidTap() {
+    final String message;
+    if (_challenge.title.trim().isEmpty) {
+      message = 'Please enter a task name';
+    } else if (_taskNameError != null) {
+      message = _taskNameError!;
+    } else {
+      message = 'Please set a reminder before saving this task';
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          _challenge.title.trim().isEmpty
-              ? 'Please enter a task name'
-              : 'Please set a reminder before saving this task',
-        ),
+        content: Text(message),
         backgroundColor: Colors.red[600],
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),

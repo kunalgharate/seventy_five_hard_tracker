@@ -28,11 +28,17 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
   String? _taskNameError;
   AccountabilityPartner? _selectedPartner;
   List<AccountabilityPartner> _availablePartners = [];
+  bool _userPickedIcon = false;
 
   @override
   Challenge get sheetChallenge => _challenge;
   @override
   set sheetChallenge(Challenge value) => _challenge = value;
+
+  @override
+  void onUserPickedIcon() {
+    _userPickedIcon = true;
+  }
 
   @override
   void initState() {
@@ -76,10 +82,13 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
 
   @override
   Widget build(BuildContext context) {
+    final double maxHeight = MediaQuery.of(context).size.height * 0.75;
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return SafeArea(
         top: false,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: maxHeight,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -215,7 +224,8 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
                                             : validateTaskName(value);
                                       });
                                       // Auto-detect icon
-                                      if (value.isNotEmpty && !_hasCustomIcon) {
+                                      if (value.isNotEmpty &&
+                                          !_userPickedIcon) {
                                         final iconData =
                                             ChallengeIconService.findBestIcon(
                                                 value);
@@ -459,6 +469,9 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
                     ),
                   ),
                 ),
+              ),
+              SizedBox(
+                height: keyboardHeight.clamp(0.0, maxHeight * 0.75).toDouble(),
               ),
             ],
           ),

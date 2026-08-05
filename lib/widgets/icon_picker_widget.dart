@@ -33,8 +33,17 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _selectedIconName = widget.selectedIconName;
-    _selectedImagePath = widget.selectedImagePath;
+    // Normalize empty-string selections (sheets store '' for a cleared
+    // field) to null so the "Remove Icon"/"Remove Image" buttons and the
+    // selection highlight are not shown for a cleared icon.
+    _selectedIconName =
+        widget.selectedIconName != null && widget.selectedIconName!.isNotEmpty
+            ? widget.selectedIconName
+            : null;
+    _selectedImagePath =
+        widget.selectedImagePath != null && widget.selectedImagePath!.isNotEmpty
+            ? widget.selectedImagePath
+            : null;
   }
 
   @override

@@ -463,7 +463,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   },
                                   onEdit: () => _showTaskSheet(
                                     context,
-                                    session,
                                     challenge,
                                   ),
                                   proofStatus: _proofStatuses[challenge.id],
@@ -526,12 +525,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showAddTaskSheet() {
     final state = context.read<ChallengeBloc>().state;
     if (state is! ChallengeLoaded || state.activeSession == null) return;
-    _showTaskSheet(context, state.activeSession!, null);
+    _showTaskSheet(context, null);
   }
 
   void _showTaskSheet(
     BuildContext context,
-    ChallengeSession session,
     Challenge? challenge,
   ) {
     final bloc = context.read<ChallengeBloc>();

@@ -870,7 +870,14 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final activeSession = await _repository.getActiveSession();
       if (activeSession == null) return;
 
-      await _smartNotifications.cancelAllRemindersForDate(DateTime.now());
+      // Cancel only this session's reminders — regular-task reminders and any
+      // other pending challenge reminders must keep working.
+      for (final challenge in activeSession.challenges) {
+        if (challenge.isReminderEnabled) {
+          await _smartNotifications.cancelCompletedTaskReminders(challenge.id);
+        }
+      }
+      await _smartNotifications.cancelNightSummaries();
 
       final endedSession = activeSession.copyWith(
         isActive: false,

@@ -30,7 +30,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // 2. Record consent
-      await syncSvc.recordConsent();
+      try {
+        await syncSvc.recordConsent();
+      } catch (e) {
+        // A consent flag failure shouldn't strand the sign-in flow.
+        debugPrint('[Login] Failed to record consent: $e');
+      }
 
       // 3. Trigger initial sync (creates user_data/{uid})
       if (mounted) {

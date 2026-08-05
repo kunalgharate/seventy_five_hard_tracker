@@ -48,10 +48,13 @@ class _EditRegularTaskSheetState extends State<EditRegularTaskSheet>
 
   @override
   Widget build(BuildContext context) {
+    final double maxHeight = MediaQuery.of(context).size.height * 0.75;
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return SafeArea(
         top: false,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: maxHeight,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -295,6 +298,9 @@ class _EditRegularTaskSheetState extends State<EditRegularTaskSheet>
                     ),
                   ),
                 ),
+              ),
+              SizedBox(
+                height: keyboardHeight.clamp(0.0, maxHeight * 0.75).toDouble(),
               ),
             ],
           ),

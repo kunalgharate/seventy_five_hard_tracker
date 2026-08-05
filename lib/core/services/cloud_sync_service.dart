@@ -55,9 +55,14 @@ class CloudSyncService {
   /// The UID is stable across sign-ins (same Google account = same UID).
   /// Data confidentiality is enforced at two layers:
   ///   1. Firestore security rules restrict read/write to the UID owner
-  ///   2. AES-256-GCM encryption ensures even a Firestore admin can't read content
+  ///   2. AES-256-GCM encryption binds the ciphertext to the derived key, so
+  ///      only the UID owner (who can re-derive the key) can decrypt it.
   ///
   /// The salt and info strings version-namespace the key for future migrations.
+  /// The key is deliberately derived only from the UID (not the short-lived
+  /// idToken) so it stays re-derivable after a reinstall. Data confidentiality
+  /// therefore rests on the Firestore security rules restricting access to
+  /// the UID owner, not on a secret held by the client.
   enc.Key _deriveKey(String uid) {
     final ikm = utf8.encode(uid);
     final salt = utf8.encode('dailymettle-v3-stable-key');
@@ -86,8 +91,8 @@ class CloudSyncService {
 
   /// Signs in with Google, derives the AES key, saves user profile.
   ///
-  /// The idToken returned by Google Sign-In is used as part of the HKDF
-  /// input, so key derivation happens here where the token is available.
+  /// The AES key is derived from the stable Firebase UID (see [_deriveKey]),
+  /// which is available here right after a successful sign-in.
   Future<User?> signInWithGoogle() async {
     try {
       final googleSignIn = GoogleSignIn.instance;
@@ -274,8 +279,11 @@ class CloudSyncService {
       }
 
       // Schema v1/v2: AES-256-CBC (legacy — read-only backwards compat).
-      // These backups were created before GCM migration. We decrypt them
-      // using CBC, then on the next syncToCloud they'll be re-encrypted with GCM.
+      // These backups were created before the GCM migration and were encrypted
+      // with the old uid+idToken key derivation, which can no longer be
+      // reconstructed after a reinstall. Decryption uses the current key and
+      // throws for those backups, so they fail closed (null restore) instead
+      // of returning corrupt data. New writes always re-encrypt as v3.
       final cipher = (data['enc'] ?? data['data']) as String?;
       if (cipher == null) return null;
       final ivBase64 = data['iv'] as String?;

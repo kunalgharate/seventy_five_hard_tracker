@@ -675,7 +675,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.pop(context);
 
       if (user != null) {
-        await _syncService.recordConsent();
+        try {
+          await _syncService.recordConsent();
+        } catch (e) {
+          // Consent flag write failure shouldn't abort the sign-in flow or
+          // pop the navigator a second time (the loading dialog is already
+          // closed above).
+          debugPrint('[Profile] Failed to record consent: $e');
+        }
         if (!mounted) return;
         _triggerAutoSync();
         ScaffoldMessenger.of(context).showSnackBar(

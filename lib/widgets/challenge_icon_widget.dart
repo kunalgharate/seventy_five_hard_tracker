@@ -158,7 +158,7 @@ class ChallengeIconWidget extends StatelessWidget {
       return DynamicColorService.getColorForText(challenge.title);
     }
 
-    if (challenge.iconName != null) {
+    if (challenge.iconName != null && challenge.iconName!.isNotEmpty) {
       final iconData = ChallengeIconService.getAllIcons().firstWhere(
         (icon) => icon.name == challenge.iconName,
         orElse: () => ChallengeIconService.getAllIcons().first,

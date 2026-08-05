@@ -143,39 +143,106 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
+  /// Estimated height of a challenge card, used only to jump the lazy
+  /// ListView near an off-screen card so it gets built for a precise scroll.
+  static const double _kEstimatedCardHeight = 380;
+
   void _scrollToFirstError() {
+    int? targetIndex;
+
+    // Primary: scroll to the first card with a validation error that is
+    // currently built (has a live context). Don't break on a card that isn't
+    // built yet — keep scanning for the next visible error.
     for (int i = 0; i < _challenges.length; i++) {
       if (_validationErrors[i] != null) {
         final key = _cardKeys[i];
         if (key != null && key.currentContext != null) {
-          Scrollable.ensureVisible(
-            key.currentContext!,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
+          targetIndex = i;
+          break;
         }
-        break;
       }
     }
-    // Fallback: scroll to the first hard task missing a required reminder
+
+    // Fallback: a hard task that is missing a required reminder.
+    if (targetIndex == null) {
+      for (int i = 0; i < _challenges.length; i++) {
+        final c = _challenges[i];
+        if (c.taskType == 'hard' &&
+            c.isReminderEnabled &&
+            c.reminderTime == null) {
+          final key = _cardKeys[i];
+          if (key != null && key.currentContext != null) {
+            targetIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    // The first error card may sit below the fold where the lazy ListView
+    // hasn't built it yet. Estimate its offset and jump there so it builds,
+    // then scroll it into view on the next frame.
+    if (targetIndex == null) {
+      int? firstErrorIndex;
+      for (int i = 0; i < _challenges.length; i++) {
+        if (_validationErrors[i] != null) {
+          firstErrorIndex = i;
+          break;
+        }
+      }
+      firstErrorIndex ??= _firstMissingReminderIndex();
+      if (firstErrorIndex != null && _setupScrollController.hasClients) {
+        final double maxExtent =
+            _setupScrollController.position.maxScrollExtent;
+        final double target =
+            _estimateCardOffset(firstErrorIndex).clamp(0.0, maxExtent);
+        _setupScrollController.jumpTo(target);
+        targetIndex = firstErrorIndex;
+      }
+    }
+
+    if (targetIndex == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _cardKeys[targetIndex!];
+      if (key != null && key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
+  }
+
+  int? _firstMissingReminderIndex() {
     for (int i = 0; i < _challenges.length; i++) {
       final c = _challenges[i];
       if (c.taskType == 'hard' &&
           c.isReminderEnabled &&
           c.reminderTime == null) {
-        final key = _cardKeys[i];
-        if (key != null && key.currentContext != null) {
-          Scrollable.ensureVisible(
-            key.currentContext!,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOut,
-            alignment: 0.1,
-          );
-        }
-        break;
+        return i;
       }
     }
+    return null;
+  }
+
+  double _estimateCardOffset(int index) {
+    double offset = 0;
+    for (int i = 0; i < index; i++) {
+      final key = _cardKeys[i];
+      if (key != null && key.currentContext != null) {
+        final box = key.currentContext!.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          offset += box.size.height;
+          continue;
+        }
+      }
+      offset += _kEstimatedCardHeight;
+    }
+    return offset;
   }
 
   void _updateChallenge(
@@ -355,7 +422,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
 
       // 2. Record consent
-      await syncSvc.recordConsent();
+      try {
+        await syncSvc.recordConsent();
+      } catch (e) {
+        // A consent flag failure shouldn't strand the sign-in flow.
+        debugPrint('[Onboarding] Failed to record consent: $e');
+      }
 
       // 3. Check if cloud backup exists (reinstall scenario)
       //    Restore if found, then always go to /home.
