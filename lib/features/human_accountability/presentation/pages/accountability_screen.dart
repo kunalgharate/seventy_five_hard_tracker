@@ -28,7 +28,11 @@ import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 // ── Main screen ──────────────────────────────────────────────────────────────
 
 class AccountabilityScreen extends StatefulWidget {
-  const AccountabilityScreen({super.key});
+  const AccountabilityScreen({super.key, this.onGoToProfile});
+
+  /// Switches the bottom navigation to the Profile tab when the user needs
+  /// to sign in before inviting a partner.
+  final VoidCallback? onGoToProfile;
 
   @override
   State<AccountabilityScreen> createState() => _AccountabilityScreenState();
@@ -117,10 +121,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           ),
         ],
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: _buildInviteButton(),
-      ),
+      floatingActionButton: _buildFab(),
     );
   }
 
@@ -144,64 +145,16 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     );
   }
 
-  Widget _buildInviteButton() {
-    return InkWell(
-      onTap: _showInviteDialog,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.orange[400]!, Colors.orange[600]!],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.orange.withValues(alpha: 0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child:
-                  const Icon(Icons.person_add, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Invite Partner',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'Add an accountability partner',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.white),
-          ],
-        ),
+  Widget _buildFab() {
+    return FloatingActionButton.extended(
+      heroTag: 'invitePartner',
+      onPressed: _showInviteDialog,
+      icon: const Icon(Icons.person_add),
+      label: const Text('Add a Partner'),
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
       ),
     );
   }
@@ -234,8 +187,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
-                // Navigate to profile where sign-in is available
-                Navigator.pushNamed(context, '/home');
+                widget.onGoToProfile?.call();
               },
               icon: const Icon(Icons.person),
               label: const Text('Go to Profile to Sign In'),
