@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
@@ -20,29 +21,29 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final syncSvc = CloudSyncService();
 
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
-      if (!mounted) return;
       if (user == null) {
+        if (!mounted) return;
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Sign-in was cancelled or could not be completed. Please try again.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
         return;
       }
 
-      var backupEnabled = await syncSvc.hasConsentBeenGiven();
-      if (!backupEnabled && mounted) {
-        backupEnabled = await _showConsentDialog();
-      }
-      if (backupEnabled) {
-        await syncSvc.recordConsent();
-      }
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-      if (backupEnabled && mounted) {
+      // 4. Trigger initial sync (creates user_data/{uid})
+      if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
@@ -50,21 +51,9 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (_) {}
       }
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            backupEnabled
-                ? 'Signed in. Cloud backup is enabled.'
-                : 'Signed in. Enable cloud backup anytime from Profile.',
-          ),
-          backgroundColor: backupEnabled ? Colors.green : Colors.orange,
-        ),
-      );
-
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    } catch (e) {
-      if (mounted) _showError('Sign-in failed: $e');
+    } on FirebaseAuthException catch (e) {
+      _showError(e.message ?? 'Auth failed');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -201,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // GOOGLE SIGN-IN INTERACTION LAYER (CROSS-PLATFORM SAFE)
                     // ──────────────────────────────────────────────────────────
 
-                    // Native route: custom ElevatedButton for mobile devices
+                    // 📱 NATIVE ROUTE: Custom ElevatedButton for Mobile Devices
                     SizedBox(
                       width: double.infinity,
                       height: 50,

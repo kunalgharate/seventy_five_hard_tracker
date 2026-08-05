@@ -1,20 +1,16 @@
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
-import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
-import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
@@ -255,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: _handleStartChallenge,
+            onPressed: () => Navigator.pushNamed(context, '/onboarding'),
             icon: const Icon(Icons.add),
             label: const Text('Create 75 Hard Challenge'),
             style: ElevatedButton.styleFrom(
@@ -271,155 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _handleStartChallenge() async {
-    User? user;
-    try {
-      user = FirebaseAuth.instance.currentUser;
-    } catch (_) {
-      user = null;
-    }
-    if (user != null) {
-      Navigator.pushNamed(context, '/onboarding');
-      return;
-    }
-
-    final signedIn = await _promptSignInForChallenge();
-    if (signedIn && mounted) {
-      Navigator.pushNamed(context, '/onboarding');
-    }
-  }
-
-  Future<bool> _promptSignInForChallenge() async {
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock, color: Color(0xFFFFA726), size: 40),
-            const SizedBox(height: 12),
-            Text(
-              'Sign in to create your challenge',
-              style: Theme.of(ctx).textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Sign in with Google to start your 75 Hard challenge '
-              'and back up your progress to the cloud.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final ok = await _signInForChallenge();
-                  if (ok && ctx.mounted) Navigator.pop(ctx, true);
-                },
-                icon: const Icon(Icons.login),
-                label: const Text('Sign In with Google'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFA726),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Maybe Later'),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    return result ?? false;
-  }
-
-  Future<bool> _signInForChallenge() async {
-    try {
-      final syncSvc = CloudSyncService();
-      final user = await syncSvc.signInWithGoogle();
-      if (user == null) return false;
-
-      var backupEnabled = await syncSvc.hasConsentBeenGiven();
-      if (!backupEnabled && mounted) {
-        backupEnabled = await _showBackupConsentDialog();
-      }
-      if (backupEnabled) {
-        await syncSvc.recordConsent();
-        if (mounted) {
-          try {
-            final db = context.read<ChallengeBloc>().repository;
-            final taskRepo = context.read<RegularTaskBloc>().repository;
-            await syncSvc.syncToCloud(db, taskRepo);
-          } catch (_) {}
-        }
-      }
-      return true;
-    } on GoogleSignInException catch (e) {
-      if (mounted &&
-          e.code != GoogleSignInExceptionCode.canceled &&
-          e.code != GoogleSignInExceptionCode.interrupted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sign-in failed: ${e.description ?? e.code.name}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return false;
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Authentication error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return false;
-    }
-  }
-
-  Future<bool> _showBackupConsentDialog() async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cloud Backup'),
-        content: const Text(
-          'Your challenge data will be encrypted and backed up to your '
-          'Google account. Enable cloud backup?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not Now'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFA726),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enable Backup'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
   }
 
   Widget _buildActiveSession(ChallengeLoaded state) {

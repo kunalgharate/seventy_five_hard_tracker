@@ -346,22 +346,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     try {
       final syncSvc = CloudSyncService();
 
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoggingIn = false);
+          return;
+        }
+      }
+
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
-      if (!mounted) return;
       if (user == null) {
+        if (!mounted) return;
         setState(() => _isLoggingIn = false);
         return;
       }
 
-      var backupEnabled = await syncSvc.hasConsentBeenGiven();
-      if (!backupEnabled && mounted) {
-        backupEnabled = await _showConsentDialog();
-      }
-      if (backupEnabled) {
-        await syncSvc.recordConsent();
-      }
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-      if (backupEnabled && mounted) {
+      // 4. Check if cloud backup exists (reinstall scenario)
+      //    Restore if found, then always go to /home.
+      if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
@@ -378,6 +386,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               context.read<RegularTaskBloc>().add(LoadRegularTasks());
             }
           } else {
+            // No cloud data yet — sync current (empty) local state
             await syncSvc.syncToCloud(db, taskRepo);
           }
         } catch (_) {}
@@ -388,11 +397,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            backupEnabled
-                ? 'Welcome, ${user.displayName ?? 'there'}! Cloud backup is enabled.'
-                : 'Welcome, ${user.displayName ?? 'there'}! Enable cloud backup anytime from Profile.',
+            'Welcome, ${user.displayName ?? 'there'}! Cloud backup is enabled.',
           ),
-          backgroundColor: backupEnabled ? Colors.green : Colors.orange,
+          backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
       );
