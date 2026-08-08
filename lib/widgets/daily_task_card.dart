@@ -21,6 +21,7 @@ class DailyTaskCard extends StatefulWidget {
   final Function(bool) onToggle;
   final Function(Challenge)? onReminderUpdate;
   final VoidCallback? onRemove;
+  final VoidCallback? onEdit;
   final int? dayNumber;
   final String? accountablePartnerUid;
   final String? partnerName;
@@ -38,6 +39,7 @@ class DailyTaskCard extends StatefulWidget {
     required this.onToggle,
     this.onReminderUpdate,
     this.onRemove,
+    this.onEdit,
     this.dayNumber,
     this.accountablePartnerUid,
     this.partnerName,
@@ -430,6 +432,30 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       actions.add(_buildProofButton());
     }
 
+    if (widget.isEditable && widget.onEdit != null) {
+      actions.add(IconButton(
+        onPressed: widget.onEdit,
+        icon:
+            Icon(Icons.edit_outlined, color: Colors.grey[600], size: iconSize),
+        padding: EdgeInsets.zero,
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        tooltip: 'Edit Task',
+      ));
+    }
+
+    if (widget.isEditable && widget.onRemove != null) {
+      actions.add(IconButton(
+        onPressed: _confirmRemove,
+        icon:
+            Icon(Icons.delete_outline, color: Colors.red[400], size: iconSize),
+        padding: EdgeInsets.zero,
+        constraints:
+            const BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+        tooltip: 'Remove Task',
+      ));
+    }
+
     if (actions.isEmpty) return const SizedBox.shrink();
 
     return Row(
@@ -445,6 +471,32 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   bool _isRequestedAndUnaccepted() {
     return widget.accountabilityStatus == AccountabilityTaskStatus.requested;
+  }
+
+  void _confirmRemove() {
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Task?'),
+        content:
+            Text('Remove "${widget.challenge.title}" from this challenge?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) {
+        widget.onRemove?.call();
+      }
+    });
   }
 
   Widget _buildCompletionWidget() {

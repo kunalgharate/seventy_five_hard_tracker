@@ -1,4 +1,4 @@
-// AI Companion State — placeholder
+// AI Companion State
 import '../../data/models/ai_message_model.dart';
 
 abstract class AICompanionState {}

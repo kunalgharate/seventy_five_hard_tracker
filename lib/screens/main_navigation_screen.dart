@@ -18,11 +18,13 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  static const _screens = <Widget>[
-    HomeScreen(),
-    RegularTasksScreen(),
-    AccountabilityScreen(),
-    ProfileScreen(),
+  late final List<Widget> _screens = [
+    const HomeScreen(),
+    const RegularTasksScreen(),
+    AccountabilityScreen(
+      onGoToProfile: () => setState(() => _currentIndex = 3),
+    ),
+    const ProfileScreen(),
   ];
 
   @override

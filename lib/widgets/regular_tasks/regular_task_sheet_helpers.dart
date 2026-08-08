@@ -9,6 +9,11 @@ mixin RegularTaskSheetHelpers<T extends StatefulWidget> on State<T> {
   Challenge get sheetChallenge;
   set sheetChallenge(Challenge value);
 
+  /// Hook invoked after the user manually picks or clears an icon/image.
+  /// Sheets that auto-derive an icon from the title should override this to
+  /// stop overriding the user's explicit choice.
+  void onUserPickedIcon() {}
+
   void showIconPicker() {
     showModalBottomSheet(
       context: context,
@@ -19,11 +24,14 @@ mixin RegularTaskSheetHelpers<T extends StatefulWidget> on State<T> {
         selectedImagePath: sheetChallenge.imagePath,
         onSelectionChanged: (iconName, imagePath) {
           setState(() {
+            // Store '' (not null) for the unselected field so the previous
+            // value is always cleared instead of being kept by copyWith.
             sheetChallenge = sheetChallenge.copyWith(
-              iconName: iconName,
-              imagePath: imagePath,
+              iconName: iconName ?? '',
+              imagePath: imagePath ?? '',
             );
           });
+          onUserPickedIcon();
         },
       ),
     );

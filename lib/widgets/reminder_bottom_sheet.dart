@@ -89,7 +89,13 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
         top: false,
         child: Container(
           constraints: BoxConstraints(
-            maxHeight: availableHeight * 0.92,
+            // Never let the sheet shrink so small that the scroll area
+            // becomes unusable (e.g. when the keyboard is open).
+            maxHeight: availableHeight < 360.0
+                ? availableHeight
+                : (availableHeight * 0.92)
+                    .clamp(360.0, availableHeight)
+                    .toDouble(),
           ),
           decoration: const BoxDecoration(
             color: Colors.white,

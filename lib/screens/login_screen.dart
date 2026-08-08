@@ -21,17 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final syncSvc = CloudSyncService();
 
-      // 1. Show consent dialog if not yet given
-      if (!await syncSvc.hasConsentBeenGiven()) {
-        if (!mounted) return;
-        final accepted = await _showConsentDialog();
-        if (!accepted) {
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
+      // 1. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
       if (user == null) {
         if (!mounted) return;
@@ -39,10 +29,15 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 3. Record consent
-      await syncSvc.recordConsent();
+      // 2. Record consent
+      try {
+        await syncSvc.recordConsent();
+      } catch (e) {
+        // A consent flag failure shouldn't strand the sign-in flow.
+        debugPrint('[Login] Failed to record consent: $e');
+      }
 
-      // 4. Trigger initial sync (creates user_data/{uid})
+      // 3. Trigger initial sync (creates user_data/{uid})
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
@@ -57,71 +52,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<bool> _showConsentDialog() async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
-            SizedBox(width: 8),
-            Text('Cloud Backup'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Before enabling backup, here\'s what you need to know:',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 12),
-            _ConsentPoint(
-              icon: Icons.lock_outline,
-              text:
-                  'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
-            ),
-            SizedBox(height: 8),
-            _ConsentPoint(
-              icon: Icons.key,
-              text:
-                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
-            ),
-            SizedBox(height: 8),
-            _ConsentPoint(
-              icon: Icons.visibility_off,
-              text:
-                  'We cannot read your data. The server stores only ciphertext.',
-            ),
-            SizedBox(height: 8),
-            _ConsentPoint(
-              icon: Icons.sync,
-              text:
-                  'Backup happens automatically in the background whenever you\'re online.',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not Now'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFA726),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enable Backup'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
   }
 
   void _showError(String message) {
@@ -228,29 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ── Helper widget for consent dialog points ──────────────────────────────────
-
-class _ConsentPoint extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _ConsentPoint({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: Colors.green[600]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
-        ),
-      ],
     );
   }
 }

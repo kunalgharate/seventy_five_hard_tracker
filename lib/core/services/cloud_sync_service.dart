@@ -17,10 +17,10 @@ const _kConsentGiven = 'cloudSyncConsentGiven';
 ///
 /// Security properties:
 ///   • AES-256-GCM (AEAD) — confidentiality + integrity + authenticity.
-///     Any tampered ciphertext is rejected at decryption time.
-///   • Key = HKDF-SHA256(uid + idToken, salt, info).
-///     The idToken is a short-lived Google-signed JWT only the authenticated
-///     user can obtain, so the key is NOT re-derivable from public data alone.
+///     Tampered ciphertext is rejected at decryption time whenever the
+///     attacker does not know the derived key.
+///   • Key = HKDF-SHA256(uid, salt, info) — stable and re-derivable by the
+///     UID owner, so backups can be restored after a reinstall.
 ///   • Random 12-byte nonce per encryption call.
 ///   • 128-bit GCM authentication tag appended to ciphertext.
 ///
@@ -42,7 +42,7 @@ class CloudSyncService {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
 
-  /// Derived AES-256 key. Re-derived on each sign-in using uid + idToken.
+  /// Derived AES-256 key. Derived from the Firebase UID on demand.
   enc.Key? _aesKey;
 
   User? get currentUser => _auth.currentUser;
@@ -56,9 +56,14 @@ class CloudSyncService {
   /// The UID is stable across sign-ins (same Google account = same UID).
   /// Data confidentiality is enforced at two layers:
   ///   1. Firestore security rules restrict read/write to the UID owner
-  ///   2. AES-256-GCM encryption ensures even a Firestore admin can't read content
+  ///   2. AES-256-GCM encryption binds the ciphertext to the derived key, so
+  ///      only the UID owner (who can re-derive the key) can decrypt it.
   ///
   /// The salt and info strings version-namespace the key for future migrations.
+  /// The key is deliberately derived only from the UID (not the short-lived
+  /// idToken) so it stays re-derivable after a reinstall. Data confidentiality
+  /// therefore rests on the Firestore security rules restricting access to
+  /// the UID owner, not on a secret held by the client.
   enc.Key _deriveKey(String uid) {
     final ikm = utf8.encode(uid);
     final salt = utf8.encode('dailymettle-v3-stable-key');
@@ -87,8 +92,8 @@ class CloudSyncService {
 
   /// Signs in with Google, derives the AES key, saves user profile.
   ///
-  /// The idToken returned by Google Sign-In is used as part of the HKDF
-  /// input, so key derivation happens here where the token is available.
+  /// The AES key is derived from the stable Firebase UID (see [_deriveKey]),
+  /// which is available here right after a successful sign-in.
   Future<User?> signInWithGoogle() async {
     try {
       final googleSignIn = GoogleSignIn.instance;
@@ -96,7 +101,7 @@ class CloudSyncService {
         scopeHint: ['email', 'profile'],
       );
 
-      // idToken: Google-signed JWT. Used in HKDF to make key non-public.
+      // idToken: Google-signed JWT used to build the Firebase credential.
       final idToken = googleUser.authentication.idToken;
 
       final clientAuth = await googleUser.authorizationClient.authorizeScopes([
@@ -186,11 +191,12 @@ class CloudSyncService {
 
   /// Encrypts ALL local data with AES-256-GCM and uploads to Firestore.
   ///
-  /// Fix #2 (P2): Uses [taskRepo.getAllCompletions()] instead of a date-
-  /// bounded loop, so no historical data is truncated.
+  /// Uses [taskRepo.getAllCompletions()] instead of a date-bounded loop,
+  /// so no historical data is truncated.
   ///
-  /// Fix #3 (P1): AES-GCM provides authentication — any payload tampering
-  /// causes decryption to throw, preventing silent data corruption.
+  /// AES-GCM provides authentication — tampering by anyone who does not know
+  /// the derived key causes decryption to throw, preventing silent data
+  /// corruption.
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -211,7 +217,7 @@ class CloudSyncService {
       }
 
       // Gather ALL regular tasks (including archived) and ALL completions.
-      // Fix #2: getAllCompletions() reads directly from Hive box — no date cap.
+      // getAllCompletions() reads directly from the Hive box — no date cap.
       final regularTasks = taskRepo.getAllTasks();
       final regularCompletions =
           taskRepo.getAllCompletions().map((c) => c.toJson()).toList();
@@ -225,7 +231,7 @@ class CloudSyncService {
         'schemaVersion': 3,
       });
 
-      // AES-256-GCM: confidentiality + integrity + authenticity (fix #3)
+      // AES-256-GCM: confidentiality + integrity + authenticity
       final encrypted = _encryptGcm(payload);
 
       await _firestore.collection('user_data').doc(uid).set({
@@ -250,9 +256,10 @@ class CloudSyncService {
 
   /// Downloads and authenticates + decrypts user data from Firestore.
   ///
-  /// Fix #3: GCM authentication tag is verified during decryption.
-  /// If the ciphertext was tampered with, decryption throws and null is
-  /// returned — the corrupt data is never passed to the app.
+  /// The GCM authentication tag is verified during decryption. If the
+  /// ciphertext was tampered with by someone who does not know the derived
+  /// key, decryption throws and null is returned — the corrupt data is never
+  /// passed to the app.
   Future<Map<String, dynamic>?> syncFromCloud() async {
     _ensureKey();
     if (!isSignedIn || _aesKey == null) return null;
@@ -265,7 +272,12 @@ class CloudSyncService {
       final data = doc.data()!;
       final schemaVersion = data['schemaVersion'] as int? ?? 1;
 
-      // Schema v3+: AES-256-GCM with nonce
+      // Schema v3+: AES-256-GCM with nonce.
+      // Decryption uses the current UID-derived key. A brief app version
+      // derived the key from uid+idToken and wrote v3 GCM with it; those
+      // backups can no longer be decrypted because the short-lived idToken is
+      // not stored, so they fail closed (null restore) instead of returning
+      // corrupt data.
       if (schemaVersion >= 3) {
         final cipher = data['enc'] as String?;
         final nonce = data['nonce'] as String?;
@@ -275,8 +287,10 @@ class CloudSyncService {
       }
 
       // Schema v1/v2: AES-256-CBC (legacy — read-only backwards compat).
-      // These backups were created before GCM migration. We decrypt them
-      // using CBC, then on the next syncToCloud they'll be re-encrypted with GCM.
+      // These backups predate GCM and were encrypted with an older UID-derived
+      // key, not the current one, so decryption throws and they fail closed
+      // (null restore) instead of returning corrupt data. New writes always
+      // re-encrypt as v3.
       final cipher = (data['enc'] ?? data['data']) as String?;
       if (cipher == null) return null;
       final ivBase64 = data['iv'] as String?;
@@ -293,14 +307,15 @@ class CloudSyncService {
     return prefs.getString(_kLastSyncTime);
   }
 
-  // ── AES-256-GCM helpers (primary — fix #3) ──────────────────────────────
+  // ── AES-256-GCM helpers ─────────────────────────────────────────────
 
   /// Encrypts [plain] with AES-256-GCM using a cryptographically random
   /// 12-byte nonce. Returns {'cipher': base64(ciphertext+tag), 'nonce': base64}.
   ///
   /// The 16-byte GCM authentication tag is appended to the ciphertext by
-  /// the encrypt package and verified on decryption — any bit-flip in the
-  /// stored data causes decryption to throw [ArgumentError].
+  /// the encrypt package and verified on decryption — any bit-flip by an
+  /// attacker who does not know the derived key causes decryption to throw
+  /// [ArgumentError].
   Map<String, String> _encryptGcm(String plain) {
     final nonce = enc.IV.fromSecureRandom(12); // GCM standard nonce size
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
@@ -312,7 +327,8 @@ class CloudSyncService {
   }
 
   /// Decrypts and authenticates GCM ciphertext.
-  /// Throws if the authentication tag does not match (tamper detection).
+  /// Throws if the authentication tag does not match, rejecting tampering by
+  /// anyone who does not know the derived key.
   String _decryptGcm(String cipherBase64, String nonceBase64) {
     final nonce = enc.IV.fromBase64(nonceBase64);
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));

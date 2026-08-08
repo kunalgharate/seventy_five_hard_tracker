@@ -659,13 +659,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ── Auth actions ─────────────────────────────────────────────────────────
 
   Future<void> _signIn() async {
-    final consentGiven = await _syncService.hasConsentBeenGiven();
-    if (!consentGiven && mounted) {
-      final accepted = await _showConsentDialog();
-      if (!accepted) return;
-      await _syncService.recordConsent();
-    }
-
     if (!mounted) return;
     showDialog(
       context: context,
@@ -682,6 +675,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.pop(context);
 
       if (user != null) {
+        try {
+          await _syncService.recordConsent();
+        } catch (e) {
+          // Consent flag write failure shouldn't abort the sign-in flow or
+          // pop the navigator a second time (the loading dialog is already
+          // closed above).
+          debugPrint('[Profile] Failed to record consent: $e');
+        }
+        if (!mounted) return;
         _triggerAutoSync();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -758,74 +760,5 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
-  }
-
-  Future<bool> _showConsentDialog() async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.lock, color: AppColors.primary, size: 22),
-            SizedBox(width: 8),
-            Text('Cloud Backup'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Before enabling backup, here\'s what you need to know:',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            SizedBox(height: 12),
-            _ConsentPoint(
-                icon: Icons.lock_outline,
-                text: 'Task names and data are encrypted with AES-256.'),
-            SizedBox(height: 8),
-            _ConsentPoint(
-                icon: Icons.key, text: 'Only you can decrypt your data.'),
-            SizedBox(height: 8),
-            _ConsentPoint(
-                icon: Icons.sync,
-                text: 'Backup happens automatically when online.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Not Now')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Enable Backup'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
-}
-
-class _ConsentPoint extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _ConsentPoint({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: Colors.green[600]),
-        const SizedBox(width: 8),
-        Expanded(
-            child:
-                Text(text, style: const TextStyle(fontSize: 13, height: 1.4))),
-      ],
-    );
   }
 }
