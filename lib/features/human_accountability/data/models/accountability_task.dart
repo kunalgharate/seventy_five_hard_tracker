@@ -6,7 +6,10 @@ enum AccountabilityTaskStatus {
   pending,
   completed,
   declined,
-  approved
+  approved,
+  pendingReview, // NEW: owner marked done, waiting for partner review
+  rejected, // NEW: partner rejected the completion
+  expired, // NEW: 24h review window elapsed without response
 }
 
 extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
@@ -22,6 +25,12 @@ extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
         return 'Declined';
       case AccountabilityTaskStatus.approved:
         return 'Approved';
+      case AccountabilityTaskStatus.pendingReview:
+        return 'Awaiting Review';
+      case AccountabilityTaskStatus.rejected:
+        return 'Rejected';
+      case AccountabilityTaskStatus.expired:
+        return 'Expired';
     }
   }
 
@@ -95,6 +104,28 @@ class AccountabilityTask extends Equatable {
   final DateTime? proofSubmittedAt;
   final DateTime? proofReviewedAt;
 
+  // ── Partner review workflow fields ──
+  /// Type of task for scoring: 'hard' (75 Hard) or 'regular'
+  final String taskType;
+
+  /// When the owner submitted the task for partner review
+  final DateTime? submittedAt;
+
+  /// submittedAt + 24 hours — deadline for partner to respond
+  final DateTime? expiresAt;
+
+  /// When the partner submitted their review decision
+  final DateTime? reviewedAt;
+
+  /// 'approved' or 'rejected' — the partner's final decision
+  final String? reviewDecision;
+
+  /// Optional improvement note from the partner (max 500 chars)
+  final String? reviewComment;
+
+  /// Firebase UID of the assigned reviewing partner
+  final String? partnerUid;
+
   const AccountabilityTask({
     required this.id,
     required this.assignedByUid,
@@ -115,6 +146,13 @@ class AccountabilityTask extends Equatable {
     this.proofSubmittedAt,
     this.proofReviewedAt,
     this.accountableUserIds = const [],
+    this.taskType = 'hard',
+    this.submittedAt,
+    this.expiresAt,
+    this.reviewedAt,
+    this.reviewDecision,
+    this.reviewComment,
+    this.partnerUid,
   });
 
   bool get isApproved => status == AccountabilityTaskStatus.approved;
@@ -123,9 +161,18 @@ class AccountabilityTask extends Equatable {
   bool get isPending => status == AccountabilityTaskStatus.pending;
   bool get isRequested => status == AccountabilityTaskStatus.requested;
   bool get isDeclined => status == AccountabilityTaskStatus.declined;
+  bool get isPendingReview => status == AccountabilityTaskStatus.pendingReview;
+  bool get isRejected => status == AccountabilityTaskStatus.rejected;
+  bool get isExpired => status == AccountabilityTaskStatus.expired;
   bool get hasProofSubmitted => proofStatus == ProofStatus.submitted;
   bool get hasProofApproved => proofStatus == ProofStatus.approved;
   bool get hasProofRejected => proofStatus == ProofStatus.rejected;
+  bool get isReviewOverdue =>
+      isPendingReview &&
+      expiresAt != null &&
+      DateTime.now().isAfter(expiresAt!);
+  bool get is75Hard => taskType == 'hard';
+  bool get isRegular => taskType == 'regular';
 
   AccountabilityTask copyWith({
     AccountabilityTaskStatus? status,
@@ -140,6 +187,13 @@ class AccountabilityTask extends Equatable {
     DateTime? proofSubmittedAt,
     DateTime? proofReviewedAt,
     List<String>? accountableUserIds,
+    String? taskType,
+    DateTime? submittedAt,
+    DateTime? expiresAt,
+    DateTime? reviewedAt,
+    String? reviewDecision,
+    String? reviewComment,
+    String? partnerUid,
   }) =>
       AccountabilityTask(
         id: id,
@@ -161,6 +215,13 @@ class AccountabilityTask extends Equatable {
         proofSubmittedAt: proofSubmittedAt ?? this.proofSubmittedAt,
         proofReviewedAt: proofReviewedAt ?? this.proofReviewedAt,
         accountableUserIds: accountableUserIds ?? this.accountableUserIds,
+        taskType: taskType ?? this.taskType,
+        submittedAt: submittedAt ?? this.submittedAt,
+        expiresAt: expiresAt ?? this.expiresAt,
+        reviewedAt: reviewedAt ?? this.reviewedAt,
+        reviewDecision: reviewDecision ?? this.reviewDecision,
+        reviewComment: reviewComment ?? this.reviewComment,
+        partnerUid: partnerUid ?? this.partnerUid,
       );
 
   static DateTime? _parseDate(dynamic v) {
@@ -202,6 +263,13 @@ class AccountabilityTask extends Equatable {
         accountableUserIds:
             (d['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
                 [d['accountableUid'] as String],
+        taskType: d['taskType'] as String? ?? 'hard',
+        submittedAt: _parseDate(d['submittedAt']),
+        expiresAt: _parseDate(d['expiresAt']),
+        reviewedAt: _parseDate(d['reviewedAt']),
+        reviewDecision: d['reviewDecision'] as String?,
+        reviewComment: d['reviewComment'] as String?,
+        partnerUid: d['partnerUid'] as String?,
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -229,6 +297,15 @@ class AccountabilityTask extends Equatable {
             ? Timestamp.fromDate(proofReviewedAt!)
             : null,
         'accountableUserIds': accountableUserIds,
+        'taskType': taskType,
+        'submittedAt':
+            submittedAt != null ? Timestamp.fromDate(submittedAt!) : null,
+        'expiresAt': expiresAt != null ? Timestamp.fromDate(expiresAt!) : null,
+        'reviewedAt':
+            reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
+        'reviewDecision': reviewDecision,
+        'reviewComment': reviewComment,
+        'partnerUid': partnerUid,
       };
 
   @override
@@ -252,5 +329,12 @@ class AccountabilityTask extends Equatable {
         proofReviewComment,
         proofSubmittedAt,
         proofReviewedAt,
+        taskType,
+        submittedAt,
+        expiresAt,
+        reviewedAt,
+        reviewDecision,
+        reviewComment,
+        partnerUid,
       ];
 }
