@@ -823,7 +823,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           .toList();
 
       if (updatedChallenges.isEmpty) {
-        emit(const ChallengeError('Cannot remove the last challenge.'));
+        // Can't remove the last task — silently ignore.
+        // The delete UI is hidden for active 75 Hard sessions anyway.
         return;
       }
 
