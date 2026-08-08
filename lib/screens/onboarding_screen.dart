@@ -123,6 +123,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
       _validationErrors.clear();
       _validationErrors.addAll(newErrors);
+      // Rebuild partner selections map with updated indices
+      final newPartners = <int, AccountabilityPartner?>{};
+      for (final entry in _selectedPartners.entries) {
+        if (entry.key < index) {
+          newPartners[entry.key] = entry.value;
+        } else if (entry.key > index) {
+          newPartners[entry.key - 1] = entry.value;
+        }
+        // entry.key == index is discarded (removed challenge)
+      }
+      _selectedPartners.clear();
+      _selectedPartners.addAll(newPartners);
       setState(() {});
     }
   }
@@ -1767,6 +1779,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       _controllers[i].dispose();
                                       _controllers.removeAt(i);
                                       _challenges.removeAt(i);
+                                    }
+                                    // Reindex _selectedPartners after removing blanks
+                                    if (blankIndices.isNotEmpty) {
+                                      final removedSet = blankIndices.toSet();
+                                      final newPartners =
+                                          <int, AccountabilityPartner?>{};
+                                      for (final entry
+                                          in _selectedPartners.entries) {
+                                        if (removedSet.contains(entry.key)) {
+                                          continue;
+                                        }
+                                        // Count how many removed indices are below this entry
+                                        int shift = 0;
+                                        for (final ri in blankIndices) {
+                                          if (ri < entry.key) shift++;
+                                        }
+                                        newPartners[entry.key - shift] =
+                                            entry.value;
+                                      }
+                                      _selectedPartners.clear();
+                                      _selectedPartners.addAll(newPartners);
                                     }
 
                                     if (_challenges.length >= 10) {

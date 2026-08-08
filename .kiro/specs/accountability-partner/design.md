@@ -128,8 +128,8 @@ class ApproveTaskReview extends AccountabilityEvent {
 /// Partner rejects a pending review
 class RejectTaskReview extends AccountabilityEvent {
   final String taskId;
-  final String? improvementNote; // up to 500 chars, required on reject
-  const RejectTaskReview(this.taskId, {this.improvementNote});
+  final String improvementNote; // up to 500 chars, required on reject
+  const RejectTaskReview(this.taskId, {required this.improvementNote});
 }
 
 /// Fired by expiry timer when tasks pass their 24h window
@@ -193,15 +193,20 @@ stateDiagram-v2
 
 ```dart
 enum AccountabilityTaskStatus {
-  requested,
-  pending,
-  completed,      // legacy — kept for backward compat
-  declined,
-  approved,
-  pendingReview,  // NEW: waiting for partner review
-  rejected,       // NEW: partner rejected
-  expired,        // NEW: 24h window elapsed
+  requested,      // Firestore value: 'requested'
+  pending,        // Firestore value: 'pending'
+  completed,      // Firestore value: 'completed' — legacy, kept for backward compat
+  declined,       // Firestore value: 'declined'
+  approved,       // Firestore value: 'approved'
+  pendingReview,  // Firestore value: 'pending_review' — NEW: waiting for partner review
+  rejected,       // Firestore value: 'rejected' — NEW: partner rejected
+  expired,        // Firestore value: 'expired' — NEW: 24h window elapsed
 }
+
+// NOTE: The Dart enum uses camelCase (pendingReview) but the Firestore stored/queried
+// string value is snake_case ('pending_review'). Serialization must map between them:
+//   AccountabilityTaskStatus.pendingReview <-> 'pending_review'
+// All Firestore queries and writes MUST use the snake_case string 'pending_review'.
 
 // New fields added to AccountabilityTask:
 class AccountabilityTask {
@@ -274,7 +279,7 @@ class ReviewExpiryService {
     final now = DateTime.now();
     final snap = await _db
         .collection('accountability_tasks')
-        .where('status', isEqualTo: 'pendingReview')
+        .where('status', isEqualTo: 'pending_review')
         .where('expiresAt', isLessThan: Timestamp.fromDate(now))
         .get();
     
@@ -313,7 +318,7 @@ class ReviewExpiryService {
 ```
 
 **Dual-check strategy:**
-1. **On app open**: Query all `pendingReview` tasks where `expiresAt < now`, batch-update to `expired`.
+1. **On app open**: Query all `pending_review` tasks where `expiresAt < now`, batch-update to `expired`.
 2. **Periodic timer**: Every 5 minutes while app is foregrounded, re-run the expiry query.
 3. **Precise timer**: When a task enters `pendingReview`, schedule a timer for exactly `expiresAt`. If the app is backgrounded, the on-open check catches it.
 
@@ -322,7 +327,7 @@ class ReviewExpiryService {
 ```javascript
 // ── accountability_tasks (UPDATED) ──────────────────────────────────
 match /accountability_tasks/{taskId} {
-  // Read: only the task owner (assignedByUid) and the assigned partner (partnerUid)
+  // Read: only the task owner (assignedByUid), accountable user, and the assigned partner
   allow read: if request.auth != null
               && (resource.data.assignedByUid == request.auth.uid
                   || resource.data.accountableUid == request.auth.uid
@@ -332,13 +337,45 @@ match /accountability_tasks/{taskId} {
   allow create: if request.auth != null
                 && request.resource.data.assignedByUid == request.auth.uid;
   
-  // Update: assigner can update non-review fields;
-  //         partnerUid can only update review fields (status, reviewDecision, reviewComment, reviewedAt)
-  //         accountableUid can update status to pendingReview (mark done)
+  // Update (assigner): can update any field EXCEPT review fields that belong to the partner
   allow update: if request.auth != null
-                && (resource.data.assignedByUid == request.auth.uid
-                    || resource.data.accountableUid == request.auth.uid
-                    || resource.data.partnerUid == request.auth.uid);
+                && resource.data.assignedByUid == request.auth.uid
+                && request.resource.data.assignedByUid == resource.data.assignedByUid
+                && request.resource.data.accountableUid == resource.data.accountableUid
+                && request.resource.data.partnerUid == resource.data.partnerUid;
+  
+  // Update (accountable user): can only change status to 'pending_review' and set submittedAt/expiresAt
+  allow update: if request.auth != null
+                && resource.data.accountableUid == request.auth.uid
+                && resource.data.status == 'pending'
+                && request.resource.data.status == 'pending_review'
+                && request.resource.data.submittedAt != null
+                && request.resource.data.expiresAt != null
+                // Ensure no other fields are tampered with
+                && request.resource.data.assignedByUid == resource.data.assignedByUid
+                && request.resource.data.accountableUid == resource.data.accountableUid
+                && request.resource.data.partnerUid == resource.data.partnerUid
+                && request.resource.data.title == resource.data.title
+                && request.resource.data.description == resource.data.description
+                && request.resource.data.taskType == resource.data.taskType;
+  
+  // Update (partner): can only change review fields (status, reviewDecision, reviewComment, reviewedAt)
+  allow update: if request.auth != null
+                && resource.data.partnerUid == request.auth.uid
+                && resource.data.status == 'pending_review'
+                && (request.resource.data.status == 'approved'
+                    || request.resource.data.status == 'rejected')
+                && request.resource.data.reviewedAt != null
+                && request.resource.data.reviewDecision != null
+                // Ensure non-review fields are not modified
+                && request.resource.data.assignedByUid == resource.data.assignedByUid
+                && request.resource.data.accountableUid == resource.data.accountableUid
+                && request.resource.data.partnerUid == resource.data.partnerUid
+                && request.resource.data.title == resource.data.title
+                && request.resource.data.description == resource.data.description
+                && request.resource.data.taskType == resource.data.taskType
+                && request.resource.data.submittedAt == resource.data.submittedAt
+                && request.resource.data.expiresAt == resource.data.expiresAt;
   
   // Delete: only the assigner
   allow delete: if request.auth != null
@@ -455,9 +492,9 @@ class ReviewScoringEngine {
 
 **Validates: Requirements 6.2, 6.3**
 
-### Property 9: Improvement note length validation
+### Property 9: Improvement note validation (presence and length)
 
-*For any* string of length ≤ 500 characters, attaching it as an improvement note SHALL succeed. *For any* string of length > 500 characters, the system SHALL reject the note.
+*For any* rejection action, the `improvementNote` field SHALL be non-null and non-empty. *For any* string of length ≤ 500 characters, attaching it as an improvement note SHALL succeed. *For any* string of length > 500 characters, the system SHALL reject the note. *For any* approval action, the `improvementNote` field is optional.
 
 **Validates: Requirements 6.4**
 
