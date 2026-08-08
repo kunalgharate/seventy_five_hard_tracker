@@ -1850,6 +1850,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       ..clear()
                                       ..addAll(reindexedKeys);
 
+                                    // Reindex selected partner assignments so
+                                    // indices stay aligned after blank removal.
+                                    // Each surviving challenge keeps its partner
+                                    // and shifts down to fill the gaps left by
+                                    // the removed blanks.
+                                    final reindexedPartners =
+                                        <int, AccountabilityPartner?>{};
+                                    int newIndex = 0;
+                                    for (int i = 0;
+                                        i < _challenges.length;
+                                        i++) {
+                                      final partner = _selectedPartners[i];
+                                      if (partner != null) {
+                                        reindexedPartners[newIndex] = partner;
+                                      }
+                                      newIndex++;
+                                    }
+                                    _selectedPartners
+                                      ..clear()
+                                      ..addAll(reindexedPartners);
+
                                     if (_challenges.length >= 10) {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(
