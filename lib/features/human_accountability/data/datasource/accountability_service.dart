@@ -1971,4 +1971,201 @@ class AccountabilityService {
       }
     }
   }
+
+  // ── Partner Review Workflow ────────────────────────────────────────────────
+
+  /// Submits a task for partner review. Sets status to pendingReview,
+  /// records submittedAt and expiresAt (now + 24h).
+  ///
+  /// Returns the updated task, or null on failure.
+  Future<AccountabilityTask?> submitForReview(String taskId) async {
+    if (!_isReady) return null;
+    try {
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final doc = await ref.get();
+      if (!doc.exists) return null;
+
+      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+
+      // Validate: only the accountable user can submit for review
+      if (task.accountableUid != currentUid) return null;
+      // Validate: must be in pending/accepted state
+      if (task.status != AccountabilityTaskStatus.pending) return null;
+
+      final now = DateTime.now();
+      final expiresAt = now.add(const Duration(hours: 24));
+
+      await ref.update({
+        'status': 'pendingReview',
+        'submittedAt': Timestamp.fromDate(now),
+        'expiresAt': Timestamp.fromDate(expiresAt),
+      });
+
+      return task.copyWith(
+        status: AccountabilityTaskStatus.pendingReview,
+        submittedAt: now,
+        expiresAt: expiresAt,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] submitForReview error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Partner approves a task. Validates that the caller is the assigned partner.
+  ///
+  /// Returns the updated task, or null on failure/unauthorized.
+  Future<AccountabilityTask?> approveTask(
+    String taskId, {
+    String? improvementNote,
+  }) async {
+    if (!_isReady) return null;
+    try {
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final doc = await ref.get();
+      if (!doc.exists) return null;
+
+      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+
+      // Validate: only the partner can approve
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+        return null;
+      // Validate: must be in pendingReview state
+      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+      // Validate: not already reviewed
+      if (task.reviewedAt != null) return null;
+      // Validate: not expired
+      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+        return null;
+      }
+
+      final now = DateTime.now();
+      final updateData = <String, dynamic>{
+        'status': 'approved',
+        'reviewedAt': Timestamp.fromDate(now),
+        'reviewDecision': 'approved',
+      };
+      if (improvementNote != null && improvementNote.length <= 500) {
+        updateData['reviewComment'] = improvementNote;
+      }
+
+      await ref.update(updateData);
+
+      return task.copyWith(
+        status: AccountabilityTaskStatus.approved,
+        reviewedAt: now,
+        reviewDecision: 'approved',
+        reviewComment: improvementNote,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] approveTask error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Partner rejects a task. Validates that the caller is the assigned partner.
+  ///
+  /// Returns the updated task, or null on failure/unauthorized.
+  Future<AccountabilityTask?> rejectTask(
+    String taskId, {
+    String? improvementNote,
+  }) async {
+    if (!_isReady) return null;
+    try {
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final doc = await ref.get();
+      if (!doc.exists) return null;
+
+      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+
+      // Validate: only the partner can reject
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+        return null;
+      // Validate: must be in pendingReview state
+      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+      // Validate: not already reviewed
+      if (task.reviewedAt != null) return null;
+      // Validate: not expired
+      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+        return null;
+      }
+
+      final now = DateTime.now();
+      final updateData = <String, dynamic>{
+        'status': 'rejected',
+        'reviewedAt': Timestamp.fromDate(now),
+        'reviewDecision': 'rejected',
+      };
+      if (improvementNote != null && improvementNote.length <= 500) {
+        updateData['reviewComment'] = improvementNote;
+      }
+
+      await ref.update(updateData);
+
+      return task.copyWith(
+        status: AccountabilityTaskStatus.rejected,
+        reviewedAt: now,
+        reviewDecision: 'rejected',
+        reviewComment: improvementNote,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] rejectTask error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Fetches tasks that are pending the current user's review.
+  /// (tasks where I am the partner and status=pendingReview)
+  Future<List<AccountabilityTask>> fetchPendingReviewsForMe() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('partnerUid', isEqualTo: uid)
+          .where('status', isEqualTo: 'pendingReview')
+          .get();
+
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .toList()
+        ..sort((a, b) => (a.expiresAt ?? DateTime.now())
+            .compareTo(b.expiresAt ?? DateTime.now()));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchPendingReviewsForMe error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetches all tasks where I am the assigned partner (all statuses).
+  Future<List<AccountabilityTask>> fetchMyResponsibilities() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('partnerUid', isEqualTo: uid)
+          .orderBy('assignedAt', descending: true)
+          .limit(50)
+          .get();
+
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] fetchMyResponsibilities error: $e');
+      }
+      return [];
+    }
+  }
 }
