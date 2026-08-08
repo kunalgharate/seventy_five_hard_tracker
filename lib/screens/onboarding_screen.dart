@@ -139,6 +139,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
       _cardKeys.clear();
       _cardKeys.addAll(newKeys);
+      // Rebuild selected partner assignments with updated indices
+      final newPartners = <int, AccountabilityPartner?>{};
+      for (final entry in _selectedPartners.entries) {
+        if (entry.key < index) {
+          newPartners[entry.key] = entry.value;
+        } else if (entry.key > index) {
+          newPartners[entry.key - 1] = entry.value;
+        }
+      }
+      _selectedPartners.clear();
+      _selectedPartners.addAll(newPartners);
       setState(() {});
     }
   }
@@ -221,6 +232,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     for (int i = 0; i < _challenges.length; i++) {
       final c = _challenges[i];
       if (c.taskType == 'hard' &&
+          c.title.trim().isNotEmpty &&
           c.isReminderEnabled &&
           c.reminderTime == null) {
         return i;
@@ -1819,18 +1831,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       _challenges.removeAt(i);
                                     }
 
-                                    // Rebuild card keys and validation errors so
-                                    // indices stay aligned after blank removal
-                                    final newKeys = <int, GlobalKey>{};
+                                    // Reindex surviving card keys so indices
+                                    // stay aligned after blank removal
+                                    // (avoids re-creating GlobalKeys, which
+                                    // would restart animations on valid cards).
+                                    final reindexedKeys = <int, GlobalKey>{};
                                     for (int i = 0;
                                         i < _challenges.length;
                                         i++) {
-                                      newKeys[i] = GlobalKey();
+                                      final existing = _cardKeys[i];
+                                      if (existing != null) {
+                                        reindexedKeys[i] = existing;
+                                      } else {
+                                        reindexedKeys[i] = GlobalKey();
+                                      }
                                     }
                                     _cardKeys
                                       ..clear()
-                                      ..addAll(newKeys);
-                                    _validationErrors.clear();
+                                      ..addAll(reindexedKeys);
 
                                     if (_challenges.length >= 10) {
                                       ScaffoldMessenger.of(context)

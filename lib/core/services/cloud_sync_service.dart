@@ -17,7 +17,8 @@ const _kConsentGiven = 'cloudSyncConsentGiven';
 ///
 /// Security properties:
 ///   • AES-256-GCM (AEAD) — confidentiality + integrity + authenticity.
-///     Any tampered ciphertext is rejected at decryption time.
+///     Tampered ciphertext is rejected at decryption time whenever the
+///     attacker does not know the derived key.
 ///   • Key = HKDF-SHA256(uid, salt, info) — stable and re-derivable by the
 ///     UID owner, so backups can be restored after a reinstall.
 ///   • Random 12-byte nonce per encryption call.
@@ -193,8 +194,9 @@ class CloudSyncService {
   /// Uses [taskRepo.getAllCompletions()] instead of a date-bounded loop,
   /// so no historical data is truncated.
   ///
-  /// AES-GCM provides authentication — any payload tampering causes
-  /// decryption to throw, preventing silent data corruption.
+  /// AES-GCM provides authentication — tampering by anyone who does not know
+  /// the derived key causes decryption to throw, preventing silent data
+  /// corruption.
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -255,8 +257,9 @@ class CloudSyncService {
   /// Downloads and authenticates + decrypts user data from Firestore.
   ///
   /// The GCM authentication tag is verified during decryption. If the
-  /// ciphertext was tampered with, decryption throws and null is returned —
-  /// the corrupt data is never passed to the app.
+  /// ciphertext was tampered with by someone who does not know the derived
+  /// key, decryption throws and null is returned — the corrupt data is never
+  /// passed to the app.
   Future<Map<String, dynamic>?> syncFromCloud() async {
     _ensureKey();
     if (!isSignedIn || _aesKey == null) return null;
@@ -269,7 +272,12 @@ class CloudSyncService {
       final data = doc.data()!;
       final schemaVersion = data['schemaVersion'] as int? ?? 1;
 
-      // Schema v3+: AES-256-GCM with nonce
+      // Schema v3+: AES-256-GCM with nonce.
+      // Decryption uses the current UID-derived key. A brief app version
+      // derived the key from uid+idToken and wrote v3 GCM with it; those
+      // backups can no longer be decrypted because the short-lived idToken is
+      // not stored, so they fail closed (null restore) instead of returning
+      // corrupt data.
       if (schemaVersion >= 3) {
         final cipher = data['enc'] as String?;
         final nonce = data['nonce'] as String?;
@@ -279,11 +287,10 @@ class CloudSyncService {
       }
 
       // Schema v1/v2: AES-256-CBC (legacy — read-only backwards compat).
-      // These backups were created before the GCM migration and were encrypted
-      // with the old uid+idToken key derivation, which can no longer be
-      // reconstructed after a reinstall. Decryption uses the current key and
-      // throws for those backups, so they fail closed (null restore) instead
-      // of returning corrupt data. New writes always re-encrypt as v3.
+      // These backups predate GCM and were encrypted with an older UID-derived
+      // key, not the current one, so decryption throws and they fail closed
+      // (null restore) instead of returning corrupt data. New writes always
+      // re-encrypt as v3.
       final cipher = (data['enc'] ?? data['data']) as String?;
       if (cipher == null) return null;
       final ivBase64 = data['iv'] as String?;
@@ -306,8 +313,9 @@ class CloudSyncService {
   /// 12-byte nonce. Returns {'cipher': base64(ciphertext+tag), 'nonce': base64}.
   ///
   /// The 16-byte GCM authentication tag is appended to the ciphertext by
-  /// the encrypt package and verified on decryption — any bit-flip in the
-  /// stored data causes decryption to throw [ArgumentError].
+  /// the encrypt package and verified on decryption — any bit-flip by an
+  /// attacker who does not know the derived key causes decryption to throw
+  /// [ArgumentError].
   Map<String, String> _encryptGcm(String plain) {
     final nonce = enc.IV.fromSecureRandom(12); // GCM standard nonce size
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
@@ -319,7 +327,8 @@ class CloudSyncService {
   }
 
   /// Decrypts and authenticates GCM ciphertext.
-  /// Throws if the authentication tag does not match (tamper detection).
+  /// Throws if the authentication tag does not match, rejecting tampering by
+  /// anyone who does not know the derived key.
   String _decryptGcm(String cipherBase64, String nonceBase64) {
     final nonce = enc.IV.fromBase64(nonceBase64);
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));

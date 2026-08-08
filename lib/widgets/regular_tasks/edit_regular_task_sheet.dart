@@ -49,260 +49,266 @@ class _EditRegularTaskSheetState extends State<EditRegularTaskSheet>
   @override
   Widget build(BuildContext context) {
     final double maxHeight = MediaQuery.of(context).size.height * 0.75;
-    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final double keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
         top: false,
-        child: Container(
-          height: maxHeight,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, color: Colors.orange[600]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Edit Task',
-                        style: GoogleFonts.poppins(
-                            fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close)),
-                  ],
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: Container(
+            height: maxHeight,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2)),
                 ),
-              ),
-              const Divider(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          GestureDetector(
-                            onTap: showIconPicker,
-                            child: Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                gradient: _hasCustomIcon
-                                    ? null
-                                    : LinearGradient(colors: [
-                                        Colors.grey[100]!,
-                                        Colors.grey[200]!
-                                      ]),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _hasCustomIcon
-                                      ? Colors.blue[300]!
-                                      : Colors.grey[300]!,
-                                  width: 2,
-                                ),
-                              ),
-                              child: _hasCustomIcon
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: ChallengeIconWidget(
-                                          challenge: _challenge, size: 60),
-                                    )
-                                  : Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.add_photo_alternate_outlined,
-                                            color: Colors.grey[500], size: 20),
-                                        const SizedBox(height: 2),
-                                        Text('Icon',
-                                            style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w500)),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: _taskNameError != null
-                                          ? Colors.red
-                                          : Colors.grey[300]!,
-                                      width: _taskNameError != null ? 1.5 : 1,
-                                    ),
-                                  ),
-                                  child: TextField(
-                                    controller: _controller,
-                                    decoration: InputDecoration(
-                                      hintText: 'Task name',
-                                      hintStyle: TextStyle(
-                                          color: Colors.grey[500],
-                                          fontSize: 14),
-                                      border: InputBorder.none,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 16, vertical: 18),
-                                    ),
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500),
-                                    maxLines: 1,
-                                    textAlignVertical: TextAlignVertical.center,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _challenge =
-                                            _challenge.copyWith(title: value);
-                                        _taskNameError = value.trim().isEmpty
-                                            ? null
-                                            : validateTaskName(value);
-                                      });
-                                    },
-                                  ),
-                                ),
-                                if (_taskNameError != null)
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.only(top: 4, left: 4),
-                                    child: Text(
-                                      _taskNameError!,
-                                      style: const TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w400,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: showReminderSetup,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: (_challenge.isReminderEnabled &&
-                                    _challenge.reminderTime != null)
-                                ? Colors.orange[50]
-                                : Colors.red[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: (_challenge.isReminderEnabled &&
-                                      _challenge.reminderTime != null)
-                                  ? Colors.orange[300]!
-                                  : Colors.red[300]!,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                (_challenge.isReminderEnabled &&
-                                        _challenge.reminderTime != null)
-                                    ? Icons.alarm_on
-                                    : Icons.alarm_add,
-                                size: 18,
-                                color: (_challenge.isReminderEnabled &&
-                                        _challenge.reminderTime != null)
-                                    ? Colors.orange[600]
-                                    : Colors.red[600],
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  (_challenge.isReminderEnabled &&
-                                          _challenge.reminderTime != null)
-                                      ? 'Reminder Set ✓'
-                                      : '⚠ Set Reminder',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: (_challenge.isReminderEnabled &&
-                                            _challenge.reminderTime != null)
-                                        ? Colors.orange[700]
-                                        : Colors.red[700],
-                                  ),
-                                ),
-                              ),
-                              Icon(Icons.chevron_right,
-                                  size: 18,
-                                  color: (_challenge.isReminderEnabled &&
-                                          _challenge.reminderTime != null)
-                                      ? Colors.orange[400]
-                                      : Colors.red[400]),
-                            ],
-                          ),
+                      Icon(Icons.edit, color: Colors.orange[600]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Edit Task',
+                          style: GoogleFonts.poppins(
+                              fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                       ),
+                      IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close)),
                     ],
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _challenge.title.trim().isEmpty ||
-                            _taskNameError != null
-                        ? null
-                        : _saveChanges,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _challenge.title.trim().isNotEmpty &&
-                              _taskNameError == null
-                          ? Colors.orange[600]
-                          : Colors.grey[400],
-                      disabledBackgroundColor: Colors.grey[300],
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(
-                      'Save Changes',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: _challenge.title.trim().isNotEmpty &&
-                                  _taskNameError == null
-                              ? Colors.white
-                              : Colors.grey[600]),
+                const Divider(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            GestureDetector(
+                              onTap: showIconPicker,
+                              child: Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  gradient: _hasCustomIcon
+                                      ? null
+                                      : LinearGradient(colors: [
+                                          Colors.grey[100]!,
+                                          Colors.grey[200]!
+                                        ]),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _hasCustomIcon
+                                        ? Colors.blue[300]!
+                                        : Colors.grey[300]!,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: _hasCustomIcon
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: ChallengeIconWidget(
+                                            challenge: _challenge, size: 60),
+                                      )
+                                    : Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                              Icons
+                                                  .add_photo_alternate_outlined,
+                                              color: Colors.grey[500],
+                                              size: 20),
+                                          const SizedBox(height: 2),
+                                          Text('Icon',
+                                              style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w500)),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: _taskNameError != null
+                                            ? Colors.red
+                                            : Colors.grey[300]!,
+                                        width: _taskNameError != null ? 1.5 : 1,
+                                      ),
+                                    ),
+                                    child: TextField(
+                                      controller: _controller,
+                                      decoration: InputDecoration(
+                                        hintText: 'Task name',
+                                        hintStyle: TextStyle(
+                                            color: Colors.grey[500],
+                                            fontSize: 14),
+                                        border: InputBorder.none,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 18),
+                                      ),
+                                      style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500),
+                                      maxLines: 1,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _challenge =
+                                              _challenge.copyWith(title: value);
+                                          _taskNameError = value.trim().isEmpty
+                                              ? null
+                                              : validateTaskName(value);
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  if (_taskNameError != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                          top: 4, left: 4),
+                                      child: Text(
+                                        _taskNameError!,
+                                        style: const TextStyle(
+                                          color: Colors.red,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        GestureDetector(
+                          onTap: showReminderSetup,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: (_challenge.isReminderEnabled &&
+                                      _challenge.reminderTime != null)
+                                  ? Colors.orange[50]
+                                  : Colors.red[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: (_challenge.isReminderEnabled &&
+                                        _challenge.reminderTime != null)
+                                    ? Colors.orange[300]!
+                                    : Colors.red[300]!,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  (_challenge.isReminderEnabled &&
+                                          _challenge.reminderTime != null)
+                                      ? Icons.alarm_on
+                                      : Icons.alarm_add,
+                                  size: 18,
+                                  color: (_challenge.isReminderEnabled &&
+                                          _challenge.reminderTime != null)
+                                      ? Colors.orange[600]
+                                      : Colors.red[600],
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    (_challenge.isReminderEnabled &&
+                                            _challenge.reminderTime != null)
+                                        ? 'Reminder Set ✓'
+                                        : '⚠ Set Reminder',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: (_challenge.isReminderEnabled &&
+                                              _challenge.reminderTime != null)
+                                          ? Colors.orange[700]
+                                          : Colors.red[700],
+                                    ),
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right,
+                                    size: 18,
+                                    color: (_challenge.isReminderEnabled &&
+                                            _challenge.reminderTime != null)
+                                        ? Colors.orange[400]
+                                        : Colors.red[400]),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ),
-              SizedBox(
-                height: keyboardHeight.clamp(0.0, maxHeight * 0.75).toDouble(),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _challenge.title.trim().isEmpty ||
+                              _taskNameError != null
+                          ? null
+                          : _saveChanges,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _challenge.title.trim().isNotEmpty &&
+                                _taskNameError == null
+                            ? Colors.orange[600]
+                            : Colors.grey[400],
+                        disabledBackgroundColor: Colors.grey[300],
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text(
+                        'Save Changes',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _challenge.title.trim().isNotEmpty &&
+                                    _taskNameError == null
+                                ? Colors.white
+                                : Colors.grey[600]),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ));
   }

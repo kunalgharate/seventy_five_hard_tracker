@@ -479,7 +479,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 12),
 
-            if (isToday) _buildAddTaskButton(),
+            if (isToday &&
+                session.challenges.any((c) => c.taskType != 'regular'))
+              _buildAddTaskButton(),
 
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content

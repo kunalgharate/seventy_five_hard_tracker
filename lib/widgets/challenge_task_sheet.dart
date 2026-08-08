@@ -82,6 +82,8 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
   Widget build(BuildContext context) {
     final double maxHeight = MediaQuery.of(context).size.height * 0.75;
     final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bool hasReminder =
+        _challenge.isReminderEnabled && _challenge.reminderTime != null;
 
     return SafeArea(
       top: false,
@@ -290,14 +292,12 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           decoration: BoxDecoration(
-                            color: (_challenge.isReminderEnabled &&
-                                    _challenge.reminderTime != null)
+                            color: hasReminder
                                 ? Colors.orange[50]
                                 : Colors.red[50],
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: (_challenge.isReminderEnabled &&
-                                      _challenge.reminderTime != null)
+                              color: hasReminder
                                   ? Colors.orange[300]!
                                   : Colors.red[300]!,
                             ),
@@ -305,28 +305,22 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
                           child: Row(
                             children: [
                               Icon(
-                                (_challenge.isReminderEnabled &&
-                                        _challenge.reminderTime != null)
-                                    ? Icons.alarm_on
-                                    : Icons.alarm_add,
+                                hasReminder ? Icons.alarm_on : Icons.alarm_add,
                                 size: 18,
-                                color: (_challenge.isReminderEnabled &&
-                                        _challenge.reminderTime != null)
+                                color: hasReminder
                                     ? Colors.orange[600]
                                     : Colors.red[600],
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  (_challenge.isReminderEnabled &&
-                                          _challenge.reminderTime != null)
+                                  hasReminder
                                       ? 'Reminder Set'
                                       : 'Set Reminder (Required)',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: (_challenge.isReminderEnabled &&
-                                            _challenge.reminderTime != null)
+                                    color: hasReminder
                                         ? Colors.orange[700]
                                         : Colors.red[700],
                                   ),
@@ -334,8 +328,7 @@ class _ChallengeTaskSheetState extends State<ChallengeTaskSheet>
                               ),
                               Icon(Icons.chevron_right,
                                   size: 18,
-                                  color: (_challenge.isReminderEnabled &&
-                                          _challenge.reminderTime != null)
+                                  color: hasReminder
                                       ? Colors.orange[400]
                                       : Colors.red[400]),
                             ],
