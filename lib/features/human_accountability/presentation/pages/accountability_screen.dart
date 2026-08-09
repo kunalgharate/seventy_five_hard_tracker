@@ -28,7 +28,11 @@ import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 // ── Main screen ──────────────────────────────────────────────────────────────
 
 class AccountabilityScreen extends StatefulWidget {
-  const AccountabilityScreen({super.key});
+  const AccountabilityScreen({super.key, this.onGoToProfile});
+
+  /// Switches the bottom navigation to the Profile tab when the user needs
+  /// to sign in before inviting a partner.
+  final VoidCallback? onGoToProfile;
 
   @override
   State<AccountabilityScreen> createState() => _AccountabilityScreenState();
@@ -149,55 +153,71 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       heroTag: 'invitePartner',
       onPressed: _showInviteDialog,
       icon: const Icon(Icons.person_add),
-      label: const Text('Invite Partner'),
+      label: const Text('Add a Partner'),
       backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
     );
   }
 
   void _showInviteDialog() {
-    // Navigate user to invite flow — check if already handled elsewhere
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 16,
-          right: 16,
-          top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Invite Accountability Partner',
-              style: Theme.of(ctx).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Sign in with Google first to invite partners and sync your data.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                // Navigate to profile where sign-in is available
-                Navigator.pushNamed(context, '/home');
-              },
-              icon: const Icon(Icons.person),
-              label: const Text('Go to Profile to Sign In'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+    final syncService = CloudSyncService();
+    if (!syncService.isSignedIn) {
+      // Not signed in — prompt to sign in
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            left: 16,
+            right: 16,
+            top: 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Sign In Required',
+                style: Theme.of(ctx).textTheme.titleLarge,
               ),
-            ),
-            const SizedBox(height: 24),
-          ],
+              const SizedBox(height: 8),
+              const Text(
+                'Sign in with Google to invite accountability partners and sync your data.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  widget.onGoToProfile?.call();
+                },
+                icon: const Icon(Icons.person),
+                label: const Text('Go to Profile to Sign In'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // Signed in — show the real invite partner sheet
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => BlocProvider.value(
+          value: context.read<AccountabilityBloc>(),
+          child: const _InvitePartnerSheet(),
+        ),
+      );
+    }
   }
 
   Widget _buildError(String message) {

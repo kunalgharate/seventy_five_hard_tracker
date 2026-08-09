@@ -80,12 +80,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                   ? _buildTaskList(
                       context, tasks, todayCompletions, recentCompletions)
                   : _buildEmptyState(context),
-          floatingActionButton: FloatingActionButton(
-            heroTag: 'addRegularTask',
-            onPressed: () => _showAddTaskSheet(context),
-            backgroundColor: Colors.orange[600],
-            child: const Icon(Icons.add, color: Colors.white),
-          ),
+          floatingActionButton: tasks.isEmpty
+              ? null
+              : FloatingActionButton(
+                  heroTag: 'addRegularTask',
+                  onPressed: () => _showAddTaskSheet(context),
+                  backgroundColor: Colors.orange[600],
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
         );
       },
     );

@@ -1,4 +1,4 @@
-// AI Companion Event — placeholder
+// AI Companion Event
 abstract class AICompanionEvent {}
 
 class LoadAIMessage extends AICompanionEvent {

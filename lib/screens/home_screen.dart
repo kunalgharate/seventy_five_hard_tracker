@@ -15,6 +15,7 @@ import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_s
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import '../widgets/daily_task_card.dart';
+import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
 import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
@@ -38,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _taskKeys = {};
 
   /// Whether a challenge should render as a water tracker card.
   /// Only challenges explicitly categorized as 'water' use the tracker.
@@ -47,6 +50,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -177,56 +186,38 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, state) {
           if (state is ChallengeLoaded) {
             if (!state.hasActiveSession) {
-              return FloatingActionButton.extended(
-                heroTag: 'startChallenge',
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/onboarding');
-                },
-                icon: const Icon(Icons.add, size: 20),
-                label: const Text(
-                  'Start Challenge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
-            } else {
-              // Journal FAB for active session
-              final selectedProgress = state.currentProgress
-                  .where((p) => _isSameDay(p.date, _selectedDay))
-                  .firstOrNull;
-              final hasNote = selectedProgress?.journalNote != null &&
-                  selectedProgress!.journalNote!.isNotEmpty;
-
-              return FloatingActionButton.extended(
-                heroTag: 'journal',
-                onPressed: () => _showJournalBottomSheet(
-                  context,
-                  state,
-                  selectedProgress,
-                ),
-                icon: Icon(
-                  hasNote ? Icons.book : Icons.book_outlined,
-                  size: 20,
-                ),
-                label: Text(
-                  hasNote ? 'View Journal' : 'Add Journal',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: Colors.orange,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
+              return const SizedBox.shrink();
             }
+            // Journal FAB for active session
+            final selectedProgress = state.currentProgress
+                .where((p) => _isSameDay(p.date, _selectedDay))
+                .firstOrNull;
+            final hasNote = selectedProgress?.journalNote != null &&
+                selectedProgress!.journalNote!.isNotEmpty;
+
+            return FloatingActionButton.extended(
+              heroTag: 'journal',
+              onPressed: () => _showJournalBottomSheet(
+                context,
+                state,
+                selectedProgress,
+              ),
+              icon: Icon(
+                hasNote ? Icons.book : Icons.book_outlined,
+                size: 20,
+              ),
+              label: Text(
+                hasNote ? 'View Journal' : 'Add Journal',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            );
           }
           return const SizedBox.shrink();
         },
@@ -307,6 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Calendar
         Expanded(
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             child: Column(
               children: [
@@ -347,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         // Progress indicator for selected date
-                        _buildDateProgressIndicator(state),
+                        _buildDateProgressIndicator(state, session),
                       ],
                     ),
                   ),
@@ -443,6 +435,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           bottom: index == totalNonRegular - 1 ? 0 : 8,
                         ),
                         child: RepaintBoundary(
+                          key: _taskKeys.putIfAbsent(
+                              challenge.id, () => GlobalKey()),
                           child: _isWaterChallenge(challenge)
                               ? _buildWaterTracker(
                                   challenge, isToday, selectedProgress)
@@ -465,11 +459,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                         );
                                   },
                                   onRemove: () {
-                                    context.read<ChallengeBloc>().add(
-                                          RemoveChallengeFromSession(
-                                              challenge.id),
-                                        );
+                                    _handleRemoveTask(session, challenge);
                                   },
+                                  onEdit: () => _showTaskSheet(
+                                    context,
+                                    challenge,
+                                  ),
                                   proofStatus: _proofStatuses[challenge.id],
                                   onSubmitProof: () => _submitProof(challenge),
                                   onReviewProof: () => _reviewProof(challenge),
@@ -484,12 +479,105 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 12),
 
+            if (isToday &&
+                session.challenges.any((c) => c.taskType != 'regular'))
+              _buildAddTaskButton(),
+
             const SizedBox(
                 height: 120), // Space for FAB to avoid covering content
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildAddTaskButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: InkWell(
+        onTap: _showAddTaskSheet,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFA726),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Add Task',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddTaskSheet() {
+    final state = context.read<ChallengeBloc>().state;
+    if (state is! ChallengeLoaded || state.activeSession == null) return;
+    _showTaskSheet(context, null);
+  }
+
+  void _showTaskSheet(
+    BuildContext context,
+    Challenge? challenge,
+  ) {
+    final bloc = context.read<ChallengeBloc>();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChallengeTaskSheet(bloc: bloc, challenge: challenge),
+    );
+  }
+
+  void _handleRemoveTask(ChallengeSession session, Challenge challenge) {
+    final remaining =
+        session.challenges.where((c) => c.taskType != 'regular').length;
+    if (remaining > 1) {
+      context.read<ChallengeBloc>().add(
+            RemoveChallengeFromSession(challenge.id),
+          );
+      return;
+    }
+
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End Challenge?'),
+        content: Text(
+          '"${challenge.title}" is the only task in this challenge. '
+          'Deleting it will end the challenge.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('End Challenge'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) {
+        context.read<ChallengeBloc>().add(const EndActiveSession());
+      }
+    });
   }
 
   Widget _buildWaterTracker(
@@ -534,7 +622,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final newString = times.map((e) => e.toIso8601String()).join(',');
     final isCompleted = times.length >= kWaterGoal;
 
-    // 1. Save timestamps first so a stale rebuild doesn't overwrite them
+    // Save timestamps first so a stale rebuild doesn't overwrite them
     context.read<ChallengeBloc>().add(
           AddTaskNote(
             date: _selectedDay,
@@ -543,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
 
-    // 2. Update the overall completion boolean
+    // Then update the overall completion boolean
     context.read<ChallengeBloc>().add(
           UpdateDailyProgress(
             date: _selectedDay,
@@ -553,7 +641,8 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
-  Widget _buildDateProgressIndicator(ChallengeLoaded state) {
+  Widget _buildDateProgressIndicator(
+      ChallengeLoaded state, ChallengeSession session) {
     final progress = state.currentProgress
         .where((p) => _isSameDay(p.date, _selectedDay))
         .firstOrNull;
@@ -581,36 +670,83 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            progress.isCompleted ? Icons.check_circle : Icons.cancel,
-            color: progress.isCompleted ? Colors.green[600] : Colors.red[600],
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            progress.isCompleted
-                ? 'All tasks completed!'
-                : 'Some tasks incomplete',
-            style: TextStyle(
-              color: progress.isCompleted ? Colors.green[700] : Colors.red[700],
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+        onTap: progress.isCompleted
+            ? null
+            : () => _scrollToFirstIncompleteTask(session),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
             ),
           ),
-        ],
+          child: Row(
+            children: [
+              Icon(
+                progress.isCompleted ? Icons.check_circle : Icons.cancel,
+                color:
+                    progress.isCompleted ? Colors.green[600] : Colors.red[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  progress.isCompleted
+                      ? 'All tasks completed!'
+                      : 'Some tasks are incomplete',
+                  style: TextStyle(
+                    color: progress.isCompleted
+                        ? Colors.green[700]
+                        : Colors.red[700],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (!progress.isCompleted)
+                Icon(Icons.keyboard_arrow_down, color: Colors.red[700]),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  void _scrollToFirstIncompleteTask(ChallengeSession session) {
+    Challenge? target;
+    for (final c in session.challenges.where((c) => c.taskType != 'regular')) {
+      final isCompleted = _taskCompletionFor(c);
+      if (!isCompleted) {
+        target = c;
+        break;
+      }
+    }
+    final key = target == null ? null : _taskKeys[target.id];
+    final context2 = key?.currentContext;
+    if (context2 != null) {
+      Scrollable.ensureVisible(
+        context2,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.2,
+      );
+    }
+  }
+
+  bool _taskCompletionFor(Challenge challenge) {
+    final allProgress = context.read<ChallengeBloc>().state;
+    if (allProgress is! ChallengeLoaded) return false;
+    final progress = allProgress.currentProgress
+        .where((p) => _isSameDay(p.date, _selectedDay))
+        .firstOrNull;
+    return progress?.challengeCompletions[challenge.id] ?? false;
   }
 
   Future<void> _submitProof(Challenge challenge) async {

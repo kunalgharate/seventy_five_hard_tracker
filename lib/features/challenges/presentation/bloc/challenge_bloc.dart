@@ -89,7 +89,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<AddChallengeToSession>(_onAddChallengeToSession);
     on<RestartFromHistory>(_onRestartFromHistory);
     on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
-
+    on<EndActiveSession>(_onEndActiveSession);
     _startMidnightTimer();
   }
 
@@ -767,6 +767,20 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         hasActiveSession: true,
       ));
       debugPrint('🟢 [BLoC] ChallengeLoaded emitted successfully');
+
+      // Schedule reminders if the new task has them enabled
+      try {
+        if (event.challenge.isReminderEnabled &&
+            event.challenge.reminderTime != null) {
+          await _smartNotifications.scheduleSmartReminders(
+            DateTime.now(),
+            [event.challenge],
+            null,
+          );
+        }
+      } catch (e) {
+        debugPrint('🔴 [BLoC] Reminder scheduling failed (non-critical): $e');
+      }
     } catch (e, stack) {
       debugPrint('🔴 [BLoC] Error adding task: $e');
       debugPrint('🔴 [BLoC] Stack: $stack');
@@ -841,7 +855,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           .toList();
 
       if (updatedChallenges.isEmpty) {
-        emit(const ChallengeError('Cannot remove the last challenge.'));
+        // Can't remove the last task — silently ignore.
+        // The delete UI is hidden for active 75 Hard sessions anyway.
         return;
       }
 
@@ -877,6 +892,34 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       add(LoadChallengeData());
     } catch (e) {
       emit(ChallengeError('Failed to remove challenge: $e'));
+    }
+  }
+
+  Future<void> _onEndActiveSession(
+    EndActiveSession event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      // Cancel only this session's reminders — regular-task reminders and any
+      // other pending challenge reminders must keep working.
+      for (final challenge in activeSession.challenges) {
+        if (challenge.isReminderEnabled) {
+          await _smartNotifications.cancelCompletedTaskReminders(challenge.id);
+        }
+      }
+      await _smartNotifications.cancelNightSummaries();
+
+      final endedSession = activeSession.copyWith(
+        isActive: false,
+        endDate: DateTime.now(),
+      );
+      await _repository.updateSession(endedSession);
+      add(LoadChallengeData());
+    } catch (e) {
+      emit(ChallengeError('Failed to end the challenge: $e'));
     }
   }
 

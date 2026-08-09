@@ -33,8 +33,17 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _selectedIconName = widget.selectedIconName;
-    _selectedImagePath = widget.selectedImagePath;
+    // Normalize empty-string selections (sheets store '' for a cleared
+    // field) to null so the "Remove Icon"/"Remove Image" buttons and the
+    // selection highlight are not shown for a cleared icon.
+    _selectedIconName =
+        widget.selectedIconName != null && widget.selectedIconName!.isNotEmpty
+            ? widget.selectedIconName
+            : null;
+    _selectedImagePath =
+        widget.selectedImagePath != null && widget.selectedImagePath!.isNotEmpty
+            ? widget.selectedImagePath
+            : null;
   }
 
   @override
@@ -122,9 +131,33 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
-        children: ChallengeIconService.getCategories().map((category) {
-          return _buildCategorySection(category);
-        }).toList(),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_selectedIconName != null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _selectedIconName = null;
+                    _selectedImagePath = null;
+                  });
+                  widget.onSelectionChanged(null, null);
+                },
+                icon: const Icon(Icons.remove_circle_outline),
+                label: const Text('Remove Icon'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          ...ChallengeIconService.getCategories().map((category) {
+            return _buildCategorySection(category);
+          }),
+        ],
       ),
     );
   }

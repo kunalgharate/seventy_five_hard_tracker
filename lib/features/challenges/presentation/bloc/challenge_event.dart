@@ -142,3 +142,10 @@ class RemoveChallengeFromSession extends ChallengeEvent {
   @override
   List<Object> get props => [challengeId];
 }
+
+class EndActiveSession extends ChallengeEvent {
+  const EndActiveSession();
+
+  @override
+  List<Object> get props => const [];
+}

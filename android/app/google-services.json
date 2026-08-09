@@ -22,6 +22,38 @@
           }
         },
         {
+          "client_id": "496007025535-kbeksb8i2pjpr2isg5hs4rifh2hbjhpj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.seventyfive.hard.challenge",
+            "certificate_hash": "c2b19465529a2a7780ad1075dd78e9e6635de68d"
+          }
+        },
+        {
+          "client_id": "496007025535-m36sufhnbp8fpt0gm1414nj526ttjhck.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.seventyfive.hard.challenge",
+            "certificate_hash": "c2c9e75ca80d84c2f9619f60164b0685cfb6c7ca"
+          }
+        },
+        {
+          "client_id": "496007025535-u9lhs9b7cvjj24g439s7qh7fm8iljkfk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.seventyfive.hard.challenge",
+            "certificate_hash": "642dc41ed0659aa12ffabcdb11d99f0f0a732698"
+          }
+        },
+        {
+          "client_id": "496007025535-us3g8f48ipnn3hm7o7orhue9b6i715ce.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.seventyfive.hard.challenge",
+            "certificate_hash": "2af8b40aae6078cd232fec1c98a3bb553fc4d672"
+          }
+        },
+        {
           "client_id": "496007025535-vcfvp99s1kva06b042i74rnb8cg6fhrc.apps.googleusercontent.com",
           "client_type": 3
         }
