@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/domain/services/review_scoring_engine.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/partner_review.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_invitation.dart';
@@ -16,12 +19,22 @@ class AccountabilityBloc
     extends Bloc<AccountabilityEvent, AccountabilityState> {
   final AccountabilityService _service;
   final DatabaseRepository _repository;
+  final AccountabilityNotificationService _notificationService;
+  final ReviewExpiryService _expiryService;
+  final ReviewScoringEngine _scoringEngine;
 
   AccountabilityBloc({
     AccountabilityService? service,
     DatabaseRepository? repository,
+    AccountabilityNotificationService? notificationService,
+    ReviewExpiryService? expiryService,
+    ReviewScoringEngine? scoringEngine,
   })  : _service = service ?? AccountabilityService(),
         _repository = repository ?? DatabaseRepository(),
+        _notificationService =
+            notificationService ?? AccountabilityNotificationService(),
+        _expiryService = expiryService ?? ReviewExpiryService(),
+        _scoringEngine = scoringEngine ?? const ReviewScoringEngine(),
         super(AccountabilityInitial()) {
     on<LoadAccountabilityData>(_onLoad);
     on<InvitePartner>(_onInvitePartner);
@@ -38,6 +51,14 @@ class AccountabilityBloc
     // Task request events
     on<AcceptTaskRequest>(_onAcceptTaskRequest);
     on<DeclineTaskRequest>(_onDeclineTaskRequest);
+
+    // Partner review workflow events
+    on<SubmitTaskForReview>(_onSubmitTaskForReview);
+    on<ApproveTaskReview>(_onApproveTaskReview);
+    on<RejectTaskReview>(_onRejectTaskReview);
+    on<ExpireOverdueTasks>(_onExpireOverdueTasks);
+    on<CheckExpiredTasks>(_onCheckExpiredTasks);
+    on<LoadMyResponsibilities>(_onLoadMyResponsibilities);
   }
 
   Future<void> _onLoad(
@@ -364,6 +385,161 @@ class AccountabilityBloc
       }
     } catch (e) {
       emit(AccountabilityError('Decline task failed: $e'));
+    }
+  }
+
+  // ── Partner Review Workflow Handlers ──────────────────────────────────────
+
+  Future<void> _onSubmitTaskForReview(
+    SubmitTaskForReview event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      final task = await _service.submitForReview(event.taskId);
+      if (task == null) {
+        emit(const AccountabilityError('Could not submit for review.'));
+        return;
+      }
+
+      // Send notification to partner (non-blocking — don't fail the submission)
+      if (task.partnerUid != null) {
+        try {
+          await _notificationService.notifyTaskNeedsReview(
+            recipientUid: task.partnerUid!,
+            ownerName: task.accountableName,
+            taskName: task.title,
+            taskId: task.id,
+          );
+        } catch (e) {
+          if (kDebugMode)
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
+      }
+
+      // Schedule precise expiry timer
+      if (task.expiresAt != null) {
+        _expiryService.scheduleNextExpiry(task.expiresAt!);
+      }
+
+      emit(TaskSubmittedForReview(task.id, task.expiresAt!));
+    } catch (e) {
+      emit(AccountabilityError('Submit for review failed: $e'));
+    }
+  }
+
+  Future<void> _onApproveTaskReview(
+    ApproveTaskReview event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      final task = await _service.approveTask(
+        event.taskId,
+        improvementNote: event.improvementNote,
+      );
+      if (task == null) {
+        emit(const AccountabilityError('Could not approve task.'));
+        return;
+      }
+
+      // Notify the task owner (non-blocking)
+      try {
+        await _notificationService.notifyReviewApproved(
+          recipientUid: task.accountableUid,
+          taskName: task.title,
+          taskId: task.id,
+        );
+      } catch (e) {
+        if (kDebugMode)
+          debugPrint('[AccountabilityBloc] Notification failed: $e');
+      }
+
+      emit(TaskReviewCompleted(task.id, 'approved',
+          comment: event.improvementNote));
+
+      // Compute streak impact
+      final newStreak = _scoringEngine.compute75HardStreak(
+        1, // TODO: pass actual current streak from ChallengeBloc
+        'approved',
+      );
+      emit(StreakImpacted(newStreak, 'approved'));
+    } catch (e) {
+      emit(AccountabilityError('Approve task failed: $e'));
+    }
+  }
+
+  Future<void> _onRejectTaskReview(
+    RejectTaskReview event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      final task = await _service.rejectTask(
+        event.taskId,
+        improvementNote: event.improvementNote,
+      );
+      if (task == null) {
+        emit(const AccountabilityError('Could not reject task.'));
+        return;
+      }
+
+      // Notify the task owner (non-blocking)
+      try {
+        await _notificationService.notifyReviewRejected(
+          recipientUid: task.accountableUid,
+          taskName: task.title,
+          taskId: task.id,
+          comment: event.improvementNote,
+        );
+      } catch (e) {
+        if (kDebugMode)
+          debugPrint('[AccountabilityBloc] Notification failed: $e');
+      }
+
+      emit(TaskReviewCompleted(task.id, 'rejected',
+          comment: event.improvementNote));
+
+      // Compute streak impact — rejected resets streak
+      emit(const StreakImpacted(1, 'rejected'));
+    } catch (e) {
+      emit(AccountabilityError('Reject task failed: $e'));
+    }
+  }
+
+  Future<void> _onExpireOverdueTasks(
+    ExpireOverdueTasks event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      final expiredIds = await _expiryService.checkAndExpireTasks();
+      if (expiredIds.isNotEmpty) {
+        emit(TasksExpired(expiredIds));
+      }
+    } catch (e) {
+      // Non-critical — log and continue
+      if (kDebugMode)
+        debugPrint('[AccountabilityBloc] Expiry check failed: $e');
+    }
+  }
+
+  Future<void> _onCheckExpiredTasks(
+    CheckExpiredTasks event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    await _onExpireOverdueTasks(ExpireOverdueTasks(), emit);
+  }
+
+  Future<void> _onLoadMyResponsibilities(
+    LoadMyResponsibilities event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      final responsibilities = await _service.fetchMyResponsibilities();
+      final pending = await _service.fetchPendingReviewsForMe();
+      emit(MyResponsibilitiesLoaded(
+        responsibilities: responsibilities,
+        pendingReviews: pending,
+      ));
+    } catch (e) {
+      emit(AccountabilityError('Failed to load responsibilities: $e'));
     }
   }
 }

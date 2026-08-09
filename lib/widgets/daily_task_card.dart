@@ -500,6 +500,45 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   Widget _buildCompletionWidget() {
+    // Show pending review indicator when waiting for partner
+    if (widget.accountabilityStatus == AccountabilityTaskStatus.pendingReview) {
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.orange[600],
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.orange.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.hourglass_top, color: Colors.white, size: 20),
+      );
+    }
+
+    // Show rejected indicator
+    if (widget.accountabilityStatus == AccountabilityTaskStatus.rejected ||
+        widget.accountabilityStatus == AccountabilityTaskStatus.expired) {
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.red[600],
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.red.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.close, color: Colors.white, size: 20),
+      );
+    }
+
     if (!widget.isEditable) {
       return Container(
         padding: const EdgeInsets.all(8),
@@ -649,14 +688,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       }
     }
 
-    if (widget.isCompleted) {
-      return 'Completed ✓';
-    }
-    if (!widget.isEditable) {
-      return 'Missed';
-    }
-
-    // Show accountability task status when applicable
+    // Show accountability task status when applicable — BEFORE generic checks
+    // so pendingReview/approved override the raw isCompleted flag.
     final accStatus = widget.accountabilityStatus;
     if (accStatus != null) {
       // For creator with pending accepted task and proof required, show upload prompt
@@ -677,10 +710,23 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         case AccountabilityTaskStatus.completed:
           return 'Completed ✓';
         case AccountabilityTaskStatus.approved:
-          return 'Approved ✓';
+          return 'Partner approved ✓';
         case AccountabilityTaskStatus.declined:
           return 'Declined';
+        case AccountabilityTaskStatus.pendingReview:
+          return '⏳ Waiting for partner review';
+        case AccountabilityTaskStatus.rejected:
+          return '❌ Partner rejected — needs improvement';
+        case AccountabilityTaskStatus.expired:
+          return '⏰ Review expired — marked incomplete';
       }
+    }
+
+    if (widget.isCompleted) {
+      return 'Completed ✓';
+    }
+    if (!widget.isEditable) {
+      return 'Missed';
     }
 
     if (widget.challenge.reminderTime != null &&

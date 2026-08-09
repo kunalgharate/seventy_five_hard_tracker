@@ -38,8 +38,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // partnerUid selected per challenge index (null = no partner)
   final Map<int, AccountabilityPartner?> _selectedPartners = {};
   List<AccountabilityPartner> _availablePartners = [];
-  final ScrollController _setupScrollController = ScrollController();
-  final Map<int, GlobalKey> _cardKeys = {};
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
   bool _isLoggingIn = false;
@@ -83,7 +81,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       controller.dispose();
     }
     _pageController.dispose();
-    _setupScrollController.dispose();
     _headerAnimationController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -91,10 +88,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   void _addNewChallenge() {
     if (_challenges.length < 10) {
-      final index = _challenges.length;
       final controller = TextEditingController();
       _controllers.add(controller);
-      _cardKeys[index] = GlobalKey();
 
       _challenges.add(Challenge(
         id: DateTime.now().millisecondsSinceEpoch.toString() +
@@ -128,18 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
       _validationErrors.clear();
       _validationErrors.addAll(newErrors);
-      // Rebuild card keys with updated indices
-      final newKeys = <int, GlobalKey>{};
-      for (final entry in _cardKeys.entries) {
-        if (entry.key < index) {
-          newKeys[entry.key] = entry.value;
-        } else if (entry.key > index) {
-          newKeys[entry.key - 1] = entry.value;
-        }
-      }
-      _cardKeys.clear();
-      _cardKeys.addAll(newKeys);
-      // Rebuild selected partner assignments with updated indices
+      // Rebuild partner selections map with updated indices
       final newPartners = <int, AccountabilityPartner?>{};
       for (final entry in _selectedPartners.entries) {
         if (entry.key < index) {
@@ -147,114 +131,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         } else if (entry.key > index) {
           newPartners[entry.key - 1] = entry.value;
         }
+        // entry.key == index is discarded (removed challenge)
       }
       _selectedPartners.clear();
       _selectedPartners.addAll(newPartners);
       setState(() {});
     }
-  }
-
-  /// Estimated height of a challenge card, used only to jump the lazy
-  /// ListView near an off-screen card so it gets built for a precise scroll.
-  static const double _kEstimatedCardHeight = 380;
-
-  void _scrollToFirstError() {
-    int? targetIndex;
-
-    // Primary: scroll to the first card with a validation error that is
-    // currently built (has a live context). Don't break on a card that isn't
-    // built yet — keep scanning for the next visible error.
-    for (int i = 0; i < _challenges.length; i++) {
-      if (_validationErrors[i] != null) {
-        final key = _cardKeys[i];
-        if (key != null && key.currentContext != null) {
-          targetIndex = i;
-          break;
-        }
-      }
-    }
-
-    // Fallback: a hard task that is missing a required reminder.
-    if (targetIndex == null) {
-      for (int i = 0; i < _challenges.length; i++) {
-        final c = _challenges[i];
-        if (c.taskType == 'hard' &&
-            c.isReminderEnabled &&
-            c.reminderTime == null) {
-          final key = _cardKeys[i];
-          if (key != null && key.currentContext != null) {
-            targetIndex = i;
-            break;
-          }
-        }
-      }
-    }
-
-    // The first error card may sit below the fold where the lazy ListView
-    // hasn't built it yet. Estimate its offset and jump there so it builds,
-    // then scroll it into view on the next frame.
-    if (targetIndex == null) {
-      int? firstErrorIndex;
-      for (int i = 0; i < _challenges.length; i++) {
-        if (_validationErrors[i] != null) {
-          firstErrorIndex = i;
-          break;
-        }
-      }
-      firstErrorIndex ??= _firstMissingReminderIndex();
-      if (firstErrorIndex != null && _setupScrollController.hasClients) {
-        final double maxExtent =
-            _setupScrollController.position.maxScrollExtent;
-        final double target =
-            _estimateCardOffset(firstErrorIndex).clamp(0.0, maxExtent);
-        _setupScrollController.jumpTo(target);
-        targetIndex = firstErrorIndex;
-      }
-    }
-
-    if (targetIndex == null) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final key = _cardKeys[targetIndex!];
-      if (key != null && key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-          alignment: 0.1,
-        );
-      }
-    });
-  }
-
-  int? _firstMissingReminderIndex() {
-    for (int i = 0; i < _challenges.length; i++) {
-      final c = _challenges[i];
-      if (c.taskType == 'hard' &&
-          c.title.trim().isNotEmpty &&
-          c.isReminderEnabled &&
-          c.reminderTime == null) {
-        return i;
-      }
-    }
-    return null;
-  }
-
-  double _estimateCardOffset(int index) {
-    double offset = 0;
-    for (int i = 0; i < index; i++) {
-      final key = _cardKeys[i];
-      if (key != null && key.currentContext != null) {
-        final box = key.currentContext!.findRenderObject() as RenderBox?;
-        if (box != null && box.hasSize) {
-          offset += box.size.height;
-          continue;
-        }
-      }
-      offset += _kEstimatedCardHeight;
-    }
-    return offset;
   }
 
   void _updateChallenge(
@@ -319,13 +201,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
 
     if (invalidNames.isNotEmpty) {
-      // Mark validation errors on the cards so they highlight red
-      for (int i = 0; i < _challenges.length; i++) {
-        if (_challenges[i].title.trim().isNotEmpty) {
-          _validationErrors[i] = validateTaskName(_challenges[i].title);
-        }
-      }
-      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -337,7 +212,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-      Future.delayed(const Duration(milliseconds: 400), _scrollToFirstError);
       return;
     }
 
@@ -365,9 +239,19 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
       // Go back to setup page
+      PageView(
+        controller: _pageController,
+        // This line ensures users can't swipe manually past the login gate
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: (page) => setState(() {}),
+        children: [
+          _buildWelcomePage(),
+          _buildChallengeSetupPage(),
+          _buildReviewPage(),
+        ],
+      );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-      Future.delayed(const Duration(milliseconds: 400), _scrollToFirstError);
       return;
     }
 
@@ -417,15 +301,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   /// Handles Google Sign-In inline within onboarding.
-  /// Signs in via CloudSyncService (derives AES key, writes users/{uid}),
-  /// records consent, triggers initial sync to create user_data/{uid},
-  /// then goes to /home.
+  /// Shows consent dialog, signs in via CloudSyncService (derives AES key,
+  /// writes users/{uid}), records consent, triggers initial sync to
+  /// create user_data/{uid}, then advances to challenge setup.
   Future<void> handleInitialLogin() async {
     setState(() => _isLoggingIn = true);
     try {
       final syncSvc = CloudSyncService();
 
-      // 1. Sign in via CloudSyncService (derives AES key, writes users/{uid})
+      // 1. Show consent dialog if not yet given
+      if (!await syncSvc.hasConsentBeenGiven()) {
+        if (!mounted) return;
+        final accepted = await _showConsentDialog();
+        if (!accepted) {
+          setState(() => _isLoggingIn = false);
+          return;
+        }
+      }
+
+      // 2. Sign in via CloudSyncService (derives AES key, writes users/{uid})
       final user = await syncSvc.signInWithGoogle();
       if (user == null) {
         if (!mounted) return;
@@ -433,15 +327,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         return;
       }
 
-      // 2. Record consent
-      try {
-        await syncSvc.recordConsent();
-      } catch (e) {
-        // A consent flag failure shouldn't strand the sign-in flow.
-        debugPrint('[Onboarding] Failed to record consent: $e');
-      }
+      // 3. Record consent
+      await syncSvc.recordConsent();
 
-      // 3. Check if cloud backup exists (reinstall scenario)
+      // 4. Check if cloud backup exists (reinstall scenario)
       //    Restore if found, then always go to /home.
       if (mounted) {
         try {
@@ -503,6 +392,72 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     } finally {
       if (mounted) setState(() => _isLoggingIn = false);
     }
+  }
+
+  /// Shows the cloud backup consent dialog.
+  Future<bool> _showConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
+            SizedBox(width: 8),
+            Text('Cloud Backup'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Before enabling backup, here\'s what you need to know:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 12),
+            _ConsentPoint(
+              icon: Icons.lock_outline,
+              text:
+                  'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.key,
+              text:
+                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.visibility_off,
+              text:
+                  'We cannot read your data. The server stores only ciphertext.',
+            ),
+            SizedBox(height: 8),
+            _ConsentPoint(
+              icon: Icons.sync,
+              text:
+                  'Backup happens automatically in the background whenever you\'re online.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFA726),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enable Backup'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   @override
@@ -836,7 +791,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Expanded(
             child: AnimationLimiter(
               child: ListView.builder(
-                controller: _setupScrollController,
                 itemCount: _challenges.length,
                 itemBuilder: (context, index) {
                   return AnimationConfiguration.staggeredList(
@@ -848,10 +802,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       child: FadeInAnimation(
                         child: ScaleAnimation(
                           scale: 0.9,
-                          child: KeyedSubtree(
-                            key: _cardKeys[index],
-                            child: _buildChallengeCard(index),
-                          ),
+                          child: _buildChallengeCard(index),
                         ),
                       ),
                     ),
@@ -952,7 +903,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     margin: const EdgeInsets.all(16),
                   ),
                 );
-                _scrollToFirstError();
                 return;
               }
 
@@ -1830,46 +1780,44 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       _controllers.removeAt(i);
                                       _challenges.removeAt(i);
                                     }
-
-                                    // Reindex surviving card keys so indices
-                                    // stay aligned after blank removal
-                                    // (avoids re-creating GlobalKeys, which
-                                    // would restart animations on valid cards).
-                                    final reindexedKeys = <int, GlobalKey>{};
-                                    for (int i = 0;
-                                        i < _challenges.length;
-                                        i++) {
-                                      final existing = _cardKeys[i];
-                                      if (existing != null) {
-                                        reindexedKeys[i] = existing;
-                                      } else {
-                                        reindexedKeys[i] = GlobalKey();
+                                    // Reindex _selectedPartners after removing blanks
+                                    if (blankIndices.isNotEmpty) {
+                                      final removedSet = blankIndices.toSet();
+                                      final newPartners =
+                                          <int, AccountabilityPartner?>{};
+                                      for (final entry
+                                          in _selectedPartners.entries) {
+                                        if (removedSet.contains(entry.key)) {
+                                          continue;
+                                        }
+                                        // Count how many removed indices are below this entry
+                                        int shift = 0;
+                                        for (final ri in blankIndices) {
+                                          if (ri < entry.key) shift++;
+                                        }
+                                        newPartners[entry.key - shift] =
+                                            entry.value;
                                       }
-                                    }
-                                    _cardKeys
-                                      ..clear()
-                                      ..addAll(reindexedKeys);
+                                      _selectedPartners.clear();
+                                      _selectedPartners.addAll(newPartners);
 
-                                    // Reindex selected partner assignments so
-                                    // indices stay aligned after blank removal.
-                                    // Each surviving challenge keeps its partner
-                                    // and shifts down to fill the gaps left by
-                                    // the removed blanks.
-                                    final reindexedPartners =
-                                        <int, AccountabilityPartner?>{};
-                                    int newIndex = 0;
-                                    for (int i = 0;
-                                        i < _challenges.length;
-                                        i++) {
-                                      final partner = _selectedPartners[i];
-                                      if (partner != null) {
-                                        reindexedPartners[newIndex] = partner;
+                                      // Reindex _validationErrors with the same shift mapping
+                                      final newErrors = <int, String?>{};
+                                      for (final entry
+                                          in _validationErrors.entries) {
+                                        if (removedSet.contains(entry.key)) {
+                                          continue;
+                                        }
+                                        int shift2 = 0;
+                                        for (final ri in blankIndices) {
+                                          if (ri < entry.key) shift2++;
+                                        }
+                                        newErrors[entry.key - shift2] =
+                                            entry.value;
                                       }
-                                      newIndex++;
+                                      _validationErrors.clear();
+                                      _validationErrors.addAll(newErrors);
                                     }
-                                    _selectedPartners
-                                      ..clear()
-                                      ..addAll(reindexedPartners);
 
                                     if (_challenges.length >= 10) {
                                       ScaffoldMessenger.of(context)
@@ -1886,8 +1834,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                         TextEditingController(text: t.title);
                                     _controllers.add(controller);
                                     _challenges.add(challenge);
-                                    _cardKeys[_challenges.length - 1] =
-                                        GlobalKey();
                                     Navigator.pop(context);
                                     setState(() {});
                                   },
@@ -1927,5 +1873,28 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       'bedtime': Icons.bedtime,
     };
     return map[name] ?? Icons.check_circle;
+  }
+}
+
+// ── Helper widget for consent dialog points ──────────────────────────────────
+
+class _ConsentPoint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ConsentPoint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.green[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 13, height: 1.4)),
+        ),
+      ],
+    );
   }
 }

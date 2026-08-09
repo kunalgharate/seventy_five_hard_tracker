@@ -38,6 +38,38 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
   DatabaseRepository get repository => _repository;
 
+  // ── ACCOUNTABILITY SCORING INTEGRATION POINT ────────────────────────────────
+  //
+  // When a task with taskType='hard' is rejected or expired by the accountability
+  // partner, the 75 Hard streak should reset. Integration approach:
+  //
+  // 1. The AccountabilityBloc emits StreakImpacted(newStreakDay, reason) when a
+  //    review outcome impacts scoring (reason = 'rejected' or 'expired').
+  //
+  // 2. To connect the two BLoCs, use one of these patterns:
+  //    a) Stream-based: Expose a Stream<StreakImpacted> from AccountabilityBloc.
+  //       Subscribe here in ChallengeBloc's constructor and dispatch ResetChallenge
+  //       when reason == 'rejected' || reason == 'expired'.
+  //    b) Shared service: A ReviewScoringService that both BLoCs depend on.
+  //       AccountabilityBloc writes outcomes; ChallengeBloc listens for resets.
+  //    c) Parent-level BlocListener: In the widget tree (e.g., MyApp or
+  //       MainNavigationScreen), add a BlocListener<AccountabilityBloc> that
+  //       dispatches ResetChallenge to ChallengeBloc on StreakImpacted events.
+  //
+  // 3. The ResetChallenge event already handles streak reset logic (marks session
+  //    inactive, records failure reason). Dispatch it like:
+  //      challengeBloc.add(ResetChallenge(
+  //        reason: 'Accountability partner rejected task',
+  //        failedChallenges: [taskTitle],
+  //      ));
+  //
+  // 4. For regular tasks (taskType='regular'), rejection/expiry only marks the day
+  //    incomplete — no streak reset needed. This is handled in the completion
+  //    percentage calculation, not here.
+  //
+  // TODO: Wire up cross-BLoC communication once widget integration is complete.
+  // ────────────────────────────────────────────────────────────────────────────
+
   ChallengeBloc({
     required DatabaseRepository repository,
     required SmartNotificationService smartNotifications,
