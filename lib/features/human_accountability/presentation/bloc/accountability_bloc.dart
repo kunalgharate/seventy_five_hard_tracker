@@ -401,14 +401,19 @@ class AccountabilityBloc
         return;
       }
 
-      // Send notification to partner
+      // Send notification to partner (non-blocking — don't fail the submission)
       if (task.partnerUid != null) {
-        await _notificationService.notifyTaskNeedsReview(
-          recipientUid: task.partnerUid!,
-          ownerName: task.accountableName,
-          taskName: task.title,
-          taskId: task.id,
-        );
+        try {
+          await _notificationService.notifyTaskNeedsReview(
+            recipientUid: task.partnerUid!,
+            ownerName: task.accountableName,
+            taskName: task.title,
+            taskId: task.id,
+          );
+        } catch (e) {
+          if (kDebugMode)
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
       }
 
       // Schedule precise expiry timer
@@ -436,12 +441,17 @@ class AccountabilityBloc
         return;
       }
 
-      // Notify the task owner
-      await _notificationService.notifyReviewApproved(
-        recipientUid: task.accountableUid,
-        taskName: task.title,
-        taskId: task.id,
-      );
+      // Notify the task owner (non-blocking)
+      try {
+        await _notificationService.notifyReviewApproved(
+          recipientUid: task.accountableUid,
+          taskName: task.title,
+          taskId: task.id,
+        );
+      } catch (e) {
+        if (kDebugMode)
+          debugPrint('[AccountabilityBloc] Notification failed: $e');
+      }
 
       emit(TaskReviewCompleted(task.id, 'approved',
           comment: event.improvementNote));
@@ -471,13 +481,18 @@ class AccountabilityBloc
         return;
       }
 
-      // Notify the task owner
-      await _notificationService.notifyReviewRejected(
-        recipientUid: task.accountableUid,
-        taskName: task.title,
-        taskId: task.id,
-        comment: event.improvementNote,
-      );
+      // Notify the task owner (non-blocking)
+      try {
+        await _notificationService.notifyReviewRejected(
+          recipientUid: task.accountableUid,
+          taskName: task.title,
+          taskId: task.id,
+          comment: event.improvementNote,
+        );
+      } catch (e) {
+        if (kDebugMode)
+          debugPrint('[AccountabilityBloc] Notification failed: $e');
+      }
 
       emit(TaskReviewCompleted(task.id, 'rejected',
           comment: event.improvementNote));

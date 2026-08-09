@@ -688,14 +688,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       }
     }
 
-    if (widget.isCompleted) {
-      return 'Completed ✓';
-    }
-    if (!widget.isEditable) {
-      return 'Missed';
-    }
-
-    // Show accountability task status when applicable
+    // Show accountability task status when applicable — BEFORE generic checks
+    // so pendingReview/approved override the raw isCompleted flag.
     final accStatus = widget.accountabilityStatus;
     if (accStatus != null) {
       // For creator with pending accepted task and proof required, show upload prompt
@@ -726,6 +720,13 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         case AccountabilityTaskStatus.expired:
           return '⏰ Review expired — marked incomplete';
       }
+    }
+
+    if (widget.isCompleted) {
+      return 'Completed ✓';
+    }
+    if (!widget.isEditable) {
+      return 'Missed';
     }
 
     if (widget.challenge.reminderTime != null &&

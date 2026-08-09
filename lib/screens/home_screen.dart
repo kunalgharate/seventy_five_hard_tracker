@@ -466,6 +466,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     challenge,
                                   ),
                                   proofStatus: _proofStatuses[challenge.id],
+                                  accountabilityStatus:
+                                      _accountabilityStatuses[challenge.id],
                                   onSubmitProof: () => _submitProof(challenge),
                                   onReviewProof: () => _reviewProof(challenge),
                                   onViewProof: () => _viewProof(challenge),
