@@ -1800,6 +1800,23 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       }
                                       _selectedPartners.clear();
                                       _selectedPartners.addAll(newPartners);
+
+                                      // Reindex _validationErrors with the same shift mapping
+                                      final newErrors = <int, String?>{};
+                                      for (final entry
+                                          in _validationErrors.entries) {
+                                        if (removedSet.contains(entry.key)) {
+                                          continue;
+                                        }
+                                        int shift2 = 0;
+                                        for (final ri in blankIndices) {
+                                          if (ri < entry.key) shift2++;
+                                        }
+                                        newErrors[entry.key - shift2] =
+                                            entry.value;
+                                      }
+                                      _validationErrors.clear();
+                                      _validationErrors.addAll(newErrors);
                                     }
 
                                     if (_challenges.length >= 10) {
