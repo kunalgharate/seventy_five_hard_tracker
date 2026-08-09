@@ -55,12 +55,11 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       if (!mounted) return;
       context.read<AccountabilityBloc>().add(LoadAccountabilityData());
     }, onError: (_) {});
-    _assignedByMeStreamSub = AccountabilityService()
-        .assignedByMeStream()
-        .listen((_) {
-          if (!mounted) return;
-          context.read<AccountabilityBloc>().add(LoadAccountabilityData());
-        }, onError: (_) {});
+    _assignedByMeStreamSub =
+        AccountabilityService().assignedByMeStream().listen((_) {
+      if (!mounted) return;
+      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+    }, onError: (_) {});
   }
 
   @override
@@ -81,8 +80,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: () => context.read<AccountabilityBloc>().add(
-              LoadAccountabilityData(),
-            ),
+                  LoadAccountabilityData(),
+                ),
           ),
         ],
       ),
@@ -218,8 +217,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => context.read<AccountabilityBloc>().add(
-                LoadAccountabilityData(),
-              ),
+                    LoadAccountabilityData(),
+                  ),
               child: const Text('Retry'),
             ),
           ],
@@ -412,12 +411,10 @@ class _DashboardTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accepted = partners
-        .where((p) => p.status == PartnershipStatus.accepted)
-        .toList();
-    final pending = partners
-        .where((p) => p.status == PartnershipStatus.pending)
-        .toList();
+    final accepted =
+        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
+    final pending =
+        partners.where((p) => p.status == PartnershipStatus.pending).toList();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -546,9 +543,8 @@ class _WeeklyConsistencyCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         color: isToday ? AppColors.primary : Colors.grey[600],
-                        fontWeight: isToday
-                            ? FontWeight.bold
-                            : FontWeight.normal,
+                        fontWeight:
+                            isToday ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -737,9 +733,8 @@ class _PartnersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accepted = partners
-        .where((p) => p.status == PartnershipStatus.accepted)
-        .toList();
+    final accepted =
+        partners.where((p) => p.status == PartnershipStatus.accepted).toList();
 
     final hasEmailInvites = emailInvitations.isNotEmpty;
     final hasCodeRequests = incomingRequests.isNotEmpty;
@@ -833,8 +828,7 @@ class _PartnersTab extends StatelessWidget {
             title: 'Requests for You',
             icon: Icons.mark_email_unread_outlined,
             color: Colors.blue,
-            count:
-                incomingRequests.length +
+            count: incomingRequests.length +
                 emailInvitations.length +
                 taskRequests.length,
           ),
@@ -1258,9 +1252,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                     ? Icons.check_circle_rounded
                                     : Icons.radio_button_unchecked,
                                 size: 18,
-                                color: isCompleted
-                                    ? Colors.green
-                                    : Colors.orange,
+                                color:
+                                    isCompleted ? Colors.green : Colors.orange,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -1467,8 +1460,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               );
               if (ok == true && context.mounted) {
                 context.read<AccountabilityBloc>().add(
-                  LoadAccountabilityData(),
-                );
+                      LoadAccountabilityData(),
+                    );
               }
             },
             icon: const Icon(Icons.camera_alt_outlined, size: 16),
@@ -1534,12 +1527,12 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             if (task.challengeId != null) {
               try {
                 context.read<ChallengeBloc>().add(
-                  UpdateDailyProgress(
-                    date: DateTime.now(),
-                    challengeId: task.challengeId!,
-                    isCompleted: true,
-                  ),
-                );
+                      UpdateDailyProgress(
+                        date: DateTime.now(),
+                        challengeId: task.challengeId!,
+                        isCompleted: true,
+                      ),
+                    );
               } catch (_) {
                 // safe to ignore
               }
@@ -1895,14 +1888,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                 setModalState(() => submitting = true);
                                 await AccountabilityService()
                                     .createAccountabilityTask(
-                                      accountableUid: partnerUid,
-                                      accountableName: partner.partnerName,
-                                      partnershipId: partner.id,
-                                      title: title,
-                                      description: descCtrl.text.trim().isEmpty
-                                          ? null
-                                          : descCtrl.text.trim(),
-                                    );
+                                  accountableUid: partnerUid,
+                                  accountableName: partner.partnerName,
+                                  partnershipId: partner.id,
+                                  title: title,
+                                  description: descCtrl.text.trim().isEmpty
+                                      ? null
+                                      : descCtrl.text.trim(),
+                                );
                                 if (ctx.mounted) Navigator.pop(ctx);
                                 // Refresh the task list in the card
                                 setState(() {
@@ -2005,8 +1998,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                 onPressed: () {
                   Navigator.pop(context);
                   context.read<AccountabilityBloc>().add(
-                    RemovePartner(widget.partner.id),
-                  );
+                        RemovePartner(widget.partner.id),
+                      );
                 },
                 child: const Text(
                   'Remove',
@@ -2273,8 +2266,8 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
     setState(() => _acting = true);
     // Accept via invite code stored in the partnership
     context.read<AccountabilityBloc>().add(
-      AcceptInvite(widget.partner.inviteCode),
-    );
+          AcceptInvite(widget.partner.inviteCode),
+        );
   }
 
   void _reject() {
@@ -2326,13 +2319,13 @@ class _ReviewCard extends StatelessWidget {
     final color = isApproved
         ? Colors.green
         : isRejected
-        ? Colors.red
-        : Colors.orange;
+            ? Colors.red
+            : Colors.orange;
     final icon = isApproved
         ? Icons.check_circle
         : isRejected
-        ? Icons.cancel
-        : Icons.hourglass_empty;
+            ? Icons.cancel
+            : Icons.hourglass_empty;
 
     return Card(
       elevation: 2,
@@ -2546,14 +2539,13 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
     }
     setState(() => _loading = true);
     context.read<AccountabilityBloc>().add(
-      InvitePartner(
-        partnerName: name,
-        partnerEmail: _emailCtrl.text.trim().isEmpty
-            ? null
-            : _emailCtrl.text.trim(),
-        role: _role,
-      ),
-    );
+          InvitePartner(
+            partnerName: name,
+            partnerEmail:
+                _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+            role: _role,
+          ),
+        );
     Navigator.pop(context);
   }
 }
@@ -2717,9 +2709,8 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     if (mounted) {
       setState(() {
         _pendingDays = days;
-        _selectedDateKey = days.isNotEmpty
-            ? days.first['dateKey'] as String
-            : null;
+        _selectedDateKey =
+            days.isNotEmpty ? days.first['dateKey'] as String : null;
         _loading = false;
       });
     }
@@ -2753,53 +2744,54 @@ class _ReviewSheetState extends State<_ReviewSheet> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _pendingDays.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No pending days to review.',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    )
-                  : ListView(
-                      controller: ctrl,
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        _buildDaySelector(),
-                        const SizedBox(height: 20),
-                        _buildDecisionSelector(),
-                        const SizedBox(height: 20),
-                        TextField(
-                          controller: _commentCtrl,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
-                            labelText: 'Comment / Motivation (optional)',
-                            alignLabelWithHint: true,
-                            prefixIcon: Padding(
-                              padding: EdgeInsets.only(bottom: 40),
-                              child: Icon(Icons.comment_outlined),
-                            ),
+                      ? Center(
+                          child: Text(
+                            'No pending days to review.',
+                            style: TextStyle(color: Colors.grey[600]),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            child: const Text(
-                              'Submit Review',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                        )
+                      : ListView(
+                          controller: ctrl,
+                          padding: const EdgeInsets.all(20),
+                          children: [
+                            _buildDaySelector(),
+                            const SizedBox(height: 20),
+                            _buildDecisionSelector(),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _commentCtrl,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Comment / Motivation (optional)',
+                                alignLabelWithHint: true,
+                                prefixIcon: Padding(
+                                  padding: EdgeInsets.only(bottom: 40),
+                                  child: Icon(Icons.comment_outlined),
+                                ),
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _submit,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                ),
+                                child: const Text(
+                                  'Submit Review',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
             ),
           ],
         ),
@@ -2878,16 +2870,16 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     if (reviewerUid == null) return;
 
     context.read<AccountabilityBloc>().add(
-      SubmitReview(
-        subjectUid: subjectUid,
-        reviewerName: AccountabilityService().currentUserDisplayName,
-        dateKey: _selectedDateKey!,
-        decision: _decision,
-        comment: _commentCtrl.text.trim().isEmpty
-            ? null
-            : _commentCtrl.text.trim(),
-      ),
-    );
+          SubmitReview(
+            subjectUid: subjectUid,
+            reviewerName: AccountabilityService().currentUserDisplayName,
+            dateKey: _selectedDateKey!,
+            decision: _decision,
+            comment: _commentCtrl.text.trim().isEmpty
+                ? null
+                : _commentCtrl.text.trim(),
+          ),
+        );
     Navigator.pop(context);
   }
 }
@@ -2991,13 +2983,13 @@ class _StatusChip extends StatelessWidget {
     final color = status == PartnershipStatus.accepted
         ? Colors.green
         : status == PartnershipStatus.pending
-        ? Colors.orange
-        : Colors.red;
+            ? Colors.orange
+            : Colors.red;
     final label = status == PartnershipStatus.accepted
         ? 'Active'
         : status == PartnershipStatus.pending
-        ? 'Pending'
-        : 'Declined';
+            ? 'Pending'
+            : 'Declined';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -3238,8 +3230,8 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                       onPressed: () {
                         setState(() => _loading = true);
                         context.read<AccountabilityBloc>().add(
-                          RejectEmailInvite(inv.id),
-                        );
+                              RejectEmailInvite(inv.id),
+                            );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
@@ -3257,8 +3249,8 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                       onPressed: () {
                         setState(() => _loading = true);
                         context.read<AccountabilityBloc>().add(
-                          AcceptEmailInvite(inv.id),
-                        );
+                              AcceptEmailInvite(inv.id),
+                            );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
@@ -3329,8 +3321,8 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
     }
     setState(() => _sending = true);
     context.read<AccountabilityBloc>().add(
-      SendEmailInvite(toEmail: email, role: _role),
-    );
+          SendEmailInvite(toEmail: email, role: _role),
+        );
   }
 
   @override
@@ -3737,8 +3729,8 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                       onPressed: () {
                         setState(() => _loading = true);
                         context.read<AccountabilityBloc>().add(
-                          DeclineTaskRequest(task.id),
-                        );
+                              DeclineTaskRequest(task.id),
+                            );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
@@ -3756,8 +3748,8 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                       onPressed: () {
                         setState(() => _loading = true);
                         context.read<AccountabilityBloc>().add(
-                          AcceptTaskRequest(task.id),
-                        );
+                              AcceptTaskRequest(task.id),
+                            );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.teal,
@@ -4114,13 +4106,13 @@ class _PendingReviewCardState extends State<_PendingReviewCard> {
                 OutlinedButton(
                   onPressed: () {
                     context.read<AccountabilityBloc>().add(
-                      RejectTaskReview(
-                        widget.task.id,
-                        improvementNote: _noteCtrl.text.trim().isEmpty
-                            ? null
-                            : _noteCtrl.text.trim(),
-                      ),
-                    );
+                          RejectTaskReview(
+                            widget.task.id,
+                            improvementNote: _noteCtrl.text.trim().isEmpty
+                                ? null
+                                : _noteCtrl.text.trim(),
+                          ),
+                        );
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
@@ -4137,13 +4129,13 @@ class _PendingReviewCardState extends State<_PendingReviewCard> {
                 ElevatedButton(
                   onPressed: () {
                     context.read<AccountabilityBloc>().add(
-                      ApproveTaskReview(
-                        widget.task.id,
-                        improvementNote: _noteCtrl.text.trim().isEmpty
-                            ? null
-                            : _noteCtrl.text.trim(),
-                      ),
-                    );
+                          ApproveTaskReview(
+                            widget.task.id,
+                            improvementNote: _noteCtrl.text.trim().isEmpty
+                                ? null
+                                : _noteCtrl.text.trim(),
+                          ),
+                        );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
