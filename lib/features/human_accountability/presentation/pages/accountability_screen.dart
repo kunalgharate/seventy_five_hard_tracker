@@ -24,6 +24,8 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/notifications_screen.dart';
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 
@@ -80,6 +82,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       appBar: CustomAppBar(
         title: 'Accountability',
         actions: [
+          const _NotificationsBell(),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -207,14 +210,66 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
         ),
       );
     } else {
-      // Signed in — show the real invite partner sheet
+      // Signed in — offer to invite a partner or join one with a code.
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => BlocProvider.value(
-          value: context.read<AccountabilityBloc>(),
-          child: const _InvitePartnerSheet(),
+        builder: (ctx) => SafeArea(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SheetHandle(),
+                const SizedBox(height: 8),
+                Text(
+                  'Add Accountability Partner',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showInviteSheet(context);
+                    },
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Invite Partner'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showJoinSheet(context);
+                    },
+                    icon: const Icon(Icons.login),
+                    label: const Text('Join with Code'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -320,7 +375,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
 
   // ── Invite sheet ─────────────────────────────────────────────────
 
-  // ignore: unused_element
   void _showInviteSheet(BuildContext context) {
     final syncService = CloudSyncService();
     if (!syncService.isSignedIn) {
@@ -338,7 +392,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     );
   }
 
-  // ignore: unused_element
   void _showJoinSheet(BuildContext context) {
     final syncService = CloudSyncService();
     if (!syncService.isSignedIn) {
@@ -3089,6 +3142,73 @@ class _SheetHandle extends StatelessWidget {
         color: Colors.grey[300],
         borderRadius: BorderRadius.circular(2),
       ),
+    );
+  }
+}
+
+class _NotificationsBell extends StatelessWidget {
+  const _NotificationsBell();
+
+  void _openNotifications(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = CloudSyncService().currentUser?.uid;
+    if (uid == null) {
+      return IconButton(
+        icon: const Icon(Icons.notifications_none, color: Colors.white),
+        tooltip: 'Notifications',
+        onPressed: () => _openNotifications(context),
+      );
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('fcm_notifications')
+          .where('recipientUid', isEqualTo: uid)
+          .where('delivered', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unread = snapshot.data?.docs.length ?? 0;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_none, color: Colors.white),
+              tooltip: 'Notifications',
+              onPressed: () => _openNotifications(context),
+            ),
+            if (unread > 0)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
