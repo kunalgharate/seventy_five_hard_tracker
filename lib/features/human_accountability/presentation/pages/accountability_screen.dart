@@ -24,8 +24,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/notifications_screen.dart';
+import 'package:seventy_five_hard_tracker/widgets/notifications_bell.dart';
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 
@@ -45,6 +44,10 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   late final TabController _tabs;
   StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
+
+  /// Caches the last fully-loaded state so transient sub-states
+  /// (e.g. [MyResponsibilitiesLoaded]) don't wipe the visible content.
+  AccountabilityLoaded? _lastLoaded;
 
   @override
   void initState() {
@@ -82,7 +85,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       appBar: CustomAppBar(
         title: 'Accountability',
         actions: [
-          const _NotificationsBell(),
+          const NotificationsBell(),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -99,32 +102,55 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
             child: BlocConsumer<AccountabilityBloc, AccountabilityState>(
               listener: _handleStateChange,
               builder: (context, state) {
+                if (state is AccountabilityLoaded) {
+                  _lastLoaded = state;
+                }
+                // Loading / initial — show a spinner only while we have
+                // nothing cached yet, otherwise keep the content on screen.
                 if (state is AccountabilityLoading ||
                     state is AccountabilityInitial) {
+                  if (_lastLoaded != null) {
+                    return _buildTabContent(_lastLoaded!);
+                  }
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (state is AccountabilityError) {
+                  if (_lastLoaded != null) {
+                    return _buildTabContent(_lastLoaded!);
+                  }
                   return _buildError(state.message);
                 }
-                final loaded = state is AccountabilityLoaded ? state : null;
-                return TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _PartnersTab(
-                      partners: loaded?.partners ?? [],
-                      incomingRequests: loaded?.incomingRequests ?? [],
-                      emailInvitations: loaded?.emailInvitations ?? [],
-                      taskRequests: loaded?.taskRequests ?? [],
-                    ),
-                    _ReviewsTab(reviews: loaded?.myReviews ?? []),
-                  ],
-                );
+                // Any other state (e.g. MyResponsibilitiesLoaded,
+                // PartnerInvited, TaskRequestAccepted, StreakImpacted…) —
+                // keep showing the last loaded content so the UI doesn't
+                // glitch out and hide partners/pending invites.
+                final loaded = _lastLoaded ??
+                    (state is AccountabilityLoaded ? state : null);
+                if (loaded == null) {
+                  return const SizedBox.shrink();
+                }
+                return _buildTabContent(loaded);
               },
             ),
           ),
         ],
       ),
       floatingActionButton: _buildFab(),
+    );
+  }
+
+  Widget _buildTabContent(AccountabilityLoaded loaded) {
+    return TabBarView(
+      controller: _tabs,
+      children: [
+        _PartnersTab(
+          partners: loaded.partners,
+          incomingRequests: loaded.incomingRequests,
+          emailInvitations: loaded.emailInvitations,
+          taskRequests: loaded.taskRequests,
+        ),
+        _ReviewsTab(reviews: loaded.myReviews),
+      ],
     );
   }
 
@@ -3142,73 +3168,6 @@ class _SheetHandle extends StatelessWidget {
         color: Colors.grey[300],
         borderRadius: BorderRadius.circular(2),
       ),
-    );
-  }
-}
-
-class _NotificationsBell extends StatelessWidget {
-  const _NotificationsBell();
-
-  void _openNotifications(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final uid = CloudSyncService().currentUser?.uid;
-    if (uid == null) {
-      return IconButton(
-        icon: const Icon(Icons.notifications_none, color: Colors.white),
-        tooltip: 'Notifications',
-        onPressed: () => _openNotifications(context),
-      );
-    }
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('fcm_notifications')
-          .where('recipientUid', isEqualTo: uid)
-          .where('delivered', isEqualTo: false)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final unread = snapshot.data?.docs.length ?? 0;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_none, color: Colors.white),
-              tooltip: 'Notifications',
-              onPressed: () => _openNotifications(context),
-            ),
-            if (unread > 0)
-              Positioned(
-                right: 4,
-                top: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  constraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    unread > 9 ? '9+' : '$unread',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 }

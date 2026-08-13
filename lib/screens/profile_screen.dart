@@ -14,6 +14,7 @@ import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart'
 import 'package:seventy_five_hard_tracker/widgets/discipline_heatmap.dart';
 import 'package:seventy_five_hard_tracker/widgets/achievements_showcase.dart';
 import 'journal_timeline_screen.dart';
+import 'package:seventy_five_hard_tracker/widgets/notifications_bell.dart';
 import '../main.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -148,6 +149,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           expandedHeight: 250,
           pinned: true,
           backgroundColor: AppColors.primary,
+          actions: const [NotificationsBell()],
           flexibleSpace: FlexibleSpaceBar(
             background: Container(
               decoration: BoxDecoration(

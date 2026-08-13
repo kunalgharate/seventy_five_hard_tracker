@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/models/collaborator.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 
 class CollaboratorDialog extends StatefulWidget {
   final String taskId;
@@ -284,13 +283,14 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             type: 'accountability',
           );
 
-          // Skip if an active accountability task already exists for this challengeId
-          final existing = await _svc.fetchTaskByChallengeId(widget.taskId);
-          if (existing != null &&
-              existing.status != AccountabilityTaskStatus.declined &&
-              existing.status != AccountabilityTaskStatus.completed) {
+          // Skip if an active accountability task already exists for this
+          // challenge + this specific collaborator (each collaborator gets
+          // their own invite so a pending request can be tracked per user).
+          final alreadyInvited =
+              await _svc.hasActiveTaskForCollaborator(widget.taskId, c.uid);
+          if (alreadyInvited) {
             debugPrint(
-                '[CollaboratorDialog] Active task already exists: ${existing.id} — skipping');
+                '[CollaboratorDialog] Active task already exists for ${c.uid} — skipping');
             continue;
           }
 

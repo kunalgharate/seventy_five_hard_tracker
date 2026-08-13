@@ -25,6 +25,7 @@ import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
+import 'package:seventy_five_hard_tracker/widgets/notifications_bell.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -135,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          const NotificationsBell(),
         ],
       ),
       body: BlocConsumer<ChallengeBloc, ChallengeState>(

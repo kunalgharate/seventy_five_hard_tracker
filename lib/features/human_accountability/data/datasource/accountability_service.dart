@@ -874,6 +874,87 @@ class AccountabilityService {
     }
   }
 
+  /// Aggregates the current user's accountability-task info keyed by
+  /// challenge (regular task) ID so the Regular Tasks screen can restore
+  /// partner/proof badges after a restart instead of only at assign time.
+  Future<
+      ({
+        Map<String, String> assignedPartnerNames,
+        Map<String, AccountabilityTaskStatus> statuses,
+        Map<String, ProofStatus> proofs,
+        Set<String> tasksIAssigned,
+      })> fetchMyTaskAccountabilityMaps() async {
+    const empty = (
+      assignedPartnerNames: <String, String>{},
+      statuses: <String, AccountabilityTaskStatus>{},
+      proofs: <String, ProofStatus>{},
+      tasksIAssigned: <String>{},
+    );
+    if (!_isReady) return empty;
+    try {
+      final uid = currentUid!;
+      final byMe = await _db
+          .collection('accountability_tasks')
+          .where('assignedByUid', isEqualTo: uid)
+          .get();
+      final toMe = await _db
+          .collection('accountability_tasks')
+          .where('accountableUid', isEqualTo: uid)
+          .get();
+
+      final assignedPartnerNames = <String, String>{};
+      final statuses = <String, AccountabilityTaskStatus>{};
+      final proofs = <String, ProofStatus>{};
+      final tasksIAssigned = <String>{};
+
+      void ingest(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+        final data = doc.data();
+        final cid = data['challengeId'] as String?;
+        if (cid == null || cid.isEmpty) return;
+        final status = AccountabilityTaskStatusExtension.fromString(
+            data['status'] as String? ?? 'pending');
+        final proof = ProofStatusExtension.fromString(
+            data['proofStatus'] as String? ?? 'not_required');
+        if (data['assignedByUid'] == uid) {
+          tasksIAssigned.add(cid);
+          assignedPartnerNames[cid] = data['accountableName'] as String? ?? '';
+        }
+        if (data['accountableUid'] == uid) {
+          assignedPartnerNames[cid] = data['assignedByName'] as String? ?? '';
+        }
+        // Prefer a non-requested status when duplicates exist for one challenge.
+        final existing = statuses[cid];
+        if (existing == null ||
+            (existing == AccountabilityTaskStatus.requested &&
+                status != AccountabilityTaskStatus.requested)) {
+          statuses[cid] = status;
+        }
+        if (proof != ProofStatus.not_required) {
+          proofs[cid] = proof;
+        }
+      }
+
+      for (final doc in byMe.docs) {
+        ingest(doc);
+      }
+      for (final doc in toMe.docs) {
+        ingest(doc);
+      }
+      return (
+        assignedPartnerNames: assignedPartnerNames,
+        statuses: statuses,
+        proofs: proofs,
+        tasksIAssigned: tasksIAssigned,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchMyTaskAccountabilityMaps error: $e');
+      }
+      return empty;
+    }
+  }
+
   /// Returns tasks assigned TO the current user that are active (pending status).
   /// Used to show partner-assigned tasks on the daily tasks screen.
   Future<List<AccountabilityTask>> fetchTasksAssignedToMe() async {
@@ -1668,6 +1749,45 @@ class AccountabilityService {
     });
   }
 
+  /// Fetches the accountability-task status for each collaborator on a
+  /// regular task (challengeId). Keyed by the accountable user's UID.
+  ///
+  /// `requested` means the collaborator has NOT accepted the invite yet;
+  /// `pending`/`completed`/etc. mean they accepted. Tasks the current user
+  /// cannot read are simply skipped by Firestore rules.
+  Future<Map<String, AccountabilityTaskStatus>> fetchCollaboratorStatuses(
+      String challengeId) async {
+    if (!_isReady) return {};
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('challengeId', isEqualTo: challengeId)
+          .get();
+      final map = <String, AccountabilityTaskStatus>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final aUid = data['accountableUid'] as String?;
+        if (aUid == null || aUid.isEmpty) continue;
+        final status = AccountabilityTaskStatusExtension.fromString(
+            data['status'] as String? ?? 'requested');
+        // Prefer a non-requested status when duplicates exist for one user.
+        final existing = map[aUid];
+        if (existing == null ||
+            (existing == AccountabilityTaskStatus.requested &&
+                status != AccountabilityTaskStatus.requested)) {
+          map[aUid] = status;
+        }
+      }
+      return map;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchCollaboratorStatuses error: $e');
+      }
+      return {};
+    }
+  }
+
   // ── Photo Proof ─────────────────────────────────────────────────────────
 
   /// Submit photo proof for a task. Sets proofStatus → submitted.
@@ -1869,6 +1989,37 @@ class AccountabilityService {
             '[AccountabilityService] fetchTaskIdByChallengeId error: $e');
       }
       return null;
+    }
+  }
+
+  /// Whether the current user already has an active accountability task
+  /// for [challengeId] with [accountableUid] as the accountable person.
+  /// Used to avoid creating duplicate collaborator invites (one per user).
+  Future<bool> hasActiveTaskForCollaborator(
+      String challengeId, String accountableUid) async {
+    if (!_isReady) return false;
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('challengeId', isEqualTo: challengeId)
+          .where('accountableUid', isEqualTo: accountableUid)
+          .limit(5)
+          .get();
+      for (final doc in snap.docs) {
+        final status = AccountabilityTaskStatusExtension.fromString(
+            doc.data()['status'] as String? ?? 'pending');
+        if (status != AccountabilityTaskStatus.declined &&
+            status != AccountabilityTaskStatus.completed) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] hasActiveTaskForCollaborator error: $e');
+      }
+      return false;
     }
   }
 

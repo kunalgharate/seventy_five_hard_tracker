@@ -21,6 +21,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/edit_regular_task_sheet.dart';
+import 'package:seventy_five_hard_tracker/widgets/notifications_bell.dart';
 
 class RegularTasksScreen extends StatefulWidget {
   const RegularTasksScreen({super.key});
@@ -36,21 +37,90 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   final Set<String> _tasksIAssigned = {};
   final Map<String, List<Collaborator>> _taskCollaborators = {};
 
+  /// Per-task map of collaborator UID → accountability-task status
+  /// (used to show "Pending" until the collaborator accepts).
+  final Map<String, Map<String, AccountabilityTaskStatus>>
+      _collaboratorStatuses = {};
+  final Set<String> _loadedCollaboratorTaskIds = {};
+  StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
+  StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
+
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
     _loadAccountabilityData();
+    _subscribeToAccountabilityStreams();
+  }
+
+  @override
+  void dispose() {
+    _tasksStreamSub?.cancel();
+    _assignedByMeStreamSub?.cancel();
+    super.dispose();
+  }
+
+  /// Keeps partner/proof badges and collaborator acceptance statuses in sync
+  /// when accountability tasks change (e.g. a collaborator accepts an invite
+  /// from their Partners tab).
+  void _subscribeToAccountabilityStreams() {
+    final svc = AccountabilityService();
+    _tasksStreamSub?.cancel();
+    _assignedByMeStreamSub?.cancel();
+    _tasksStreamSub = svc.myTasksStream().listen((_) {
+      if (!mounted) return;
+      _loadAccountabilityData();
+      _refreshCollaboratorStatuses();
+    }, onError: (_) {});
+    _assignedByMeStreamSub = svc.assignedByMeStream().listen((_) {
+      if (!mounted) return;
+      _loadAccountabilityData();
+      _refreshCollaboratorStatuses();
+    }, onError: (_) {});
+  }
+
+  Future<void> _refreshCollaboratorStatuses() async {
+    final svc = AccountabilityService();
+    final taskIds = _loadedCollaboratorTaskIds.toList();
+    for (final taskId in taskIds) {
+      if (!mounted) return;
+      final statuses = await svc.fetchCollaboratorStatuses(taskId);
+      if (!mounted) return;
+      setState(() {
+        _collaboratorStatuses[taskId] = statuses;
+      });
+    }
   }
 
   Future<void> _loadAccountabilityData() async {
     final svc = AccountabilityService();
-    final partners = await svc.fetchMyPartnerships();
-    for (final p in partners) {
-      if (p.status == PartnershipStatus.accepted) {
-        // Load tasks assigned through this partnership
-        // This populates _assignedPartnerNames, _proofStatuses, etc.
+    final maps = await svc.fetchMyTaskAccountabilityMaps();
+    if (!mounted) return;
+    setState(() {
+      _assignedPartnerNames.addAll(maps.assignedPartnerNames);
+      _accountabilityStatuses.addAll(maps.statuses);
+      _proofStatuses.addAll(maps.proofs);
+      _tasksIAssigned.addAll(maps.tasksIAssigned);
+    });
+  }
+
+  Future<void> _loadCollaboratorsForTasks(List<RegularTask> tasks) async {
+    final svc = AccountabilityService();
+    for (final task in tasks) {
+      if (_loadedCollaboratorTaskIds.contains(task.id)) continue;
+      _loadedCollaboratorTaskIds.add(task.id);
+      if (!mounted) return;
+      final result = await svc.getTaskCollaborators(task.id);
+      final collaborators = result?.collaborators ?? [];
+      Map<String, AccountabilityTaskStatus> statuses = const {};
+      if (collaborators.isNotEmpty) {
+        statuses = await svc.fetchCollaboratorStatuses(task.id);
       }
+      if (!mounted) return;
+      setState(() {
+        _taskCollaborators[task.id] = collaborators;
+        _collaboratorStatuses[task.id] = statuses;
+      });
     }
   }
 
@@ -66,6 +136,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           tasks = state.tasks;
           todayCompletions = state.todayCompletions;
           recentCompletions = state.recentCompletions;
+          _loadCollaboratorsForTasks(tasks);
         } else {
           tasks = [];
           todayCompletions = {};
@@ -73,7 +144,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
         }
 
         return Scaffold(
-          appBar: const CustomAppBar(title: 'Regular Tasks'),
+          appBar: const CustomAppBar(
+            title: 'Regular Tasks',
+            actions: [NotificationsBell()],
+          ),
           body: state is RegularTaskLoading
               ? const Center(child: CircularProgressIndicator())
               : tasks.isNotEmpty
@@ -271,8 +345,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                           if ((_taskCollaborators[task.id]?.isNotEmpty ??
                               false)) ...[
                             const SizedBox(height: 4),
-                            _buildCollaboratorAvatars(
-                                _taskCollaborators[task.id]!),
+                            _buildCollaboratorRow(
+                                task.id, _taskCollaborators[task.id]!),
                           ],
                         ],
                       ),
@@ -438,6 +512,45 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
         context.read<AccountabilityBloc>().add(LoadAccountabilityData());
       }
     }
+  }
+
+  bool _isCollaboratorAccepted(String taskId, Collaborator c) {
+    final status = _collaboratorStatuses[taskId]?[c.uid];
+    if (status == null) return false;
+    return status != AccountabilityTaskStatus.requested &&
+        status != AccountabilityTaskStatus.declined;
+  }
+
+  /// Renders accepted collaborators as avatars and unaccepted ones as a
+  /// "Pending" chip (the collaborator accepts from their Partners tab).
+  Widget _buildCollaboratorRow(
+      String taskId, List<Collaborator> collaborators) {
+    final accepted =
+        collaborators.where((c) => _isCollaboratorAccepted(taskId, c)).toList();
+    final pendingCount = collaborators.length - accepted.length;
+    return Row(
+      children: [
+        if (accepted.isNotEmpty) _buildCollaboratorAvatars(accepted),
+        if (accepted.isNotEmpty && pendingCount > 0) const SizedBox(width: 8),
+        if (pendingCount > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange[200]!),
+            ),
+            child: Text(
+              pendingCount == 1 ? 'Pending' : 'Pending $pendingCount',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange[700],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildCollaboratorAvatars(List<Collaborator> collaborators) {
@@ -657,10 +770,17 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   }
 
   Future<void> _refreshCollaborators(String taskId) async {
-    final result = await AccountabilityService().getTaskCollaborators(taskId);
+    final svc = AccountabilityService();
+    final result = await svc.getTaskCollaborators(taskId);
+    final collaborators = result?.collaborators ?? [];
+    Map<String, AccountabilityTaskStatus> statuses = const {};
+    if (collaborators.isNotEmpty) {
+      statuses = await svc.fetchCollaboratorStatuses(taskId);
+    }
     if (!mounted) return;
     setState(() {
-      _taskCollaborators[taskId] = result?.collaborators ?? [];
+      _taskCollaborators[taskId] = collaborators;
+      _collaboratorStatuses[taskId] = statuses;
     });
   }
 
