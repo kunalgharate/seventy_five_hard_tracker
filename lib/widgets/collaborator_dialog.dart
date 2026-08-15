@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/models/collaborator.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 
 class CollaboratorDialog extends StatefulWidget {
   final String taskId;
@@ -309,6 +310,19 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             debugPrint('  assignedByUid:     ${task.assignedByUid}');
             debugPrint('  accountableUid:    ${task.accountableUid}');
             debugPrint('  task document ID:  ${task.id}');
+            try {
+              await AccountabilityNotificationService()
+                  .notifyInvitationReceived(
+                recipientUid: c.uid,
+                senderName: _svc.currentUserDisplayName,
+                taskName: widget.taskName!,
+                taskId: task.id,
+                partnershipId: task.partnershipId,
+              );
+            } catch (e) {
+              debugPrint(
+                  '[CollaboratorDialog] Notification error for ${c.uid}: $e');
+            }
           } else {
             debugPrint(
                 '[CollaboratorDialog] FAILED to create accountability task for ${c.uid}');

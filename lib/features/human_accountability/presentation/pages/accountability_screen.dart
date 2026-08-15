@@ -1902,8 +1902,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   void _showAddTaskInline(BuildContext context) {
     final partner = widget.partner;
-    final partnerUid = partner.partnerUid;
-    if (partnerUid == null) return;
+    final myUid = AccountabilityService().currentUid;
+    final accountableUid = myUid != null && partner.ownerUid == myUid
+        ? partner.partnerUid
+        : partner.ownerUid;
+    if (accountableUid == null) return;
 
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -1987,7 +1990,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                 setModalState(() => submitting = true);
                                 await AccountabilityService()
                                     .createAccountabilityTask(
-                                  accountableUid: partnerUid,
+                                  accountableUid: accountableUid,
                                   accountableName: partner.partnerName,
                                   partnershipId: partner.id,
                                   title: title,

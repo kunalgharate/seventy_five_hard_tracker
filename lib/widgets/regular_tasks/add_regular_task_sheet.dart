@@ -585,14 +585,19 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
     widget.bloc.add(AddRegularTask(regularTask));
 
     // If an accountability partner was selected, create the accountability task
-    if (_selectedPartner != null && _selectedPartner!.partnerUid != null) {
-      AccountabilityService().createAccountabilityTask(
-        accountableUid: _selectedPartner!.partnerUid!,
-        accountableName: _selectedPartner!.partnerName,
-        partnershipId: _selectedPartner!.id,
-        title: sanitizedTitle,
-        challengeId: taskId,
-      );
+    final partner = _selectedPartner;
+    if (partner != null) {
+      final accountableUid =
+          partner.otherUidFor(AccountabilityService().currentUid ?? '');
+      if (accountableUid != null) {
+        AccountabilityService().createAccountabilityTask(
+          accountableUid: accountableUid,
+          accountableName: partner.partnerName,
+          partnershipId: partner.id,
+          title: sanitizedTitle,
+          challengeId: taskId,
+        );
+      }
     }
 
     Navigator.pop(context);

@@ -29,8 +29,7 @@ class _AccountabilityTasksScreenState extends State<AccountabilityTasksScreen> {
   bool get _iAmOwner => widget.partner.ownerUid == _myUid;
   String get _accountableUid =>
       _iAmOwner ? (widget.partner.partnerUid ?? '') : widget.partner.ownerUid;
-  String get _accountableName =>
-      _iAmOwner ? widget.partner.partnerName : _svc.currentUserDisplayName;
+  String get _accountableName => widget.partner.partnerName;
 
   @override
   Widget build(BuildContext context) {

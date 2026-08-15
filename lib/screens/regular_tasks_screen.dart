@@ -521,17 +521,18 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
         status != AccountabilityTaskStatus.declined;
   }
 
-  /// Renders accepted collaborators as avatars and unaccepted ones as a
-  /// "Pending" chip (the collaborator accepts from their Partners tab).
+  /// Renders all collaborators as avatars (pending ones dimmed) and shows a
+  /// "Pending" chip when some collaborators have not accepted yet.
   Widget _buildCollaboratorRow(
       String taskId, List<Collaborator> collaborators) {
-    final accepted =
-        collaborators.where((c) => _isCollaboratorAccepted(taskId, c)).toList();
-    final pendingCount = collaborators.length - accepted.length;
+    final pendingCount =
+        collaborators.where((c) => !_isCollaboratorAccepted(taskId, c)).length;
     return Row(
       children: [
-        if (accepted.isNotEmpty) _buildCollaboratorAvatars(accepted),
-        if (accepted.isNotEmpty && pendingCount > 0) const SizedBox(width: 8),
+        if (collaborators.isNotEmpty)
+          _buildCollaboratorAvatars(taskId, collaborators),
+        if (collaborators.isNotEmpty && pendingCount > 0)
+          const SizedBox(width: 8),
         if (pendingCount > 0)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -553,7 +554,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     );
   }
 
-  Widget _buildCollaboratorAvatars(List<Collaborator> collaborators) {
+  Widget _buildCollaboratorAvatars(
+      String taskId, List<Collaborator> collaborators) {
     const avatarSize = 20.0;
     const overlap = 7.0;
     final displayList = collaborators.take(5).toList();
@@ -567,8 +569,12 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           for (int i = 0; i < displayList.length; i++)
             Positioned(
               left: i * (avatarSize - overlap),
-              child: CollaboratorDialog.buildAvatar(displayList[i],
-                  size: avatarSize),
+              child: Opacity(
+                opacity:
+                    _isCollaboratorAccepted(taskId, displayList[i]) ? 1 : 0.35,
+                child: CollaboratorDialog.buildAvatar(displayList[i],
+                    size: avatarSize),
+              ),
             ),
           if (extraCount > 0)
             Positioned(
@@ -853,7 +859,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                       partnershipId: p.id,
                       title: task.title,
                       challengeId: task.id,
-                      accountableUid: p.partnerUid ?? '',
+                      accountableUid: p.otherUidFor(svc.currentUid ?? '') ?? '',
                       accountableName: p.partnerName,
                     );
                     if (createdTask != null && mounted) {

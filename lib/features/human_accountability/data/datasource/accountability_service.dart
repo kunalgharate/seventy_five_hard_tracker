@@ -67,13 +67,25 @@ class AccountabilityService {
 
   /// Parse an [AccountabilityPartner] from a Firestore document snapshot,
   /// handling Timestamp fields correctly.
+  ///
+  /// `partnerName` is normalized to the *other* person's name from the current
+  /// viewer's perspective: the owner sees the name they typed, while the
+  /// partner sees the owner's name (falling back to the typed name for legacy
+  /// records that predate the `ownerName` field).
   AccountabilityPartner _partnerFromDoc(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final ownerName = data['ownerName'] as String? ?? '';
+    final rawPartnerName = data['partnerName'] as String? ?? '';
+    final myUid = currentUid;
+    final isOwner = myUid != null && data['ownerUid'] == myUid;
     return AccountabilityPartner(
       id: data['id'] as String? ?? doc.id,
       ownerUid: data['ownerUid'] as String,
+      ownerName: ownerName,
       partnerUid: data['partnerUid'] as String?,
-      partnerName: data['partnerName'] as String,
+      partnerName: isOwner
+          ? rawPartnerName
+          : (ownerName.isNotEmpty ? ownerName : rawPartnerName),
       partnerEmail: data['partnerEmail'] as String?,
       role:
           PartnerRoleExtension.fromString(data['role'] as String? ?? 'friend'),
@@ -84,6 +96,37 @@ class AccountabilityService {
       acceptedAt:
           data['acceptedAt'] != null ? _parseDate(data['acceptedAt']) : null,
     );
+  }
+
+  /// Backfills the [AccountabilityPartner.ownerName] for legacy partnership
+  /// records (created before `ownerName` was stored) by looking up the owner
+  /// in the `users` collection. Partners without a users entry keep the
+  /// fallback name.
+  Future<List<AccountabilityPartner>> _enrichOwnerNames(
+      List<AccountabilityPartner> partners) async {
+    final myUid = currentUid;
+    final missing = partners
+        .where((p) => p.ownerName.isEmpty && p.ownerUid != myUid)
+        .toList();
+    if (missing.isEmpty) return partners;
+    final nameByUid = <String, String>{};
+    for (final p in missing) {
+      if (nameByUid.containsKey(p.ownerUid)) continue;
+      try {
+        final doc = await _db.collection('users').doc(p.ownerUid).get();
+        nameByUid[p.ownerUid] = doc.exists
+            ? ((doc.data()!['displayName'] as String?)?.trim() ?? '')
+            : '';
+      } catch (_) {
+        nameByUid[p.ownerUid] = '';
+      }
+    }
+    return partners.map((p) {
+      if (p.ownerName.isNotEmpty || p.ownerUid == myUid) return p;
+      final name = nameByUid[p.ownerUid];
+      if (name == null || name.isEmpty) return p;
+      return p.copyWith(ownerName: name, partnerName: name);
+    }).toList();
   }
 
   // ── Partner management ───────────────────────────────────────────
@@ -110,6 +153,7 @@ class AccountabilityService {
       final partner = AccountabilityPartner(
         id: docRef.id,
         ownerUid: uid,
+        ownerName: currentUserDisplayName,
         partnerName: partnerName,
         partnerEmail: partnerEmail,
         role: role,
@@ -123,6 +167,7 @@ class AccountabilityService {
       batch.set(docRef, {
         'id': docRef.id,
         'ownerUid': uid,
+        'ownerName': currentUserDisplayName,
         'partnerUid': null,
         'partnerName': partnerName,
         'partnerEmail': partnerEmail,
@@ -240,7 +285,8 @@ class AccountabilityService {
         debugPrint(
             '[AccountabilityService] acceptInvite: success, partnershipId=$partnershipId');
       }
-      return updated;
+      final enriched = await _enrichOwnerNames([updated]);
+      return enriched.first;
     } on Exception {
       rethrow; // already descriptive — let the bloc handle it
     } catch (e) {
@@ -290,8 +336,9 @@ class AccountabilityService {
           .where('partnerUid', isEqualTo: uid)
           .where('status', isEqualTo: 'pending')
           .get();
-      return snap.docs.map(_partnerFromDoc).toList()
+      final results = snap.docs.map(_partnerFromDoc).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return _enrichOwnerNames(results);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchIncomingRequests error: $e');
@@ -356,7 +403,7 @@ class AccountabilityService {
         debugPrint(
             '[AccountabilityService] fetchMyPartnerships: found ${results.length}');
       }
-      return results;
+      return _enrichOwnerNames(results);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchMyPartnerships error: $e');
@@ -429,6 +476,7 @@ class AccountabilityService {
       await docRef.set({
         'id': docRef.id,
         'ownerUid': myUid,
+        'ownerName': currentUserDisplayName,
         'partnerUid': otherUid,
         'partnerName': otherName,
         'role': PartnerRole.friend.name,
@@ -1379,6 +1427,7 @@ class AccountabilityService {
     batch.set(partnershipRef, {
       'id': partnershipRef.id,
       'ownerUid': uid,
+      'ownerName': currentUserDisplayName,
       'partnerUid': recipient?.uid, // null if not yet registered
       'partnerName': partnerName,
       'partnerEmail': recipientEmail,
@@ -1553,7 +1602,8 @@ class AccountabilityService {
         debugPrint(
             '[AccountabilityService] acceptEmailInvite: $invitationId accepted');
       }
-      return partner;
+      final enriched = await _enrichOwnerNames([partner]);
+      return enriched.first;
     } on Exception {
       rethrow;
     } catch (e) {

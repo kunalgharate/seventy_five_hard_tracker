@@ -362,6 +362,19 @@ class AccountabilityBloc
 
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
+
+        if (task != null && task.assignedByUid.isNotEmpty) {
+          try {
+            await _notificationService.notifyInvitationAccepted(
+              recipientUid: task.assignedByUid,
+              partnerName: _service.currentUserDisplayName,
+              partnershipId: task.partnershipId,
+            );
+          } catch (e) {
+            if (kDebugMode)
+              debugPrint('[AccountabilityBloc] Accept notification failed: $e');
+          }
+        }
       } else {
         emit(const AccountabilityError('Could not accept task request.'));
       }
@@ -378,8 +391,23 @@ class AccountabilityBloc
     try {
       final ok = await _service.declineTaskRequest(event.taskId);
       if (ok) {
+        final task = await _service.fetchTaskById(event.taskId);
         emit(TaskRequestDeclined(event.taskId));
         add(LoadAccountabilityData());
+
+        if (task != null && task.assignedByUid.isNotEmpty) {
+          try {
+            await _notificationService.notifyInvitationDeclined(
+              recipientUid: task.assignedByUid,
+              partnerName: _service.currentUserDisplayName,
+              partnershipId: task.partnershipId,
+            );
+          } catch (e) {
+            if (kDebugMode)
+              debugPrint(
+                  '[AccountabilityBloc] Decline notification failed: $e');
+          }
+        }
       } else {
         emit(const AccountabilityError('Could not decline task request.'));
       }

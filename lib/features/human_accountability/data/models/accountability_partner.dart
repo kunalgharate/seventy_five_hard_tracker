@@ -68,10 +68,13 @@ class AccountabilityPartner extends Equatable {
   /// Firebase UID of the user who owns this record.
   final String ownerUid;
 
+  /// Display name of the owner (the user who created the invite).
+  final String ownerName;
+
   /// Firebase UID of the partner (null until they accept).
   final String? partnerUid;
 
-  /// Display name of the partner.
+  /// Display name of the partner (from the owner's perspective).
   final String partnerName;
 
   /// Optional email used to send the invite.
@@ -98,6 +101,7 @@ class AccountabilityPartner extends Equatable {
   const AccountabilityPartner({
     required this.id,
     required this.ownerUid,
+    this.ownerName = '',
     this.partnerUid,
     required this.partnerName,
     this.partnerEmail,
@@ -109,9 +113,25 @@ class AccountabilityPartner extends Equatable {
     this.type = 'accountability',
   });
 
+  /// The name of the *other* person in this partnership from [myUid]'s
+  /// point of view. Falls back to [partnerName] when the owner name is
+  /// unknown (legacy records).
+  String displayNameFor(String myUid) {
+    if (ownerUid == myUid) return partnerName;
+    return ownerName.isNotEmpty ? ownerName : partnerName;
+  }
+
+  /// The UID of the *other* person in this partnership from [myUid]'s
+  /// point of view. Null if the partnership has not been accepted yet.
+  String? otherUidFor(String myUid) {
+    if (ownerUid == myUid) return partnerUid;
+    return ownerUid;
+  }
+
   AccountabilityPartner copyWith({
     String? id,
     String? ownerUid,
+    String? ownerName,
     String? partnerUid,
     String? partnerName,
     String? partnerEmail,
@@ -125,6 +145,7 @@ class AccountabilityPartner extends Equatable {
     return AccountabilityPartner(
       id: id ?? this.id,
       ownerUid: ownerUid ?? this.ownerUid,
+      ownerName: ownerName ?? this.ownerName,
       partnerUid: partnerUid ?? this.partnerUid,
       partnerName: partnerName ?? this.partnerName,
       partnerEmail: partnerEmail ?? this.partnerEmail,
@@ -140,6 +161,7 @@ class AccountabilityPartner extends Equatable {
   Map<String, dynamic> toJson() => {
         'id': id,
         'ownerUid': ownerUid,
+        'ownerName': ownerName,
         'partnerUid': partnerUid,
         'partnerName': partnerName,
         'partnerEmail': partnerEmail,
@@ -155,6 +177,7 @@ class AccountabilityPartner extends Equatable {
     return AccountabilityPartner(
       id: json['id'] as String,
       ownerUid: json['ownerUid'] as String,
+      ownerName: json['ownerName'] as String? ?? '',
       partnerUid: json['partnerUid'] as String?,
       partnerName: json['partnerName'] as String,
       partnerEmail: json['partnerEmail'] as String?,
@@ -175,6 +198,7 @@ class AccountabilityPartner extends Equatable {
   List<Object?> get props => [
         id,
         ownerUid,
+        ownerName,
         partnerUid,
         partnerName,
         partnerEmail,
