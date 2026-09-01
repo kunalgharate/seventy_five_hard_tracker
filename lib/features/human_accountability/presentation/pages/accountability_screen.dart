@@ -83,9 +83,9 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: () => context
-                .read<AccountabilityBloc>()
-                .add(LoadAccountabilityData()),
+            onPressed: () => context.read<AccountabilityBloc>().add(
+                  LoadAccountabilityData(),
+                ),
           ),
         ],
       ),
@@ -133,13 +133,16 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
         indicatorColor: Colors.white,
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white70,
-        labelStyle:
-            GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+        labelStyle: GoogleFonts.inter(
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
         tabs: const [
           Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Partners'),
           Tab(
-              icon: Icon(Icons.rate_review_outlined, size: 18),
-              text: 'Reviews'),
+            icon: Icon(Icons.rate_review_outlined, size: 18),
+            text: 'Reviews',
+          ),
         ],
       ),
     );
@@ -226,14 +229,16 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           children: [
             const Icon(Icons.cloud_off, size: 56, color: Colors.grey),
             const SizedBox(height: 16),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => context
-                  .read<AccountabilityBloc>()
-                  .add(LoadAccountabilityData()),
+              onPressed: () => context.read<AccountabilityBloc>().add(
+                    LoadAccountabilityData(),
+                  ),
               child: const Text('Retry'),
             ),
           ],
@@ -248,8 +253,10 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     } else if (state is InviteAccepted) {
       // Close the join sheet if it's still open, then show success
       Navigator.of(context).popUntil((route) => route.isFirst);
-      _showSnack('You are now connected with ${state.partner.partnerName}!',
-          isSuccess: true);
+      _showSnack(
+        'You are now connected with ${state.partner.partnerName}!',
+        isSuccess: true,
+      );
     } else if (state is ReviewSubmitted) {
       _showSnack('Review submitted!', isSuccess: true);
     } else if (state is InviteRejected) {
@@ -262,23 +269,31 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       );
     } else if (state is EmailInviteAccepted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
-      _showSnack('You are now connected with ${state.partner.partnerName}!',
-          isSuccess: true);
+      _showSnack(
+        'You are now connected with ${state.partner.partnerName}!',
+        isSuccess: true,
+      );
     } else if (state is EmailInviteRejected) {
       _showSnack('Invitation declined.', isSuccess: true);
     } else if (state is TaskRequestAccepted) {
-      _showSnack('Task accepted! It will appear in your partner card.',
-          isSuccess: true);
-      debugPrint('[AccountabilityScreen] TaskRequestAccepted:'
-          ' taskId=${state.taskId} challengeId=${state.challengeId}');
+      _showSnack(
+        'Task accepted! It will appear in your partner card.',
+        isSuccess: true,
+      );
+      debugPrint(
+        '[AccountabilityScreen] TaskRequestAccepted:'
+        ' taskId=${state.taskId} challengeId=${state.challengeId}',
+      );
       if (state.challengeId != null) {
         try {
           debugPrint(
-              '[AccountabilityScreen] Dispatching LoadChallengeData to ChallengeBloc');
+            '[AccountabilityScreen] Dispatching LoadChallengeData to ChallengeBloc',
+          );
           context.read<ChallengeBloc>().add(LoadChallengeData());
         } catch (e) {
           debugPrint(
-              '[AccountabilityScreen] Failed to dispatch LoadChallengeData: $e');
+            '[AccountabilityScreen] Failed to dispatch LoadChallengeData: $e',
+          );
         }
       }
     } else if (state is TaskRequestDeclined) {
@@ -294,11 +309,13 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
 
   void _showSnack(String msg, {required bool isSuccess}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: isSuccess ? Colors.green : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   // ── Invite sheet ─────────────────────────────────────────────────
@@ -340,7 +357,9 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   }
 
   void _showInviteCodeDialog(
-      BuildContext context, AccountabilityPartner partner) {
+    BuildContext context,
+    AccountabilityPartner partner,
+  ) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -374,7 +393,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
                     icon: const Icon(Icons.copy, color: AppColors.primary),
                     onPressed: () {
                       Clipboard.setData(
-                          ClipboardData(text: partner.inviteCode));
+                        ClipboardData(text: partner.inviteCode),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Code copied!')),
                       );
@@ -393,8 +413,9 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
         ],
       ),
     );
@@ -423,23 +444,24 @@ class _DashboardTab extends StatelessWidget {
         _MyProgressCard(),
         const SizedBox(height: 20),
         const _SectionHeader(
-            title: 'Weekly Consistency', icon: Icons.calendar_today),
+          title: 'Weekly Consistency',
+          icon: Icons.calendar_today,
+        ),
         const SizedBox(height: 8),
         _WeeklyConsistencyCard(),
         const SizedBox(height: 20),
         if (accepted.isNotEmpty) ...[
           const _SectionHeader(
-              title: 'Partner Activity', icon: Icons.people_outline),
+            title: 'Partner Activity',
+            icon: Icons.people_outline,
+          ),
           const SizedBox(height: 8),
           ...accepted.map((p) => _PartnerActivityCard(partner: p)),
           const SizedBox(height: 20),
         ],
         const _SectionHeader(title: 'Summary', icon: Icons.info_outline),
         const SizedBox(height: 8),
-        _SummaryCard(
-          accepted: accepted.length,
-          pending: pending.length,
-        ),
+        _SummaryCard(accepted: accepted.length, pending: pending.length),
       ],
     );
   }
@@ -457,9 +479,13 @@ class _MyProgressCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Today\'s Progress',
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600, fontSize: 15)),
+            Text(
+              'Today\'s Progress',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
             const SizedBox(height: 12),
             const Row(
               children: [
@@ -468,7 +494,10 @@ class _MyProgressCard extends StatelessWidget {
                 _StatBox(label: 'Missed', value: '—', color: Colors.red),
                 SizedBox(width: 8),
                 _StatBox(
-                    label: 'Current Day', value: '—', color: AppColors.primary),
+                  label: 'Current Day',
+                  value: '—',
+                  color: AppColors.primary,
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -501,9 +530,13 @@ class _WeeklyConsistencyCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Last 7 Days',
-                style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600, fontSize: 15)),
+            Text(
+              'Last 7 Days',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -525,13 +558,15 @@ class _WeeklyConsistencyCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(day,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color:
-                                isToday ? AppColors.primary : Colors.grey[600],
-                            fontWeight:
-                                isToday ? FontWeight.bold : FontWeight.normal)),
+                    Text(
+                      day,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isToday ? AppColors.primary : Colors.grey[600],
+                        fontWeight:
+                            isToday ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
                   ],
                 );
               }).toList(),
@@ -603,12 +638,17 @@ class _PartnerActivityCardState extends State<_PartnerActivityCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.partner.partnerName,
-                          style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600, fontSize: 14)),
-                      Text(widget.partner.role.label,
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600])),
+                      Text(
+                        widget.partner.partnerName,
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        widget.partner.role.label,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
                     ],
                   ),
                 ),
@@ -617,13 +657,17 @@ class _PartnerActivityCardState extends State<_PartnerActivityCard> {
             const SizedBox(height: 12),
             if (_loading)
               const Center(
-                  child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2)))
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
             else if (_weeklyData.isEmpty)
-              Text('No activity data yet.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]))
+              Text(
+                'No activity data yet.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              )
             else
               _buildWeekRow(),
           ],
@@ -649,8 +693,10 @@ class _PartnerActivityCardState extends State<_PartnerActivityCard> {
               size: 22,
             ),
             const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            ),
           ],
         );
       }).toList(),
@@ -673,14 +719,16 @@ class _SummaryCard extends StatelessWidget {
         child: Row(
           children: [
             _StatBox(
-                label: 'Active Partners',
-                value: '$accepted',
-                color: Colors.green),
+              label: 'Active Partners',
+              value: '$accepted',
+              color: Colors.green,
+            ),
             const SizedBox(width: 8),
             _StatBox(
-                label: 'Pending Invites',
-                value: '$pending',
-                color: Colors.orange),
+              label: 'Pending Invites',
+              value: '$pending',
+              color: Colors.orange,
+            ),
           ],
         ),
       ),
@@ -717,6 +765,35 @@ class _PartnersTab extends StatelessWidget {
       children: [
         const SizedBox(height: 20),
 
+        // ── My Responsibilities (tasks I need to review) ─────────
+        BlocBuilder<AccountabilityBloc, AccountabilityState>(
+          buildWhen: (_, state) => state is MyResponsibilitiesLoaded,
+          builder: (context, state) {
+            if (state is! MyResponsibilitiesLoaded) {
+              context.read<AccountabilityBloc>().add(LoadMyResponsibilities());
+              return const SizedBox.shrink();
+            }
+            if (state.pendingReviews.isEmpty &&
+                state.responsibilities.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SectionLabel(
+                  title: 'My Responsibilities',
+                  icon: Icons.rate_review_outlined,
+                  color: Colors.deepPurple,
+                  count: state.pendingReviews.length,
+                ),
+                const SizedBox(height: 10),
+                ...state.pendingReviews.map((t) => _PendingReviewCard(task: t)),
+                const SizedBox(height: 20),
+              ],
+            );
+          },
+        ),
+
         // ── Partner cards ─────────────────────────────────────────
         ...accepted.map((p) => _AcceptedPartnerCard(partner: p)),
         if (accepted.isNotEmpty) const SizedBox(height: 20),
@@ -725,8 +802,11 @@ class _PartnersTab extends StatelessWidget {
         ...() {
           final myUid = AccountabilityService().currentUid;
           final pending = partners
-              .where((p) =>
-                  p.status == PartnershipStatus.pending && p.ownerUid == myUid)
+              .where(
+                (p) =>
+                    p.status == PartnershipStatus.pending &&
+                    p.ownerUid == myUid,
+              )
               .toList();
           if (pending.isEmpty) return const <Widget>[];
           return [
@@ -748,9 +828,11 @@ class _PartnersTab extends StatelessWidget {
             !hasTaskRequests &&
             !hasEmailInvites &&
             partners
-                .where((p) =>
-                    p.status == PartnershipStatus.pending &&
-                    p.ownerUid == AccountabilityService().currentUid)
+                .where(
+                  (p) =>
+                      p.status == PartnershipStatus.pending &&
+                      p.ownerUid == AccountabilityService().currentUid,
+                )
                 .isEmpty)
           const _EmptyState(
             icon: Icons.people_outline,
@@ -776,8 +858,9 @@ class _PartnersTab extends StatelessWidget {
           // Task assignment requests
           ...taskRequests.map((t) => _TaskRequestCard(task: t)),
           // Email-based partner invitations
-          ...emailInvitations
-              .map((inv) => _EmailInvitationCard(invitation: inv)),
+          ...emailInvitations.map(
+            (inv) => _EmailInvitationCard(invitation: inv),
+          ),
         ],
       ],
     );
@@ -823,7 +906,10 @@ class _SectionLabel extends StatelessWidget {
           child: Text(
             '$count',
             style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.bold, color: color),
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ),
       ],
@@ -859,15 +945,17 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         : widget.partner.ownerUid;
 
     debugPrint(
-        '[PartnerCard] loading tasks for partnershipId=${widget.partner.id} otherUid=$otherUid');
+      '[PartnerCard] loading tasks for partnershipId=${widget.partner.id} otherUid=$otherUid',
+    );
     setState(() {
       _loading = true;
       if (forceRefresh) _accountabilityTasks = [];
     });
     try {
       // fetchTasksForPartnership works for both sides — always run it
-      final tasksFuture =
-          AccountabilityService().fetchTasksForPartnership(widget.partner.id);
+      final tasksFuture = AccountabilityService().fetchTasksForPartnership(
+        widget.partner.id,
+      );
 
       // Progress/challenge name fetches only work if we know the other UID
       final progressFuture = otherUid != null
@@ -877,8 +965,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           ? AccountabilityService().fetchPartnerChallengeNames(otherUid)
           : Future.value(<String>[]);
 
-      final results =
-          await Future.wait([progressFuture, namesFuture, tasksFuture]);
+      final results = await Future.wait([
+        progressFuture,
+        namesFuture,
+        tasksFuture,
+      ]);
       if (mounted) {
         setState(() {
           _recentDays = results[0] as List<Map<String, dynamic>>;
@@ -910,8 +1001,10 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           // Remove default divider from ExpansionTile
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
-            tilePadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 6,
+            ),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             onExpansionChanged: (v) {
               setState(() => _expanded = v);
@@ -925,20 +1018,26 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: Text(widget.partner.role.emoji,
-                    style: const TextStyle(fontSize: 24)),
+                child: Text(
+                  widget.partner.role.emoji,
+                  style: const TextStyle(fontSize: 24),
+                ),
               ),
             ),
             title: Text(
               widget.partner.partnerName,
               style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w700, fontSize: 15),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.partner.role.label,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                Text(
+                  widget.partner.role.label,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
                 const SizedBox(height: 3),
                 Row(
                   children: [
@@ -946,14 +1045,19 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                       width: 8,
                       height: 8,
                       decoration: const BoxDecoration(
-                          color: Colors.green, shape: BoxShape.circle),
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                     const SizedBox(width: 5),
-                    const Text('Active Partner',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green,
-                            fontWeight: FontWeight.w600)),
+                    const Text(
+                      'Active Partner',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.green,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -962,65 +1066,98 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: Icon(Icons.chat_bubble_outline,
-                      color: AppColors.primary.withValues(alpha: 0.7),
-                      size: 20),
+                  icon: Icon(
+                    Icons.chat_bubble_outline,
+                    color: AppColors.primary.withValues(alpha: 0.7),
+                    size: 20,
+                  ),
                   tooltip: 'Message',
                   onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => AccountabilityChatScreen(
-                              partner: widget.partner))),
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          AccountabilityChatScreen(partner: widget.partner),
+                    ),
+                  ),
                 ),
                 PopupMenuButton<String>(
-                  icon:
-                      Icon(Icons.more_vert, color: Colors.grey[600], size: 22),
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: Colors.grey[600],
+                    size: 22,
+                  ),
                   onSelected: (v) => _onMenu(context, v),
                   itemBuilder: (_) => [
                     const PopupMenuItem(
                       value: 'progress',
-                      child: Row(children: [
-                        Icon(Icons.bar_chart_outlined,
-                            size: 18, color: Colors.blue),
-                        SizedBox(width: 10),
-                        Text('View Progress'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.bar_chart_outlined,
+                            size: 18,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(width: 10),
+                          Text('View Progress'),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'weekly',
-                      child: Row(children: [
-                        Icon(Icons.summarize_outlined,
-                            size: 18, color: Colors.purple),
-                        SizedBox(width: 10),
-                        Text('Weekly Summary'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.summarize_outlined,
+                            size: 18,
+                            color: Colors.purple,
+                          ),
+                          SizedBox(width: 10),
+                          Text('Weekly Summary'),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'review',
-                      child: Row(children: [
-                        Icon(Icons.rate_review_outlined,
-                            size: 18, color: Colors.orange),
-                        SizedBox(width: 10),
-                        Text('Review Progress'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.rate_review_outlined,
+                            size: 18,
+                            color: Colors.orange,
+                          ),
+                          SizedBox(width: 10),
+                          Text('Review Progress'),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'escalate',
-                      child: Row(children: [
-                        Icon(Icons.flag_outlined, size: 18, color: Colors.red),
-                        SizedBox(width: 10),
-                        Text('Flag / Escalate'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.flag_outlined,
+                            size: 18,
+                            color: Colors.red,
+                          ),
+                          SizedBox(width: 10),
+                          Text('Flag / Escalate'),
+                        ],
+                      ),
                     ),
                     const PopupMenuDivider(),
                     const PopupMenuItem(
                       value: 'remove',
-                      child: Row(children: [
-                        Icon(Icons.person_remove_outlined,
-                            size: 18, color: Colors.grey),
-                        SizedBox(width: 10),
-                        Text('Remove Partner'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.person_remove_outlined,
+                            size: 18,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(width: 10),
+                          Text('Remove Partner'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1033,8 +1170,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               // Partner info row
               Row(
                 children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      size: 14, color: Colors.grey),
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 14,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     widget.partner.acceptedAt != null
@@ -1046,24 +1186,31 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               ),
               const SizedBox(height: 12),
               // Tasks heading
-              Text('Accountability Tasks',
-                  style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(
+                'Accountability Tasks',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
               const SizedBox(height: 8),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child:
-                      Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 )
               else ...[
                 ...() {
                   final myUid = AccountabilityService().currentUid;
                   final visibleTasks = _accountabilityTasks
-                      .where((t) =>
-                          t.partnershipId == widget.partner.id &&
-                          (t.assignedByUid == myUid ||
-                              t.accountableUid == myUid))
+                      .where(
+                        (t) =>
+                            t.partnershipId == widget.partner.id &&
+                            (t.assignedByUid == myUid ||
+                                t.accountableUid == myUid),
+                      )
                       .toList();
                   if (visibleTasks.isEmpty) {
                     return [
@@ -1076,12 +1223,19 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.info_outline,
-                                size: 16, color: Colors.grey[400]),
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Colors.grey[400],
+                            ),
                             const SizedBox(width: 8),
-                            Text('No tasks yet.',
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.grey[500])),
+                            Text(
+                              'No tasks yet.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1094,7 +1248,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: isCompleted
                             ? Colors.green.withValues(alpha: 0.06)
@@ -1124,21 +1280,30 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(task.title,
-                                        style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500)),
+                                    Text(
+                                      task.title,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                     if (task.description != null &&
                                         task.description!.isNotEmpty)
-                                      Text(task.description!,
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey[500])),
+                                      Text(
+                                        task.description!,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[500],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
                               _buildPartnerTaskStatusChip(
-                                  isCompleted, proofStatus, task.status),
+                                isCompleted,
+                                proofStatus,
+                                task.status,
+                              ),
                             ],
                           ),
                           if (!isCompleted)
@@ -1160,8 +1325,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     );
   }
 
-  Widget _buildPartnerTaskStatusChip(bool isCompleted, ProofStatus? proofStatus,
-      AccountabilityTaskStatus status) {
+  Widget _buildPartnerTaskStatusChip(
+    bool isCompleted,
+    ProofStatus? proofStatus,
+    AccountabilityTaskStatus status,
+  ) {
     if (isCompleted || status == AccountabilityTaskStatus.completed) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -1169,11 +1337,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           color: Colors.green.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Completed',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.green[700])),
+        child: Text(
+          'Completed',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.green[700],
+          ),
+        ),
       );
     }
     if (status == AccountabilityTaskStatus.declined) {
@@ -1183,11 +1354,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           color: Colors.red.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Declined',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.red[700])),
+        child: Text(
+          'Declined',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.red[700],
+          ),
+        ),
       );
     }
     if (status == AccountabilityTaskStatus.requested) {
@@ -1197,11 +1371,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           color: Colors.orange.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Pending',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.orange[700])),
+        child: Text(
+          'Pending',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.orange[700],
+          ),
+        ),
       );
     }
     // status is pending — show proof status
@@ -1212,11 +1389,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           color: Colors.blue.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Proof Submitted',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.blue[700])),
+        child: Text(
+          'Proof Submitted',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.blue[700],
+          ),
+        ),
       );
     }
     if (proofStatus == ProofStatus.approved) {
@@ -1231,11 +1411,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           children: [
             Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
             const SizedBox(width: 3),
-            Text('Approved',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green[700])),
+            Text(
+              'Approved',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.green[700],
+              ),
+            ),
           ],
         ),
       );
@@ -1252,11 +1435,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           children: [
             Icon(Icons.cancel, size: 12, color: Colors.red[700]),
             const SizedBox(width: 3),
-            Text('Rejected',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.red[700])),
+            Text(
+              'Rejected',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.red[700],
+              ),
+            ),
           ],
         ),
       );
@@ -1267,11 +1453,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         color: Colors.green.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text('Accepted',
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.green[700])),
+      child: Text(
+        'Accepted',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.green[700],
+        ),
+      ),
     );
   }
 
@@ -1290,20 +1479,23 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                 date: DateTime.now(),
               );
               if (ok == true && context.mounted) {
-                context
-                    .read<AccountabilityBloc>()
-                    .add(LoadAccountabilityData());
+                context.read<AccountabilityBloc>().add(
+                      LoadAccountabilityData(),
+                    );
               }
             },
             icon: const Icon(Icons.camera_alt_outlined, size: 16),
-            label: Text(task.proofStatus == ProofStatus.rejected
-                ? 'Resubmit Photo Proof'
-                : 'Submit Photo Proof'),
+            label: Text(
+              task.proofStatus == ProofStatus.rejected
+                  ? 'Resubmit Photo Proof'
+                  : 'Submit Photo Proof',
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         );
@@ -1318,7 +1510,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.blue[400],
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         );
@@ -1333,7 +1526,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.green,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         );
@@ -1344,18 +1538,21 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       child: ElevatedButton.icon(
         onPressed: () async {
           setState(() => _loading = true);
-          final ok =
-              await AccountabilityService().completeAccountabilityTask(task.id);
+          final ok = await AccountabilityService().completeAccountabilityTask(
+            task.id,
+          );
           if (mounted) setState(() => _loading = false);
           if (ok && context.mounted) {
             context.read<AccountabilityBloc>().add(LoadAccountabilityData());
             if (task.challengeId != null) {
               try {
-                context.read<ChallengeBloc>().add(UpdateDailyProgress(
-                      date: DateTime.now(),
-                      challengeId: task.challengeId!,
-                      isCompleted: true,
-                    ));
+                context.read<ChallengeBloc>().add(
+                      UpdateDailyProgress(
+                        date: DateTime.now(),
+                        challengeId: task.challengeId!,
+                        isCompleted: true,
+                      ),
+                    );
               } catch (_) {
                 // safe to ignore
               }
@@ -1367,8 +1564,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
     );
@@ -1393,8 +1591,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.orange,
             foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
       );
@@ -1411,7 +1610,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.blue[400],
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         );
@@ -1431,18 +1631,22 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             }
           },
           icon: Icon(
-              task.proofStatus == ProofStatus.rejected
-                  ? Icons.refresh
-                  : Icons.check,
-              size: 16),
-          label: Text(task.proofStatus == ProofStatus.rejected
-              ? 'Resubmit'
-              : 'Mark Complete'),
+            task.proofStatus == ProofStatus.rejected
+                ? Icons.refresh
+                : Icons.check,
+            size: 16,
+          ),
+          label: Text(
+            task.proofStatus == ProofStatus.rejected
+                ? 'Resubmit'
+                : 'Mark Complete',
+          ),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
             foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
       );
@@ -1474,11 +1678,17 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Latest: $dateKey',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                  Text('$completed / $total tasks completed',
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(
+                    'Latest: $dateKey',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                  Text(
+                    '$completed / $total tasks completed',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1516,9 +1726,13 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(name,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500)),
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
                 Text(
                   done ? 'Done' : 'Pending',
@@ -1535,29 +1749,40 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       else
       // Fallback: use stored challenge names from publishChallengeMeta
       if (_challengeNames.isNotEmpty)
-        ..._challengeNames.map((name) => Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.task_alt_outlined,
-                      size: 16, color: Colors.grey[500]),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(name,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w500)),
+        ..._challengeNames.map(
+          (name) => Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.task_alt_outlined,
+                  size: 16,
+                  color: Colors.grey[500],
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  Text('No data',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[400])),
-                ],
-              ),
-            ))
+                ),
+                Text(
+                  'No data',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ),
+        )
       else
         Container(
           padding: const EdgeInsets.all(10),
@@ -1573,24 +1798,26 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         ),
       // ── Add Task button ──────────────────────────────────────
       Builder(
-          builder: (context) => Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showAddTaskInline(context),
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add Task'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: const BorderSide(color: AppColors.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
+        builder: (context) => Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showAddTaskInline(context),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Task'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.primary),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              )),
+              ),
+            ),
+          ),
+        ),
+      ),
     ];
   }
 
@@ -1608,108 +1835,126 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) {
-        return StatefulBuilder(builder: (ctx, setModalState) {
-          return Padding(
-            padding:
-                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
               ),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Handle
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  Text('Add Task for ${partner.partnerName}',
+                    Text(
+                      'Add Task for ${partner.partnerName}',
                       style: GoogleFonts.poppins(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: titleCtrl,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Task title *',
-                      prefixIcon: const Icon(Icons.task_alt_outlined, size: 20),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Description (optional)',
-                      prefixIcon: const Icon(Icons.notes_outlined, size: 20),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: submitting
-                          ? null
-                          : () async {
-                              final title = titleCtrl.text.trim();
-                              if (title.isEmpty) return;
-                              setModalState(() => submitting = true);
-                              await AccountabilityService()
-                                  .createAccountabilityTask(
-                                accountableUid: partnerUid,
-                                accountableName: partner.partnerName,
-                                partnershipId: partner.id,
-                                title: title,
-                                description: descCtrl.text.trim().isEmpty
-                                    ? null
-                                    : descCtrl.text.trim(),
-                              );
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              // Refresh the task list in the card
-                              setState(() {
-                                _recentDays = [];
-                                _accountabilityTasks = [];
-                              });
-                              _loadTasks();
-                            },
-                      icon: submitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.add, size: 18),
-                      label: Text(submitting ? 'Adding...' : 'Add Task'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: titleCtrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: 'Task title *',
+                        prefixIcon: const Icon(
+                          Icons.task_alt_outlined,
+                          size: 20,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Description (optional)',
+                        prefixIcon: const Icon(Icons.notes_outlined, size: 20),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: submitting
+                            ? null
+                            : () async {
+                                final title = titleCtrl.text.trim();
+                                if (title.isEmpty) return;
+                                setModalState(() => submitting = true);
+                                await AccountabilityService()
+                                    .createAccountabilityTask(
+                                  accountableUid: partnerUid,
+                                  accountableName: partner.partnerName,
+                                  partnershipId: partner.id,
+                                  title: title,
+                                  description: descCtrl.text.trim().isEmpty
+                                      ? null
+                                      : descCtrl.text.trim(),
+                                );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                // Refresh the task list in the card
+                                setState(() {
+                                  _recentDays = [];
+                                  _accountabilityTasks = [];
+                                });
+                                _loadTasks();
+                              },
+                        icon: submitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.add, size: 18),
+                        label: Text(submitting ? 'Adding...' : 'Add Task'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        });
+            );
+          },
+        );
       },
     );
   }
@@ -1718,16 +1963,19 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     switch (v) {
       case 'progress':
         Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) =>
-                    PartnerProgressScreen(partner: widget.partner)));
+          context,
+          MaterialPageRoute(
+            builder: (_) => PartnerProgressScreen(partner: widget.partner),
+          ),
+        );
         break;
       case 'weekly':
         Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => WeeklySummaryScreen(partner: widget.partner)));
+          context,
+          MaterialPageRoute(
+            builder: (_) => WeeklySummaryScreen(partner: widget.partner),
+          ),
+        );
         break;
       case 'review':
         if (widget.partner.partnerUid == null) return;
@@ -1743,10 +1991,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         break;
       case 'escalate':
         Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => StreakEscalationScreen(
-                    partner: widget.partner, currentStreak: 0)));
+          context,
+          MaterialPageRoute(
+            builder: (_) => StreakEscalationScreen(
+              partner: widget.partner,
+              currentStreak: 0,
+            ),
+          ),
+        );
         break;
       case 'remove':
         showDialog(
@@ -1754,21 +2006,25 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           builder: (_) => AlertDialog(
             title: const Text('Remove Partner?'),
             content: Text(
-                'Remove ${widget.partner.partnerName} as your accountability partner?'),
+              'Remove ${widget.partner.partnerName} as your accountability partner?',
+            ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () {
                   Navigator.pop(context);
-                  context
-                      .read<AccountabilityBloc>()
-                      .add(RemovePartner(widget.partner.id));
+                  context.read<AccountabilityBloc>().add(
+                        RemovePartner(widget.partner.id),
+                      );
                 },
-                child:
-                    const Text('Remove', style: TextStyle(color: Colors.white)),
+                child: const Text(
+                  'Remove',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -1832,35 +2088,48 @@ class _PendingInviteCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(partner.partnerName,
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600, fontSize: 14)),
-                  Text(partner.role.label,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  Text(
+                    partner.partnerName,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    partner.role.label,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
                   const SizedBox(height: 6),
                   // Invite code with copy
                   GestureDetector(
                     onTap: () {
                       Clipboard.setData(
-                          ClipboardData(text: partner.inviteCode));
+                        ClipboardData(text: partner.inviteCode),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Invite code copied!')),
                       );
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.orange.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.4)),
+                          color: Colors.orange.withValues(alpha: 0.4),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.key_outlined,
-                              size: 13, color: Colors.orange),
+                          const Icon(
+                            Icons.key_outlined,
+                            size: 13,
+                            color: Colors.orange,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             partner.inviteCode,
@@ -1872,8 +2141,11 @@ class _PendingInviteCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(Icons.copy,
-                              size: 12, color: Colors.orange),
+                          const Icon(
+                            Icons.copy,
+                            size: 12,
+                            color: Colors.orange,
+                          ),
                         ],
                       ),
                     ),
@@ -1887,11 +2159,14 @@ class _PendingInviteCard extends StatelessWidget {
                 color: Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Text('Pending',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w600)),
+              child: const Text(
+                'Pending',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
@@ -1935,20 +2210,25 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.partner.partnerName,
-                          style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600, fontSize: 14)),
                       Text(
-                          '${widget.partner.role.emoji} ${widget.partner.role.label}',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        widget.partner.partnerName,
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        '${widget.partner.role.emoji} ${widget.partner.role.label}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
                       const SizedBox(height: 3),
                       Text(
                         'Wants you as their accountability partner',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue[700],
-                            fontStyle: FontStyle.italic),
+                          fontSize: 11,
+                          color: Colors.blue[700],
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                     ],
                   ),
@@ -1962,8 +2242,10 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
                   child: OutlinedButton.icon(
                     onPressed: _acting ? null : _reject,
                     icon: const Icon(Icons.close, size: 16, color: Colors.red),
-                    label: const Text('Decline',
-                        style: TextStyle(color: Colors.red)),
+                    label: const Text(
+                      'Decline',
+                      style: TextStyle(color: Colors.red),
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.red),
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1979,7 +2261,10 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.check, size: 16),
                     label: const Text('Accept'),
                     style: ElevatedButton.styleFrom(
@@ -2000,9 +2285,9 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
   void _accept() {
     setState(() => _acting = true);
     // Accept via invite code stored in the partnership
-    context
-        .read<AccountabilityBloc>()
-        .add(AcceptInvite(widget.partner.inviteCode));
+    context.read<AccountabilityBloc>().add(
+          AcceptInvite(widget.partner.inviteCode),
+        );
   }
 
   void _reject() {
@@ -2079,9 +2364,13 @@ class _ReviewCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(review.reviewerName,
-                            style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        child: Text(
+                          review.reviewerName,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                       Text(
                         DateFormat('MMM d').format(review.createdAt),
@@ -2091,31 +2380,39 @@ class _ReviewCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(review.decision.label,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: color,
-                            fontWeight: FontWeight.w600)),
+                    child: Text(
+                      review.decision.label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   if (review.comment != null && review.comment!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
                       '"${review.comment}"',
                       style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[700],
-                          fontStyle: FontStyle.italic),
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 4),
-                  Text('For: ${review.dateKey}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                  Text(
+                    'For: ${review.dateKey}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
                 ],
               ),
             ),
@@ -2164,9 +2461,13 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
             _SheetHandle(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-              child: Text('Invite Accountability Partner',
-                  style: GoogleFonts.poppins(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Invite Accountability Partner',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             Expanded(
               child: ListView(
@@ -2190,9 +2491,13 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text('Role',
-                      style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text(
+                    'Role',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -2222,10 +2527,17 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Text('Create Invite',
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Create Invite',
                               style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -2241,16 +2553,19 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a partner name')));
+        const SnackBar(content: Text('Please enter a partner name')),
+      );
       return;
     }
     setState(() => _loading = true);
-    context.read<AccountabilityBloc>().add(InvitePartner(
-          partnerName: name,
-          partnerEmail:
-              _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-          role: _role,
-        ));
+    context.read<AccountabilityBloc>().add(
+          InvitePartner(
+            partnerName: name,
+            partnerEmail:
+                _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+            role: _role,
+          ),
+        );
     Navigator.pop(context);
   }
 }
@@ -2277,8 +2592,9 @@ class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -2290,9 +2606,13 @@ class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
           children: [
             _SheetHandle(),
             const SizedBox(height: 8),
-            Text('Join with Invite Code',
-                style: GoogleFonts.poppins(
-                    fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              'Join with Invite Code',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               'Enter the 6-character code your partner shared with you.',
@@ -2306,11 +2626,17 @@ class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
               textAlign: TextAlign.center,
               maxLength: 6,
               style: GoogleFonts.poppins(
-                  fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 6),
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 6,
+              ),
               decoration: InputDecoration(
                 hintText: 'XXXXXX',
                 hintStyle: TextStyle(
-                    color: Colors.grey[400], letterSpacing: 6, fontSize: 24),
+                  color: Colors.grey[400],
+                  letterSpacing: 6,
+                  fontSize: 24,
+                ),
                 counterText: '',
               ),
             ),
@@ -2329,10 +2655,17 @@ class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('Join',
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Join',
                         style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 8),
@@ -2346,7 +2679,8 @@ class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
     final code = _codeCtrl.text.trim().toUpperCase();
     if (code.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a 6-character code')));
+        const SnackBar(content: Text('Please enter a 6-character code')),
+      );
       return;
     }
     setState(() => _loading = true);
@@ -2389,8 +2723,9 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   Future<void> _loadPending() async {
     // The subject is always the owner — the partner reviews the owner's progress.
     final subjectUid = widget.partner.ownerUid;
-    final days =
-        await AccountabilityService().fetchPendingReviewsForPartner(subjectUid);
+    final days = await AccountabilityService().fetchPendingReviewsForPartner(
+      subjectUid,
+    );
     if (mounted) {
       setState(() {
         _pendingDays = days;
@@ -2417,17 +2752,24 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             _SheetHandle(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-              child: Text('Review ${widget.partner.partnerName}\'s Progress',
-                  style: GoogleFonts.poppins(
-                      fontSize: 17, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Review ${widget.partner.partnerName}\'s Progress',
+                style: GoogleFonts.poppins(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _pendingDays.isEmpty
                       ? Center(
-                          child: Text('No pending days to review.',
-                              style: TextStyle(color: Colors.grey[600])))
+                          child: Text(
+                            'No pending days to review.',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        )
                       : ListView(
                           controller: ctrl,
                           padding: const EdgeInsets.all(20),
@@ -2459,10 +2801,13 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 14),
                                 ),
-                                child: const Text('Submit Review',
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold)),
+                                child: const Text(
+                                  'Submit Review',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -2478,9 +2823,10 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Select Day',
-            style:
-                GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14)),
+        Text(
+          'Select Day',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: _selectedDateKey,
@@ -2489,11 +2835,14 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             final completed = d['completedTasks'] as int? ?? 0;
             final total = d['totalTasks'] as int? ?? 0;
             return DropdownMenuItem(
-                value: key, child: Text('$key  ($completed/$total tasks)'));
+              value: key,
+              child: Text('$key  ($completed/$total tasks)'),
+            );
           }).toList(),
           onChanged: (v) => setState(() => _selectedDateKey = v),
           decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.calendar_today_outlined)),
+            prefixIcon: Icon(Icons.calendar_today_outlined),
+          ),
         ),
       ],
     );
@@ -2503,9 +2852,10 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Decision',
-            style:
-                GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14)),
+        Text(
+          'Decision',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -2539,15 +2889,17 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     final reviewerUid = AccountabilityService().currentUid;
     if (reviewerUid == null) return;
 
-    context.read<AccountabilityBloc>().add(SubmitReview(
-          subjectUid: subjectUid,
-          reviewerName: AccountabilityService().currentUserDisplayName,
-          dateKey: _selectedDateKey!,
-          decision: _decision,
-          comment: _commentCtrl.text.trim().isEmpty
-              ? null
-              : _commentCtrl.text.trim(),
-        ));
+    context.read<AccountabilityBloc>().add(
+          SubmitReview(
+            subjectUid: subjectUid,
+            reviewerName: AccountabilityService().currentUserDisplayName,
+            dateKey: _selectedDateKey!,
+            decision: _decision,
+            comment: _commentCtrl.text.trim().isEmpty
+                ? null
+                : _commentCtrl.text.trim(),
+          ),
+        );
     Navigator.pop(context);
   }
 }
@@ -2565,11 +2917,14 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: AppColors.primary),
         const SizedBox(width: 8),
-        Text(title,
-            style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: Colors.black87)),
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            color: Colors.black87,
+          ),
+        ),
       ],
     );
   }
@@ -2579,8 +2934,11 @@ class _StatBox extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _StatBox(
-      {required this.label, required this.value, required this.color});
+  const _StatBox({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2593,13 +2951,20 @@ class _StatBox extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(value,
-                style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                textAlign: TextAlign.center),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -2651,9 +3016,14 @@ class _StatusChip extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
@@ -2684,17 +3054,22 @@ class _DecisionButton extends StatelessWidget {
             color: selected ? color.withValues(alpha: 0.15) : Colors.grey[100],
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: selected ? color : Colors.grey[300]!, width: 2),
+              color: selected ? color : Colors.grey[300]!,
+              width: 2,
+            ),
           ),
           child: Column(
             children: [
               Icon(icon, color: selected ? color : Colors.grey, size: 26),
               const SizedBox(height: 4),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? color : Colors.grey[600])),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? color : Colors.grey[600],
+                ),
+              ),
             ],
           ),
         ),
@@ -2722,8 +3097,11 @@ class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  const _EmptyState(
-      {required this.icon, required this.title, required this.subtitle});
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2735,15 +3113,20 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(icon, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text(title,
-                style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600])),
+            Text(
+              title,
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+            ),
           ],
         ),
       ),
@@ -2787,8 +3170,12 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                      child: Icon(Icons.email_outlined,
-                          color: Colors.blue, size: 22)),
+                    child: Icon(
+                      Icons.email_outlined,
+                      color: Colors.blue,
+                      size: 22,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2798,7 +3185,9 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                       Text(
                         inv.fromName,
                         style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700, fontSize: 14),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
                       ),
                       Text(
                         inv.fromEmail,
@@ -2807,39 +3196,52 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Text(inv.role.emoji,
-                              style: const TextStyle(fontSize: 13)),
+                          Text(
+                            inv.role.emoji,
+                            style: const TextStyle(fontSize: 13),
+                          ),
                           const SizedBox(width: 4),
-                          Text(inv.role.label,
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[600])),
+                          Text(
+                            inv.role.label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text('Invite',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w600)),
+                  child: const Text(
+                    'Invite',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
             if (_loading)
               const Center(
-                  child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2)))
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
             else
               Row(
                 children: [
@@ -2847,15 +3249,16 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                     child: OutlinedButton(
                       onPressed: () {
                         setState(() => _loading = true);
-                        context
-                            .read<AccountabilityBloc>()
-                            .add(RejectEmailInvite(inv.id));
+                        context.read<AccountabilityBloc>().add(
+                              RejectEmailInvite(inv.id),
+                            );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
                         side: BorderSide(color: Colors.grey[300]!),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Decline'),
                     ),
@@ -2865,15 +3268,16 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
                     child: ElevatedButton(
                       onPressed: () {
                         setState(() => _loading = true);
-                        context
-                            .read<AccountabilityBloc>()
-                            .add(AcceptEmailInvite(inv.id));
+                        context.read<AccountabilityBloc>().add(
+                              AcceptEmailInvite(inv.id),
+                            );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Accept'),
                     ),
@@ -2931,7 +3335,8 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty || !email.contains('@')) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter a valid email address')));
+        const SnackBar(content: Text('Enter a valid email address')),
+      );
       return;
     }
     setState(() => _sending = true);
@@ -2977,9 +3382,13 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('Add Collaborator',
-                          style: GoogleFonts.poppins(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'Add Collaborator',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
@@ -2995,9 +3404,13 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                   padding: const EdgeInsets.all(20),
                   children: [
                     // ── Email field + lookup ───────────────────────
-                    Text('Email address',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(
+                      'Email address',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3010,12 +3423,17 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                             onSubmitted: (_) => _onLookup(),
                             decoration: InputDecoration(
                               hintText: 'collaborator@example.com',
-                              prefixIcon:
-                                  const Icon(Icons.email_outlined, size: 20),
+                              prefixIcon: const Icon(
+                                Icons.email_outlined,
+                                size: 20,
+                              ),
                               border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12)),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 12),
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
                             ),
                             onChanged: (v) {
                               // Reset lookup state when user types
@@ -3037,16 +3455,21 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 14),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
                             ),
                             child: _looking
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white))
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
                                 : const Icon(Icons.search, size: 20),
                           ),
                         ),
@@ -3062,26 +3485,36 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                           decoration: BoxDecoration(
                             color: Colors.green.withValues(alpha: 0.06),
                             border: Border.all(
-                                color: Colors.green.withValues(alpha: 0.3)),
+                              color: Colors.green.withValues(alpha: 0.3),
+                            ),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.check_circle,
-                                  color: Colors.green, size: 20),
+                              const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 20,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(_foundUser!.displayName,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14)),
-                                    Text(_foundUser!.email,
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[600])),
+                                    Text(
+                                      _foundUser!.displayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      _foundUser!.email,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -3094,20 +3527,26 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                           decoration: BoxDecoration(
                             color: Colors.orange.withValues(alpha: 0.06),
                             border: Border.all(
-                                color: Colors.orange.withValues(alpha: 0.3)),
+                              color: Colors.orange.withValues(alpha: 0.3),
+                            ),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.info_outline,
-                                  color: Colors.orange, size: 20),
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.orange,
+                                size: 20,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   'No account found for $_lookupEmail. '
                                   'They\'ll see the invite when they sign up.',
                                   style: TextStyle(
-                                      fontSize: 13, color: Colors.grey[700]),
+                                    fontSize: 13,
+                                    color: Colors.grey[700],
+                                  ),
                                 ),
                               ),
                             ],
@@ -3118,9 +3557,13 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                     const SizedBox(height: 20),
 
                     // ── Role selector ─────────────────────────────
-                    Text('Relationship',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(
+                      'Relationship',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -3130,8 +3573,9 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                         return ChoiceChip(
                           label: Text('${r.emoji} ${r.label}'),
                           selected: selected,
-                          selectedColor:
-                              AppColors.primary.withValues(alpha: 0.2),
+                          selectedColor: AppColors.primary.withValues(
+                            alpha: 0.2,
+                          ),
                           onSelected: (_) => setState(() => _role = r),
                         );
                       }).toList(),
@@ -3149,7 +3593,10 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Icon(Icons.send_outlined, size: 18),
                         label: Text(_sending ? 'Sending...' : 'Send Invite'),
                         style: ElevatedButton.styleFrom(
@@ -3157,9 +3604,12 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           textStyle: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -3181,11 +3631,18 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                             ),
                           );
                         },
-                        icon:
-                            Icon(Icons.tag, size: 16, color: Colors.grey[600]),
-                        label: Text('Use invite code instead',
-                            style: TextStyle(
-                                color: Colors.grey[600], fontSize: 13)),
+                        icon: Icon(
+                          Icons.tag,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        label: Text(
+                          'Use invite code instead',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -3235,8 +3692,11 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                    child: Icon(Icons.task_alt_outlined,
-                        color: Colors.teal, size: 22),
+                    child: Icon(
+                      Icons.task_alt_outlined,
+                      color: Colors.teal,
+                      size: 22,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -3247,7 +3707,9 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                       Text(
                         task.title,
                         style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700, fontSize: 14),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
                       ),
                       Text(
                         'From: ${task.assignedByName}',
@@ -3257,8 +3719,10 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                           task.description!.isNotEmpty)
                         Text(
                           task.description!,
-                          style:
-                              TextStyle(fontSize: 11, color: Colors.grey[500]),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                          ),
                         ),
                     ],
                   ),
@@ -3269,10 +3733,12 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
             const SizedBox(height: 14),
             if (_loading)
               const Center(
-                  child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2)))
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
             else if (task.status == AccountabilityTaskStatus.pending)
               _buildPendingActions(task)
             else
@@ -3282,15 +3748,16 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                     child: OutlinedButton(
                       onPressed: () {
                         setState(() => _loading = true);
-                        context
-                            .read<AccountabilityBloc>()
-                            .add(DeclineTaskRequest(task.id));
+                        context.read<AccountabilityBloc>().add(
+                              DeclineTaskRequest(task.id),
+                            );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
                         side: BorderSide(color: Colors.grey[300]!),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Decline'),
                     ),
@@ -3300,15 +3767,16 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
                     child: ElevatedButton(
                       onPressed: () {
                         setState(() => _loading = true);
-                        context
-                            .read<AccountabilityBloc>()
-                            .add(AcceptTaskRequest(task.id));
+                        context.read<AccountabilityBloc>().add(
+                              AcceptTaskRequest(task.id),
+                            );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.teal,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       child: const Text('Accept'),
                     ),
@@ -3329,9 +3797,14 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
           color: Colors.teal.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Text('Task Request',
-            style: TextStyle(
-                fontSize: 11, color: Colors.teal, fontWeight: FontWeight.w600)),
+        child: const Text(
+          'Task Request',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.teal,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       );
     }
     return _buildProofStatusChip(task);
@@ -3347,11 +3820,14 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
               color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text('Awaiting Review',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.blue[700],
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              'Awaiting Review',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.blue[700],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           );
         case ProofStatus.approved:
           return Container(
@@ -3365,11 +3841,14 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
               children: [
                 Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
                 const SizedBox(width: 3),
-                Text('Approved',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.green[700],
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'Approved',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           );
@@ -3387,11 +3866,14 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
               children: [
                 Icon(Icons.cancel, size: 12, color: Colors.red[700]),
                 const SizedBox(width: 3),
-                Text('Rejected',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.red[700],
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'Rejected',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.red[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           );
@@ -3403,11 +3885,14 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
         color: Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text('Active Task',
-          style: TextStyle(
-              fontSize: 11,
-              color: Colors.orange[700],
-              fontWeight: FontWeight.w600)),
+      child: Text(
+        'Active Task',
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.orange[700],
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
@@ -3421,8 +3906,9 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
           label: const Text('Awaiting Review'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.blue[400],
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
       );
@@ -3442,14 +3928,248 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
           }
         },
         icon: const Icon(Icons.check, size: 16),
-        label: Text(task.proofStatus == ProofStatus.rejected
-            ? 'Resubmit'
-            : 'Mark Complete'),
+        label: Text(
+          task.proofStatus == ProofStatus.rejected
+              ? 'Resubmit'
+              : 'Mark Complete',
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Pending Review Card (partner sees tasks needing their review) ─────────────
+
+class _PendingReviewCard extends StatefulWidget {
+  final AccountabilityTask task;
+  const _PendingReviewCard({required this.task});
+
+  @override
+  State<_PendingReviewCard> createState() => _PendingReviewCardState();
+}
+
+class _PendingReviewCardState extends State<_PendingReviewCard> {
+  final _noteCtrl = TextEditingController();
+  bool _showNoteField = false;
+
+  @override
+  void dispose() {
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  String _timeRemaining() {
+    if (widget.task.expiresAt == null) return '';
+    final remaining = widget.task.expiresAt!.difference(DateTime.now());
+    if (remaining.isNegative) return 'Expired';
+    final hours = remaining.inHours;
+    final mins = remaining.inMinutes % 60;
+    if (hours > 0) return '${hours}h ${mins}m left';
+    return '${mins}m left';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.deepPurple.withValues(alpha: 0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: task title + time remaining
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.rate_review,
+                    color: Colors.deepPurple,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.task.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'From: ${widget.task.accountableName}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+                // Time badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _timeRemaining(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange[800],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Task type badge
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.task.is75Hard
+                        ? Colors.red.withValues(alpha: 0.1)
+                        : Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    widget.task.is75Hard ? '75 Hard' : 'Regular',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: widget.task.is75Hard
+                          ? Colors.red[700]
+                          : Colors.blue[700],
+                    ),
+                  ),
+                ),
+                if (widget.task.is75Hard) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '⚠ Rejection resets streak',
+                    style: TextStyle(fontSize: 10, color: Colors.red[400]),
+                  ),
+                ],
+              ],
+            ),
+
+            // Optional note field
+            if (_showNoteField) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteCtrl,
+                maxLength: 500,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  hintText: 'Add improvement note (optional)',
+                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            // Action buttons
+            Row(
+              children: [
+                // Add note toggle
+                TextButton.icon(
+                  onPressed: () =>
+                      setState(() => _showNoteField = !_showNoteField),
+                  icon: Icon(
+                    _showNoteField ? Icons.close : Icons.note_add_outlined,
+                    size: 16,
+                  ),
+                  label: Text(_showNoteField ? 'Hide' : 'Note'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey[700],
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const Spacer(),
+                // Reject
+                OutlinedButton(
+                  onPressed: () {
+                    context.read<AccountabilityBloc>().add(
+                          RejectTaskReview(
+                            widget.task.id,
+                            improvementNote: _noteCtrl.text.trim().isEmpty
+                                ? null
+                                : _noteCtrl.text.trim(),
+                          ),
+                        );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Text('Reject', style: TextStyle(fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                // Approve
+                ElevatedButton(
+                  onPressed: () {
+                    context.read<AccountabilityBloc>().add(
+                          ApproveTaskReview(
+                            widget.task.id,
+                            improvementNote: _noteCtrl.text.trim().isEmpty
+                                ? null
+                                : _noteCtrl.text.trim(),
+                          ),
+                        );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Text('Approve', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

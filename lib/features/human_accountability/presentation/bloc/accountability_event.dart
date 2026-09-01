@@ -159,3 +159,44 @@ class DeclineTaskRequest extends AccountabilityEvent {
   @override
   List<Object> get props => [taskId];
 }
+
+// ── Partner Review Workflow Events ────────────────────────────────────────────
+
+/// Task owner marks a task as done → status changes to pendingReview.
+/// Triggers FCM notification to the assigned partner.
+class SubmitTaskForReview extends AccountabilityEvent {
+  final String taskId;
+  const SubmitTaskForReview(this.taskId);
+
+  @override
+  List<Object> get props => [taskId];
+}
+
+/// Partner approves a pending review.
+class ApproveTaskReview extends AccountabilityEvent {
+  final String taskId;
+  final String? improvementNote;
+  const ApproveTaskReview(this.taskId, {this.improvementNote});
+
+  @override
+  List<Object?> get props => [taskId, improvementNote];
+}
+
+/// Partner rejects a pending review.
+class RejectTaskReview extends AccountabilityEvent {
+  final String taskId;
+  final String? improvementNote;
+  const RejectTaskReview(this.taskId, {this.improvementNote});
+
+  @override
+  List<Object?> get props => [taskId, improvementNote];
+}
+
+/// Fired by the expiry timer when tasks pass their 24h review window.
+class ExpireOverdueTasks extends AccountabilityEvent {}
+
+/// Check and process expired tasks on app open.
+class CheckExpiredTasks extends AccountabilityEvent {}
+
+/// Load tasks that are pending the current user's review (partner responsibilities).
+class LoadMyResponsibilities extends AccountabilityEvent {}

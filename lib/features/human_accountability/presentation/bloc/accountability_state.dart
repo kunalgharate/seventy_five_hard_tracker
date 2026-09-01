@@ -146,3 +146,58 @@ class TaskRequestDeclined extends AccountabilityState {
   @override
   List<Object> get props => [taskId];
 }
+
+// ── Partner Review Workflow States ────────────────────────────────────────────
+
+/// Emitted when a task transitions to pendingReview status.
+class TaskSubmittedForReview extends AccountabilityState {
+  final String taskId;
+  final DateTime expiresAt;
+  const TaskSubmittedForReview(this.taskId, this.expiresAt);
+
+  @override
+  List<Object> get props => [taskId, expiresAt];
+}
+
+/// Emitted when a partner's review decision is recorded.
+class TaskReviewCompleted extends AccountabilityState {
+  final String taskId;
+  final String decision; // 'approved' or 'rejected'
+  final String? comment;
+  const TaskReviewCompleted(this.taskId, this.decision, {this.comment});
+
+  @override
+  List<Object?> get props => [taskId, decision, comment];
+}
+
+/// Emitted when tasks expire past the 24h review window.
+class TasksExpired extends AccountabilityState {
+  final List<String> expiredTaskIds;
+  const TasksExpired(this.expiredTaskIds);
+
+  @override
+  List<Object> get props => [expiredTaskIds];
+}
+
+/// Emitted when a review outcome impacts the user's streak.
+class StreakImpacted extends AccountabilityState {
+  final int newStreakDay;
+  final String reason; // 'approved', 'rejected', 'expired'
+  const StreakImpacted(this.newStreakDay, this.reason);
+
+  @override
+  List<Object> get props => [newStreakDay, reason];
+}
+
+/// Emitted when partner responsibilities are loaded.
+class MyResponsibilitiesLoaded extends AccountabilityState {
+  final List<AccountabilityTask> responsibilities;
+  final List<AccountabilityTask> pendingReviews;
+  const MyResponsibilitiesLoaded({
+    required this.responsibilities,
+    required this.pendingReviews,
+  });
+
+  @override
+  List<Object> get props => [responsibilities, pendingReviews];
+}

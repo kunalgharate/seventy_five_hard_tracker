@@ -3,6 +3,7 @@ import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dar
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ import 'features/regular_tasks/data/models/regular_task_completion.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
 import 'screens/login_screen.dart';
@@ -85,6 +87,12 @@ void main() async {
     if (kDebugMode) print('Firebase init failed (app works offline): $e');
   }
   connectivity.startListening(); // retries when internet comes back
+
+  // ── Start review expiry timer if user is signed in ──
+  // Checks for overdue partner reviews every 5 minutes and on app start.
+  if (FirebaseAuth.instance.currentUser != null) {
+    ReviewExpiryService().startPeriodicCheck();
+  }
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -384,6 +392,13 @@ class _InitialScreenState extends State<InitialScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       SimpleBackgroundCheckService().checkOnAppOpen();
+      // Check for expired accountability tasks when app resumes
+      if (FirebaseAuth.instance.currentUser != null) {
+        ReviewExpiryService().checkAndExpireTasks();
+        if (mounted) {
+          context.read<AccountabilityBloc>().add(CheckExpiredTasks());
+        }
+      }
     }
   }
 

@@ -152,6 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   _selectedDay = today;
                 });
               }
+              // Load accountability statuses for all challenges in this session
+              _loadAccountabilityStatuses(state.activeSession!.challenges);
             } else if (state is ChallengeError) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -466,6 +468,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     challenge,
                                   ),
                                   proofStatus: _proofStatuses[challenge.id],
+                                  accountabilityStatus:
+                                      _accountabilityStatuses[challenge.id],
                                   onSubmitProof: () => _submitProof(challenge),
                                   onReviewProof: () => _reviewProof(challenge),
                                   onViewProof: () => _viewProof(challenge),
@@ -747,6 +751,28 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((p) => _isSameDay(p.date, _selectedDay))
         .firstOrNull;
     return progress?.challengeCompletions[challenge.id] ?? false;
+  }
+
+  /// Loads the current accountability task status for each challenge from Firestore.
+  /// Called on initial session load so DailyTaskCard shows correct review states.
+  Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
+    final svc = AccountabilityService();
+
+    for (final challenge in challenges) {
+      try {
+        final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
+        if (taskId == null) continue;
+        final task = await svc.fetchTaskById(taskId);
+        if (task != null && mounted) {
+          setState(() {
+            _accountabilityStatuses[challenge.id] = task.status;
+            _proofStatuses[challenge.id] = task.proofStatus;
+          });
+        }
+      } catch (_) {
+        // Non-critical — card will just show default state
+      }
+    }
   }
 
   Future<void> _submitProof(Challenge challenge) async {

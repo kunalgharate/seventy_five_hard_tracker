@@ -128,19 +128,32 @@ service cloud.firestore {
                 && resource.data.owner.uid == request.auth.uid;
 }
     // ── accountability_tasks ──────────────────────────────────────
-    // Any signed-in user can read — queries are filtered by assignedByUid
-    // or accountableUid so only relevant tasks are returned.
-    // Only the creator can create. Only the accountable user can update.
+    // Read restricted to: task creator (assignedByUid), accountable user,
+    // or the assigned reviewing partner (partnerUid).
+    // Only the creator can create. Creator, accountable user, or partner can update.
     match /accountability_tasks/{taskId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+                  && (resource.data.assignedByUid == request.auth.uid
+                      || resource.data.accountableUid == request.auth.uid
+                      || resource.data.partnerUid == request.auth.uid);
       allow create: if request.auth != null
                     && request.resource.data.assignedByUid == request.auth.uid;
       allow update: if request.auth != null
                     && (resource.data.accountableUid == request.auth.uid
                         || resource.data.assignedByUid == request.auth.uid
+                        || resource.data.partnerUid == request.auth.uid
                         || (request.auth.uid in resource.data.accountableUserIds));
       allow delete: if request.auth != null
                     && resource.data.assignedByUid == request.auth.uid;
+    }
+
+    // ── fcm_notifications ─────────────────────────────────────────
+    // Any signed-in user can create (sender writes notification doc).
+    // Only the recipient can read, update (mark delivered), or delete (cleanup).
+    match /fcm_notifications/{notifId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if request.auth != null
+                                  && resource.data.recipientUid == request.auth.uid;
     }
   }
 }
