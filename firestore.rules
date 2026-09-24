@@ -4,41 +4,64 @@ service cloud.firestore {
 
     // ── invite_codes ──────────────────────────────────────────────
     // Any signed-in user must be able to READ a code (to accept an invite
-    // created by someone else). Only the owner can write/delete their code.
+    // created by someone else). Only the owner can delete their code.
     match /invite_codes/{code} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
+      // Only the code owner may delete it. (Previously an `|| auth.uid != null`
+      // clause made this open to any signed-in user, allowing invite-flow DoS.)
       allow delete: if request.auth != null
-                    && (resource.data.ownerUid == request.auth.uid
-                        || request.auth.uid != null); // acceptor deletes on join
+                    && resource.data.ownerUid == request.auth.uid;
     }
 
     // ── partnerships ──────────────────────────────────────────────
     // Owner can create. Owner or partner can read/update/delete.
-    // partnerUid may be null at creation time (email-based flow) — allow
-    // update so the recipient can set their uid when accepting.
+    // For the pending (partnerUid == null) email/code flow, a recipient may
+    // CLAIM the partnership by setting partnerUid to their own uid — but only
+    // that: we do not grant blanket read/update/delete on every pending doc.
     match /partnerships/{partnershipId} {
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
-      allow read, update, delete: if request.auth != null
+
+      // Established members (owner or the accepted partner) have full access.
+      allow read, delete: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
-                        || resource.data.partnerUid == request.auth.uid
-                        // allow update when partnerUid is being set for the first time
-                        || resource.data.partnerUid == null);
+                        || resource.data.partnerUid == request.auth.uid);
+
+      allow update: if request.auth != null
+                    && (
+                      resource.data.ownerUid == request.auth.uid
+                      || resource.data.partnerUid == request.auth.uid
+                      // Claim a pending invite: only allowed to set partnerUid
+                      // to the caller's own uid (cannot hijack to someone else).
+                      || (resource.data.partnerUid == null
+                          && request.resource.data.partnerUid == request.auth.uid)
+                    );
     }
 
     // ── public_progress ───────────────────────────────────────────
-    // Owner writes their own progress. Any signed-in user can read
-    // (partners need to see each other's progress).
-    match /public_progress/{uid}/days/{dateKey} {
-      allow read: if request.auth != null;
+    // Owner writes their own progress. Reads are restricted to the owner and
+    // to users listed in the doc's `allowedReaders` array (the owner's accepted
+    // partners), rather than every signed-in user. The subcollection reuses the
+    // parent doc's allowedReaders via a get() lookup.
+    function isAllowedReader(uid) {
+      return request.auth != null && (
+        request.auth.uid == uid ||
+        request.auth.uid in get(/databases/$(database)/documents/public_progress/$(uid)).data.allowedReaders
+      );
+    }
+
+    match /public_progress/{uid} {
+      allow read: if request.auth != null
+                  && (request.auth.uid == uid
+                      || (resource.data.allowedReaders != null
+                          && request.auth.uid in resource.data.allowedReaders));
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Also allow reads on the root public_progress doc (challenge meta).
-    match /public_progress/{uid} {
-      allow read: if request.auth != null;
+    match /public_progress/{uid}/days/{dateKey} {
+      allow read: if isAllowedReader(uid);
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
@@ -116,7 +139,13 @@ service cloud.firestore {
     }
 
    match /task_collaborators/{taskId} {
-  allow read: if request.auth != null;
+  // Read restricted to the owner and listed collaborators, not every user.
+  // Uses the flat `collaboratorUids` array (owner + collaborators) that the
+  // client keeps in sync, since rules cannot map over arrays of objects.
+  allow read: if request.auth != null
+              && (resource.data.owner.uid == request.auth.uid
+                  || (resource.data.collaboratorUids != null
+                      && request.auth.uid in resource.data.collaboratorUids));
 
   allow create: if request.auth != null
                 && request.resource.data.owner.uid == request.auth.uid;
@@ -148,10 +177,12 @@ service cloud.firestore {
     }
 
     // ── fcm_notifications ─────────────────────────────────────────
-    // Any signed-in user can create (sender writes notification doc).
-    // Only the recipient can read, update (mark delivered), or delete (cleanup).
+    // Sender writes a notification doc, but must stamp themselves as the
+    // sender (prevents spoofing another user as the sender). Only the
+    // recipient can read, update (mark delivered), or delete (cleanup).
     match /fcm_notifications/{notifId} {
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.senderUid == request.auth.uid;
       allow read, update, delete: if request.auth != null
                                   && resource.data.recipientUid == request.auth.uid;
     }

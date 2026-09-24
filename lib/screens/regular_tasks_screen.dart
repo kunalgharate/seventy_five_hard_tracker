@@ -40,18 +40,6 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
-    _loadAccountabilityData();
-  }
-
-  Future<void> _loadAccountabilityData() async {
-    final svc = AccountabilityService();
-    final partners = await svc.fetchMyPartnerships();
-    for (final p in partners) {
-      if (p.status == PartnershipStatus.accepted) {
-        // Load tasks assigned through this partnership
-        // This populates _assignedPartnerNames, _proofStatuses, etc.
-      }
-    }
   }
 
   @override
@@ -338,7 +326,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   }
 
   Widget _buildProofButton(BuildContext context, RegularTask task) {
-    final proofStatus = _proofStatuses[task.id] ?? ProofStatus.not_required;
+    final proofStatus = _proofStatuses[task.id] ?? ProofStatus.notRequired;
     final accStatus = _accountabilityStatuses[task.id];
     final iAmAssigner = _tasksIAssigned.contains(task.id);
 
@@ -364,7 +352,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
 
     // ── CREATOR (assigned this task) — camera is here ──
     if (iAmAssigner) {
-      if (proofStatus == ProofStatus.not_required) {
+      if (proofStatus == ProofStatus.notRequired) {
         return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!,
             () => _submitProof(task), 'Upload Photo Proof');
       }
@@ -384,7 +372,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     }
 
     // ── COLLABORATOR (task was assigned to them) — status only ──
-    if (proofStatus == ProofStatus.not_required) {
+    if (proofStatus == ProofStatus.notRequired) {
       return const SizedBox.shrink();
     }
     switch (proofStatus) {

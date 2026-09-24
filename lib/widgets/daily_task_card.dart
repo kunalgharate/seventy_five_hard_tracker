@@ -636,7 +636,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     // ── CREATOR (assigned this task to a collaborator) ──
     if (isCreator) {
-      if (status == null || status == ProofStatus.not_required) {
+      if (status == null || status == ProofStatus.notRequired) {
         return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!,
             widget.onSubmitProof, 'Upload Photo Proof');
       }
@@ -656,7 +656,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
 
     // ── COLLABORATOR (task was assigned to them) ──
-    if (status == null || status == ProofStatus.not_required) {
+    if (status == null || status == ProofStatus.notRequired) {
       return const SizedBox.shrink();
     }
     switch (status) {
@@ -675,7 +675,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   String _getStatusText() {
     final proofStatus = widget.proofStatus;
-    if (proofStatus != null && proofStatus != ProofStatus.not_required) {
+    if (proofStatus != null && proofStatus != ProofStatus.notRequired) {
       switch (proofStatus) {
         case ProofStatus.submitted:
           return 'Proof submitted — awaiting review';
@@ -695,7 +695,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       // For creator with pending accepted task and proof required, show upload prompt
       if (accStatus == AccountabilityTaskStatus.pending &&
           _hasAccountabilityConnection &&
-          (proofStatus == null || proofStatus == ProofStatus.not_required)) {
+          (proofStatus == null || proofStatus == ProofStatus.notRequired)) {
         final myUid = FirebaseAuth.instance.currentUser?.uid;
         if (_isAssigner(myUid)) {
           return 'Proof required — upload photo';

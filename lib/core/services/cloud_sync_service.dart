@@ -340,9 +340,17 @@ class CloudSyncService {
   /// Decrypts legacy CBC-encrypted backups (schema v1/v2).
   /// Only used for reading old data — new writes always use GCM.
   String _decryptCbcLegacy(String cipherBase64, {String? ivBase64}) {
+    // Legacy read-only path for very old v1 backups. Newer backups use
+    // AES-256-GCM with a per-record random nonce (see _encryptGcm). Some v1
+    // records were written without a stored IV; we fall back to a zero IV to
+    // remain able to RESTORE them. This is weak (fixed-IV CBC leaks plaintext
+    // prefix equality) but the data was already stored this way — refusing to
+    // decrypt would only cause data loss on restore without improving the
+    // confidentiality of data already at rest. No new records are ever written
+    // on this path.
     final iv = ivBase64 != null
         ? enc.IV.fromBase64(ivBase64)
-        : enc.IV.fromLength(16); // zero-IV fallback for very old v1 backups
+        : enc.IV.fromLength(16);
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.cbc));
     return encrypter.decrypt64(cipherBase64, iv: iv);
   }

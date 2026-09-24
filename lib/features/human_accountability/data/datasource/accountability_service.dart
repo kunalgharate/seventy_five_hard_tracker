@@ -365,6 +365,40 @@ class AccountabilityService {
     }
   }
 
+  /// Returns the UIDs of the current user's ACCEPTED partners (the other
+  /// party in each partnership). Used to populate `allowedReaders` so partners
+  /// — and only partners — can read this user's public_progress.
+  Future<List<String>> _acceptedPartnerUids() async {
+    final myUid = currentUid;
+    if (myUid == null) return [];
+    final partners = await fetchMyPartnerships();
+    final uids = <String>{};
+    for (final p in partners) {
+      if (p.status != PartnershipStatus.accepted) continue;
+      final other = p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
+      if (other != null && other.isNotEmpty) uids.add(other);
+    }
+    return uids.toList();
+  }
+
+  /// Keeps `public_progress/{uid}.allowedReaders` in sync with the user's
+  /// accepted partners, so Firestore rules can gate partner reads.
+  Future<void> _syncAllowedReaders() async {
+    final uid = currentUid;
+    if (uid == null) return;
+    try {
+      final readers = await _acceptedPartnerUids();
+      await _db.collection('public_progress').doc(uid).set(
+        {'allowedReaders': readers},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] _syncAllowedReaders error: $e');
+      }
+    }
+  }
+
   /// Finds an accepted partnership between the current user and [otherUid].
   /// Returns the partnership if found and accepted, otherwise null.
   Future<AccountabilityPartner?> findAcceptedPartnership(
@@ -464,6 +498,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Ensure partner read-access list is current before publishing.
+      await _syncAllowedReaders();
       await _db
           .collection('public_progress')
           .doc(uid)
@@ -497,9 +533,11 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      final readers = await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set({
         'challengeNames': challengeNames,
         'currentDay': currentDay,
+        'allowedReaders': readers,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -1586,6 +1624,12 @@ class AccountabilityService {
       await _db.collection('task_collaborators').doc(taskId).set({
         'owner': owner.toFirestore(),
         'collaborators': collaborators.map((c) => c.toFirestore()).toList(),
+        // Flat list of uids (owner + collaborators) so security rules can gate
+        // reads with a simple `in` check (rules can't map over object arrays).
+        'collaboratorUids': [
+          owner.uid,
+          ...collaborators.map((c) => c.uid),
+        ],
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return true;
@@ -1604,10 +1648,31 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return false;
     try {
-      await _db.collection('task_collaborators').doc(taskId).update({
-        'collaborators': FieldValue.arrayRemove([
-          {'uid': collaboratorUid}
-        ]),
+      final ref = _db.collection('task_collaborators').doc(taskId);
+      final snap = await ref.get();
+      if (!snap.exists) return false;
+
+      // arrayRemove requires an exact match of the full stored map (which also
+      // contains email/name/photoUrl), so a partial {'uid': ...} never matches.
+      // Read the list, filter by uid in code, then write the result back.
+      final data = snap.data() ?? {};
+      final current = (data['collaborators'] as List?) ?? [];
+      final updated = current
+          .whereType<Map<String, dynamic>>()
+          .where((c) => c['uid'] != collaboratorUid)
+          .toList();
+
+      // Nothing to remove — treat as failure so callers can surface it.
+      if (updated.length == current.length) return false;
+
+      await ref.update({
+        'collaborators': updated,
+        // Keep the flat uid list (owner + remaining collaborators) in sync.
+        'collaboratorUids': [
+          if (data['owner'] is Map && (data['owner'] as Map)['uid'] != null)
+            (data['owner'] as Map)['uid'],
+          ...updated.map((c) => c['uid']).whereType<String>(),
+        ],
       });
       return true;
     } catch (e) {
@@ -1634,11 +1699,13 @@ class AccountabilityService {
         await docRef.set({
           'owner': me.toFirestore(),
           'collaborators': [collaborator.toFirestore()],
+          'collaboratorUids': [me.uid, collaborator.uid],
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
         await docRef.update({
           'collaborators': FieldValue.arrayUnion([collaborator.toFirestore()]),
+          'collaboratorUids': FieldValue.arrayUnion([collaborator.uid]),
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }
@@ -1690,7 +1757,7 @@ class AccountabilityService {
     try {
       final now = DateTime.now();
       await _db.collection('accountability_tasks').doc(taskId).update({
-        'proofStatus': ProofStatus.submitted.name,
+        'proofStatus': ProofStatus.submitted.toWire,
         'proofUrl': proofUrl,
         'proofSubmittedAt': now.toIso8601String(),
       });
@@ -1724,7 +1791,7 @@ class AccountabilityService {
 
       if (approved) {
         batch.update(ref, {
-          'proofStatus': ProofStatus.approved.name,
+          'proofStatus': ProofStatus.approved.toWire,
           'proofReviewComment': comment,
           'proofReviewedAt': now.toIso8601String(),
           'status': AccountabilityTaskStatus.completed.name,
@@ -1732,7 +1799,7 @@ class AccountabilityService {
         });
       } else {
         batch.update(ref, {
-          'proofStatus': ProofStatus.rejected.name,
+          'proofStatus': ProofStatus.rejected.toWire,
           'proofReviewComment': comment,
           'proofReviewedAt': now.toIso8601String(),
           // Keep task pending so user can resubmit
@@ -1760,7 +1827,7 @@ class AccountabilityService {
       final snap = await _db
           .collection('accountability_tasks')
           .where('assignedByUid', isEqualTo: uid)
-          .where('proofStatus', isEqualTo: ProofStatus.submitted.name)
+          .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
           .get();
       return snap.docs
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
@@ -1790,10 +1857,7 @@ class AccountabilityService {
         final cid = data['challengeId'] as String?;
         final ps = data['proofStatus'] as String?;
         if (cid != null) {
-          map[cid] = ProofStatus.values.firstWhere(
-            (e) => e.name == ps,
-            orElse: () => ProofStatus.not_required,
-          );
+          map[cid] = ProofStatusExtension.fromWire(ps);
         }
       }
       return map;
@@ -2030,8 +2094,9 @@ class AccountabilityService {
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
       // Validate: only the partner can approve
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
         return null;
+      }
       // Validate: must be in pendingReview state
       if (task.status != AccountabilityTaskStatus.pendingReview) return null;
       // Validate: not already reviewed
@@ -2083,8 +2148,9 @@ class AccountabilityService {
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
       // Validate: only the partner can reject
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
         return null;
+      }
       // Validate: must be in pendingReview state
       if (task.status != AccountabilityTaskStatus.pendingReview) return null;
       // Validate: not already reviewed

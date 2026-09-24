@@ -1472,16 +1472,15 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () async {
+              final bloc = context.read<AccountabilityBloc>();
               final ok = await PhotoProofSheet.show(
                 context: context,
                 taskId: task.id,
                 taskName: task.title,
                 date: DateTime.now(),
               );
-              if (ok == true && context.mounted) {
-                context.read<AccountabilityBloc>().add(
-                      LoadAccountabilityData(),
-                    );
+              if (ok == true && mounted) {
+                bloc.add(LoadAccountabilityData());
               }
             },
             icon: const Icon(Icons.camera_alt_outlined, size: 16),
@@ -1537,16 +1536,18 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () async {
+          final accBloc = context.read<AccountabilityBloc>();
+          final challBloc = context.read<ChallengeBloc>();
           setState(() => _loading = true);
           final ok = await AccountabilityService().completeAccountabilityTask(
             task.id,
           );
           if (mounted) setState(() => _loading = false);
-          if (ok && context.mounted) {
-            context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+          if (ok && mounted) {
+            accBloc.add(LoadAccountabilityData());
             if (task.challengeId != null) {
               try {
-                context.read<ChallengeBloc>().add(
+                challBloc.add(
                       UpdateDailyProgress(
                         date: DateTime.now(),
                         challengeId: task.challengeId!,
@@ -1581,9 +1582,10 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         width: double.infinity,
         child: ElevatedButton.icon(
           onPressed: () async {
+            final bloc = context.read<AccountabilityBloc>();
             final ok = await ProofReviewDialog.show(context, task);
-            if (ok == true && context.mounted) {
-              context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+            if (ok == true && mounted) {
+              bloc.add(LoadAccountabilityData());
             }
           },
           icon: const Icon(Icons.rate_review_outlined, size: 16),
@@ -1620,14 +1622,15 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         width: double.infinity,
         child: ElevatedButton.icon(
           onPressed: () async {
+            final bloc = context.read<AccountabilityBloc>();
             final ok = await PhotoProofSheet.show(
               context: context,
               taskId: task.id,
               taskName: task.title,
               date: DateTime.now(),
             );
-            if (ok == true && context.mounted) {
-              context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+            if (ok == true && mounted) {
+              bloc.add(LoadAccountabilityData());
             }
           },
           icon: Icon(
@@ -3852,7 +3855,7 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
               ],
             ),
           );
-        case ProofStatus.not_required:
+        case ProofStatus.notRequired:
           break;
         case ProofStatus.rejected:
           return Container(
@@ -3917,14 +3920,15 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () async {
+          final bloc = context.read<AccountabilityBloc>();
           final ok = await PhotoProofSheet.show(
             context: context,
             taskId: task.id,
             taskName: task.title,
             date: DateTime.now(),
           );
-          if (ok == true && context.mounted) {
-            context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+          if (ok == true && mounted) {
+            bloc.add(LoadAccountabilityData());
           }
         },
         icon: const Icon(Icons.check, size: 16),

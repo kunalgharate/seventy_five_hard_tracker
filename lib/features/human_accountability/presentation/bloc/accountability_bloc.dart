@@ -61,6 +61,15 @@ class AccountabilityBloc
     on<LoadMyResponsibilities>(_onLoadMyResponsibilities);
   }
 
+  @override
+  Future<void> close() {
+    // The expiry service owns periodic/precise timers whose callbacks touch
+    // Firestore. Stop them when the bloc is disposed to prevent timer leaks
+    // and work running after close.
+    _expiryService.dispose();
+    return super.close();
+  }
+
   Future<void> _onLoad(
     LoadAccountabilityData event,
     Emitter<AccountabilityState> emit,
@@ -74,6 +83,7 @@ class AccountabilityBloc
         _service.fetchMyInvitations(),
         _service.fetchIncomingTaskRequests(),
       ]);
+      if (isClosed) return;
       emit(AccountabilityLoaded(
         partners: results[0] as List<AccountabilityPartner>,
         myReviews: results[1] as List<PartnerReview>,
@@ -144,9 +154,6 @@ class AccountabilityBloc
       }
       debugPrint(
           '[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
-      if (changed) {
-        // Notify UI to reload challenge data
-      }
     } catch (e) {
       debugPrint('[AccountabilityBloc] _syncMissingChallenges error: $e');
     }
@@ -163,6 +170,7 @@ class AccountabilityBloc
         role: event.role,
       );
       if (partner != null) {
+        if (isClosed) return;
         emit(PartnerInvited(partner));
         // Reload the full list after emitting the success state
         add(LoadAccountabilityData());
@@ -183,6 +191,7 @@ class AccountabilityBloc
     emit(AccountabilityLoading());
     try {
       final partner = await _service.acceptInvite(event.code);
+      if (isClosed) return;
       if (partner != null) {
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
@@ -239,6 +248,7 @@ class AccountabilityBloc
         comment: event.comment,
       );
       if (review != null) {
+        if (isClosed) return;
         emit(ReviewSubmitted(review));
         add(LoadAccountabilityData());
       } else {
@@ -317,6 +327,7 @@ class AccountabilityBloc
     emit(AccountabilityLoading());
     try {
       final partner = await _service.acceptEmailInvite(event.invitationId);
+      if (isClosed) return;
       if (partner != null) {
         emit(EmailInviteAccepted(partner));
         add(LoadAccountabilityData());
@@ -360,6 +371,7 @@ class AccountabilityBloc
         debugPrint(
             '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
 
+        if (isClosed) return;
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
       } else {
@@ -396,6 +408,7 @@ class AccountabilityBloc
   ) async {
     try {
       final task = await _service.submitForReview(event.taskId);
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not submit for review.'));
         return;
@@ -411,8 +424,9 @@ class AccountabilityBloc
             taskId: task.id,
           );
         } catch (e) {
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
         }
       }
 
@@ -421,7 +435,8 @@ class AccountabilityBloc
         _expiryService.scheduleNextExpiry(task.expiresAt!);
       }
 
-      emit(TaskSubmittedForReview(task.id, task.expiresAt!));
+      if (isClosed) return;
+      emit(TaskSubmittedForReview(task.id, task.expiresAt));
     } catch (e) {
       emit(AccountabilityError('Submit for review failed: $e'));
     }
@@ -436,6 +451,7 @@ class AccountabilityBloc
         event.taskId,
         improvementNote: event.improvementNote,
       );
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not approve task.'));
         return;
@@ -449,8 +465,9 @@ class AccountabilityBloc
           taskId: task.id,
         );
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
       }
 
       emit(TaskReviewCompleted(task.id, 'approved',
@@ -461,6 +478,7 @@ class AccountabilityBloc
         1, // TODO: pass actual current streak from ChallengeBloc
         'approved',
       );
+      if (isClosed) return;
       emit(StreakImpacted(newStreak, 'approved'));
     } catch (e) {
       emit(AccountabilityError('Approve task failed: $e'));
@@ -476,6 +494,7 @@ class AccountabilityBloc
         event.taskId,
         improvementNote: event.improvementNote,
       );
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not reject task.'));
         return;
@@ -490,8 +509,9 @@ class AccountabilityBloc
           comment: event.improvementNote,
         );
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
       }
 
       emit(TaskReviewCompleted(task.id, 'rejected',
@@ -515,8 +535,9 @@ class AccountabilityBloc
       }
     } catch (e) {
       // Non-critical — log and continue
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[AccountabilityBloc] Expiry check failed: $e');
+      }
     }
   }
 
