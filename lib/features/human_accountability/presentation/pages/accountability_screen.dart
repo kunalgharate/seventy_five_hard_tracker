@@ -1548,12 +1548,12 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             if (task.challengeId != null) {
               try {
                 challBloc.add(
-                      UpdateDailyProgress(
-                        date: DateTime.now(),
-                        challengeId: task.challengeId!,
-                        isCompleted: true,
-                      ),
-                    );
+                  UpdateDailyProgress(
+                    date: DateTime.now(),
+                    challengeId: task.challengeId!,
+                    isCompleted: true,
+                  ),
+                );
               } catch (_) {
                 // safe to ignore
               }

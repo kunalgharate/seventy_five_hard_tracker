@@ -1687,8 +1687,7 @@ class AccountabilityService {
         txn.update(ref, {
           'collaborators': updated,
           'collaboratorUids': [
-            if (data['owner'] is Map &&
-                (data['owner'] as Map)['uid'] != null)
+            if (data['owner'] is Map && (data['owner'] as Map)['uid'] != null)
               (data['owner'] as Map)['uid'],
             ...updated.map((c) => c['uid']).whereType<String>(),
           ],
@@ -1698,8 +1697,7 @@ class AccountabilityService {
       return removed;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] removeTaskCollaborator error: $e');
+        debugPrint('[AccountabilityService] removeTaskCollaborator error: $e');
       }
       return false;
     }

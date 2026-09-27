@@ -284,8 +284,7 @@ class AccountabilityTask extends Equatable {
         dueDate: _parseDate(d['dueDate']),
         assignedAt: _parseDateRequired(d['assignedAt']),
         completedAt: _parseDate(d['completedAt']),
-        proofStatus: ProofStatusExtension.fromWire(
-            d['proofStatus'] as String?),
+        proofStatus: ProofStatusExtension.fromWire(d['proofStatus'] as String?),
         proofUrl: d['proofUrl'] as String?,
         proofReviewComment: d['proofReviewComment'] as String?,
         proofSubmittedAt: _parseDate(d['proofSubmittedAt']),

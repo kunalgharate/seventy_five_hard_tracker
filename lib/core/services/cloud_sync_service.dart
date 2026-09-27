@@ -348,9 +348,8 @@ class CloudSyncService {
     // decrypt would only cause data loss on restore without improving the
     // confidentiality of data already at rest. No new records are ever written
     // on this path.
-    final iv = ivBase64 != null
-        ? enc.IV.fromBase64(ivBase64)
-        : enc.IV.fromLength(16);
+    final iv =
+        ivBase64 != null ? enc.IV.fromBase64(ivBase64) : enc.IV.fromLength(16);
     final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.cbc));
     return encrypter.decrypt64(cipherBase64, iv: iv);
   }

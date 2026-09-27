@@ -37,8 +37,8 @@ class DatabaseRepository {
   Future<ChallengeSession?> getActiveSession() async {
     await _ensureInitialized();
     try {
-      return _sessionBox!.values.firstWhere(
-          (session) => session.isActive && !session.isCompleted);
+      return _sessionBox!.values
+          .firstWhere((session) => session.isActive && !session.isCompleted);
     } on StateError {
       // No active session found — expected case
       return null;
