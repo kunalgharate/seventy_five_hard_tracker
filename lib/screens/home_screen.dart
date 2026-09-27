@@ -42,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _taskKeys = {};
 
+  /// Tracks the session for which accountability statuses were last loaded.
+  /// Prevents re-fetching from Firestore on every task-toggle rebuild —
+  /// we only reload on initial load or when the active session changes.
+  String? _accountabilityLoadedSessionId;
+
   /// Whether a challenge should render as a water tracker card.
   /// Only challenges explicitly categorized as 'water' use the tracker.
   bool _isWaterChallenge(Challenge challenge) => challenge.category == 'water';
@@ -152,8 +157,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   _selectedDay = today;
                 });
               }
-              // Load accountability statuses for all challenges in this session
-              _loadAccountabilityStatuses(state.activeSession!.challenges);
+              // Load accountability statuses only once per session —
+              // not on every ChallengeLoaded emission (e.g. task toggles),
+              // which would cause repeated Firestore reads and rebuilds.
+              // Mark as loaded only after success so failures can be retried.
+              final sessionId = state.activeSession!.id;
+              if (_accountabilityLoadedSessionId != sessionId) {
+                _loadAccountabilityStatuses(
+                  state.activeSession!.challenges,
+                ).then((_) {
+                  _accountabilityLoadedSessionId = sessionId;
+                });
+              }
             } else if (state is ChallengeError) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -760,9 +775,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     for (final challenge in challenges) {
       try {
-        final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
-        if (taskId == null) continue;
-        final task = await svc.fetchTaskById(taskId);
+        // Single query returns the full task — avoids the extra
+        // fetchTaskIdByChallengeId + fetchTaskById round-trip.
+        final task = await svc.fetchTaskByChallengeId(challenge.id);
         if (task != null && mounted) {
           setState(() {
             _accountabilityStatuses[challenge.id] = task.status;

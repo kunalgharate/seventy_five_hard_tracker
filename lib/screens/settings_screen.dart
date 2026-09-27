@@ -143,11 +143,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                 ),
                 const SizedBox(height: 16),
-                ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('App Version'),
-                  subtitle: const Text('1.0.3+4'),
-                  onTap: () {},
+                const ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('App Version'),
+                  subtitle: Text('1.0.7+7'),
                 ),
                 ListTile(
                   leading: const Icon(Icons.privacy_tip),
@@ -159,32 +158,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.description),
-                  title: const Text('Terms of Service'),
+                  title: const Text('Terms & Conditions'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Terms of Service'),
-                        content: const SingleChildScrollView(
-                          child: Text(
-                            'By using 75 Hard Challenge Tracker, you agree to:\n\n'
-                            '• Use the app for personal challenge tracking only\n'
-                            '• All data is stored locally on your device\n'
-                            '• We do not collect or share personal information\n'
-                            '• The app is provided as-is without warranty\n'
-                            '• You are responsible for your own health and safety during the challenge\n\n'
-                            'For questions, contact the developer through the Play Store listing.',
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('OK'),
-                          ),
-                        ],
-                      ),
-                    );
+                    Navigator.pushNamed(context, '/terms');
                   },
                 ),
               ],
@@ -207,7 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final exportData = {
         'exported_at': DateTime.now().toIso8601String(),
-        'app_version': '1.0.3+4',
+        'app_version': '1.0.7+7',
         'active_session': state.activeSession?.toJson(),
         'all_sessions': state.allSessions.map((s) => s.toJson()).toList(),
         'current_progress':

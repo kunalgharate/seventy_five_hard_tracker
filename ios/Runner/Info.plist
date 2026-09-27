@@ -47,5 +47,30 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSCameraUsageDescription</key>
+		<string>DailyMettle uses the camera so you can take photos as proof of completing your daily tasks.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>DailyMettle needs access to your photo library so you can attach existing photos as proof of your daily tasks or as custom task icons.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>DailyMettle saves task proof photos to your photo library when you choose to keep a copy.</string>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>remote-notification</string>
+		</array>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.googleusercontent.apps.496007025535-8uuai6ml5vkeei1iodd762ac4kbidilj</string>
+				</array>
+			</dict>
+		</array>
+		<key>GIDClientID</key>
+		<string>496007025535-8uuai6ml5vkeei1iodd762ac4kbidilj.apps.googleusercontent.com</string>
 	</dict>
 </plist>

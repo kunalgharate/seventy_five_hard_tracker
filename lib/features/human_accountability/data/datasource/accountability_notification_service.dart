@@ -42,6 +42,9 @@ class AccountabilityNotificationService {
     try {
       await _db.collection('fcm_notifications').add({
         'recipientUid': recipientUid,
+        // Stamp the authenticated sender so security rules can verify the
+        // sender is not being spoofed.
+        'senderUid': _auth.currentUser!.uid,
         'type': type.name,
         'title': title,
         'body': body,

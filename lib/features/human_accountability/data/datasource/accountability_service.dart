@@ -192,49 +192,47 @@ class AccountabilityService {
       }
 
       final partnershipRef = _db.collection('partnerships').doc(partnershipId);
-      final partnershipDoc = await partnershipRef.get();
 
-      if (!partnershipDoc.exists) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: partnership doc not found');
-        }
-        throw Exception(
-            'The partnership linked to this code no longer exists. Ask your partner to create a new invite.');
-      }
+      // Use a transaction to claim the partnership atomically. The
+      // transaction read is server-side (not subject to client read rules),
+      // so we don't need a blanket read rule on pending partnerships.
+      final updated = await _db.runTransaction<AccountabilityPartner>(
+        (txn) async {
+          final partnershipDoc = await txn.get(partnershipRef);
 
-      final existing = _partnerFromDoc(partnershipDoc);
+          if (!partnershipDoc.exists) {
+            throw Exception(
+                'The partnership linked to this code no longer exists. '
+                'Ask your partner to create a new invite.');
+          }
 
-      if (existing.ownerUid == uid) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: cannot accept own invite');
-        }
-        throw Exception('You cannot accept your own invite code.');
-      }
-      if (existing.status != PartnershipStatus.pending) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: already accepted/declined');
-        }
-        throw Exception(
-            'This invite has already been accepted or is no longer valid.');
-      }
+          final existing = _partnerFromDoc(partnershipDoc);
 
-      await partnershipRef.update({
-        'partnerUid': uid,
-        'status': 'accepted',
-        'acceptedAt': FieldValue.serverTimestamp(),
-      });
+          if (existing.ownerUid == uid) {
+            throw Exception('You cannot accept your own invite code.');
+          }
+          if (existing.status != PartnershipStatus.pending) {
+            throw Exception(
+                'This invite has already been accepted or is no longer valid.');
+          }
 
-      // Clean up the invite code so it can't be reused
-      await _db.collection('invite_codes').doc(upperCode).delete();
+          txn.update(partnershipRef, {
+            'partnerUid': uid,
+            'status': 'accepted',
+            'acceptedAt': FieldValue.serverTimestamp(),
+          });
 
-      final updated = existing.copyWith(
-        partnerUid: uid,
-        status: PartnershipStatus.accepted,
-        acceptedAt: DateTime.now(),
+          return existing.copyWith(
+            partnerUid: uid,
+            status: PartnershipStatus.accepted,
+            acceptedAt: DateTime.now(),
+          );
+        },
       );
+
+      // Partnership changed — invalidate the cached allowedReaders list
+      // so the next publish picks up the new partner.
+      invalidateAllowedReaders();
 
       if (kDebugMode) {
         debugPrint(
@@ -305,6 +303,8 @@ class AccountabilityService {
     if (!_isReady) return false;
     try {
       await _db.collection('partnerships').doc(partnershipId).delete();
+      // Partnership removed — invalidate the cached allowedReaders list.
+      invalidateAllowedReaders();
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] removePartner: $partnershipId deleted');
@@ -362,6 +362,49 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] fetchMyPartnerships error: $e');
       }
       return [];
+    }
+  }
+
+  /// Returns the UIDs of the current user's ACCEPTED partners (the other
+  /// party in each partnership). Used to populate `allowedReaders` so partners
+  /// — and only partners — can read this user's public_progress.
+  Future<List<String>> _acceptedPartnerUids() async {
+    final myUid = currentUid;
+    if (myUid == null) return [];
+    final partners = await fetchMyPartnerships();
+    final uids = <String>{};
+    for (final p in partners) {
+      if (p.status != PartnershipStatus.accepted) continue;
+      final other = p.ownerUid == myUid ? p.partnerUid : p.ownerUid;
+      if (other != null && other.isNotEmpty) uids.add(other);
+    }
+    return uids.toList();
+  }
+
+  /// Keeps `public_progress/{uid}.allowedReaders` in sync with the user's
+  /// accepted partners, so Firestore rules can gate partner reads.
+  ///
+  /// Cached for the session: the first call fetches from Firestore, subsequent
+  /// calls reuse the result. Call [invalidateAllowedReaders] when a partnership
+  /// is accepted/removed to force a refresh on the next publish.
+  List<String>? _cachedAllowedReaders;
+
+  /// Forces the next [_syncAllowedReaders] call to re-fetch from Firestore.
+  void invalidateAllowedReaders() => _cachedAllowedReaders = null;
+
+  Future<void> _syncAllowedReaders() async {
+    final uid = currentUid;
+    if (uid == null) return;
+    try {
+      _cachedAllowedReaders ??= await _acceptedPartnerUids();
+      await _db.collection('public_progress').doc(uid).set(
+        {'allowedReaders': _cachedAllowedReaders},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] _syncAllowedReaders error: $e');
+      }
     }
   }
 
@@ -464,6 +507,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Ensure partner read-access list is current before publishing.
+      await _syncAllowedReaders();
       await _db
           .collection('public_progress')
           .doc(uid)
@@ -497,9 +542,11 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      _cachedAllowedReaders ??= await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set({
         'challengeNames': challengeNames,
         'currentDay': currentDay,
+        'allowedReaders': _cachedAllowedReaders,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -1468,6 +1515,8 @@ class AccountabilityService {
       if (!partnershipDoc.exists) return null;
 
       final partner = _partnerFromDoc(partnershipDoc);
+      // Partnership accepted — invalidate the cached allowedReaders list.
+      invalidateAllowedReaders();
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] acceptEmailInvite: $invitationId accepted');
@@ -1586,6 +1635,12 @@ class AccountabilityService {
       await _db.collection('task_collaborators').doc(taskId).set({
         'owner': owner.toFirestore(),
         'collaborators': collaborators.map((c) => c.toFirestore()).toList(),
+        // Flat list of uids (owner + collaborators) so security rules can gate
+        // reads with a simple `in` check (rules can't map over object arrays).
+        'collaboratorUids': [
+          owner.uid,
+          ...collaborators.map((c) => c.uid),
+        ],
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return true;
@@ -1598,18 +1653,42 @@ class AccountabilityService {
   }
 
   /// Remove a collaborator from a task.
+  ///
+  /// Uses a Firestore transaction so concurrent removals of different
+  /// collaborators don't overwrite each other (the plain read-filter-write
+  /// pattern has a TOCTOU race).
   Future<bool> removeTaskCollaborator({
     required String taskId,
     required String collaboratorUid,
   }) async {
     if (!_isReady) return false;
     try {
-      await _db.collection('task_collaborators').doc(taskId).update({
-        'collaborators': FieldValue.arrayRemove([
-          {'uid': collaboratorUid}
-        ]),
+      final ref = _db.collection('task_collaborators').doc(taskId);
+      final removed = await _db.runTransaction<bool>((txn) async {
+        final snap = await txn.get(ref);
+        if (!snap.exists) return false;
+
+        final data = snap.data() ?? {};
+        final current = (data['collaborators'] as List?) ?? [];
+        final updated = current
+            .whereType<Map<String, dynamic>>()
+            .where((c) => c['uid'] != collaboratorUid)
+            .toList();
+
+        // Nothing matched — nothing to remove.
+        if (updated.length == current.length) return false;
+
+        txn.update(ref, {
+          'collaborators': updated,
+          'collaboratorUids': [
+            if (data['owner'] is Map && (data['owner'] as Map)['uid'] != null)
+              (data['owner'] as Map)['uid'],
+            ...updated.map((c) => c['uid']).whereType<String>(),
+          ],
+        });
+        return true;
       });
-      return true;
+      return removed;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] removeTaskCollaborator error: $e');
@@ -1634,11 +1713,33 @@ class AccountabilityService {
         await docRef.set({
           'owner': me.toFirestore(),
           'collaborators': [collaborator.toFirestore()],
+          'collaboratorUids': [me.uid, collaborator.uid],
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
+        // Rebuild collaboratorUids from the full list to backfill docs
+        // created before this field existed. arrayUnion alone would only
+        // append the new uid, leaving legacy collaborators locked out by
+        // the security rule that checks this array.
+        final data = doc.data() ?? {};
+        final ownerUid = (data['owner'] is Map)
+            ? (data['owner'] as Map)['uid'] as String?
+            : null;
+        final existing = (data['collaborators'] as List?)
+                ?.whereType<Map<String, dynamic>>()
+                .map((c) => c['uid'] as String?)
+                .whereType<String>()
+                .toList() ??
+            [];
+        final allUids = <String>{
+          if (ownerUid != null) ownerUid,
+          ...existing,
+          collaborator.uid,
+        }.toList();
+
         await docRef.update({
           'collaborators': FieldValue.arrayUnion([collaborator.toFirestore()]),
+          'collaboratorUids': allUids,
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }
@@ -1690,7 +1791,7 @@ class AccountabilityService {
     try {
       final now = DateTime.now();
       await _db.collection('accountability_tasks').doc(taskId).update({
-        'proofStatus': ProofStatus.submitted.name,
+        'proofStatus': ProofStatus.submitted.toWire,
         'proofUrl': proofUrl,
         'proofSubmittedAt': now.toIso8601String(),
       });
@@ -1724,7 +1825,7 @@ class AccountabilityService {
 
       if (approved) {
         batch.update(ref, {
-          'proofStatus': ProofStatus.approved.name,
+          'proofStatus': ProofStatus.approved.toWire,
           'proofReviewComment': comment,
           'proofReviewedAt': now.toIso8601String(),
           'status': AccountabilityTaskStatus.completed.name,
@@ -1732,7 +1833,7 @@ class AccountabilityService {
         });
       } else {
         batch.update(ref, {
-          'proofStatus': ProofStatus.rejected.name,
+          'proofStatus': ProofStatus.rejected.toWire,
           'proofReviewComment': comment,
           'proofReviewedAt': now.toIso8601String(),
           // Keep task pending so user can resubmit
@@ -1760,7 +1861,7 @@ class AccountabilityService {
       final snap = await _db
           .collection('accountability_tasks')
           .where('assignedByUid', isEqualTo: uid)
-          .where('proofStatus', isEqualTo: ProofStatus.submitted.name)
+          .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
           .get();
       return snap.docs
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
@@ -1790,10 +1891,7 @@ class AccountabilityService {
         final cid = data['challengeId'] as String?;
         final ps = data['proofStatus'] as String?;
         if (cid != null) {
-          map[cid] = ProofStatus.values.firstWhere(
-            (e) => e.name == ps,
-            orElse: () => ProofStatus.not_required,
-          );
+          map[cid] = ProofStatusExtension.fromWire(ps);
         }
       }
       return map;
@@ -2030,8 +2128,9 @@ class AccountabilityService {
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
       // Validate: only the partner can approve
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
         return null;
+      }
       // Validate: must be in pendingReview state
       if (task.status != AccountabilityTaskStatus.pendingReview) return null;
       // Validate: not already reviewed
@@ -2083,8 +2182,9 @@ class AccountabilityService {
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
       // Validate: only the partner can reject
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid)
+      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
         return null;
+      }
       // Validate: must be in pendingReview state
       if (task.status != AccountabilityTaskStatus.pendingReview) return null;
       // Validate: not already reviewed

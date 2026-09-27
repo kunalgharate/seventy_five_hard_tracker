@@ -152,11 +152,13 @@ class TaskRequestDeclined extends AccountabilityState {
 /// Emitted when a task transitions to pendingReview status.
 class TaskSubmittedForReview extends AccountabilityState {
   final String taskId;
-  final DateTime expiresAt;
+
+  /// May be null if the server has not yet resolved the expiry timestamp.
+  final DateTime? expiresAt;
   const TaskSubmittedForReview(this.taskId, this.expiresAt);
 
   @override
-  List<Object> get props => [taskId, expiresAt];
+  List<Object?> get props => [taskId, expiresAt];
 }
 
 /// Emitted when a partner's review decision is recorded.

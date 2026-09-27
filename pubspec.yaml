@@ -57,7 +57,7 @@ dependencies:
   
   # Permissions
   permission_handler: ^11.3.1
-  connectivity_plus: ^6.0.3
+  connectivity_plus: ^7.0.0
   
   # Animations and Advanced UI
   lottie: ^3.1.2

@@ -239,17 +239,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         ),
       );
       // Go back to setup page
-      PageView(
-        controller: _pageController,
-        // This line ensures users can't swipe manually past the login gate
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (page) => setState(() {}),
-        children: [
-          _buildWelcomePage(),
-          _buildChallengeSetupPage(),
-          _buildReviewPage(),
-        ],
-      );
       _pageController.animateToPage(1,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
       return;
@@ -284,6 +273,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     await context.read<ChallengeBloc>().stream.firstWhere(
           (state) => state is ChallengeLoaded && state.hasActiveSession,
         );
+
+    // The widget may have been disposed while awaiting the session stream.
+    if (!mounted) return;
 
     // Sync to cloud immediately if user is signed in
     if (FirebaseAuth.instance.currentUser != null) {
@@ -407,37 +399,75 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             Text('Cloud Backup'),
           ],
         ),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Before enabling backup, here\'s what you need to know:',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
-            SizedBox(height: 12),
-            _ConsentPoint(
+            const SizedBox(height: 12),
+            const _ConsentPoint(
               icon: Icons.lock_outline,
               text:
                   'Task names, journal notes, and all your progress data are encrypted with AES-256 before leaving your device.',
             ),
-            SizedBox(height: 8),
-            _ConsentPoint(
+            const SizedBox(height: 8),
+            const _ConsentPoint(
               icon: Icons.key,
               text:
-                  'Your encryption key is derived from your account ID. Only you can decrypt your data.',
+                  'Your encryption key is derived from your account ID, so your backups can be restored after reinstalling on the same account.',
             ),
-            SizedBox(height: 8),
-            _ConsentPoint(
+            const SizedBox(height: 8),
+            const _ConsentPoint(
               icon: Icons.visibility_off,
               text:
-                  'We cannot read your data. The server stores only ciphertext.',
+                  'Your backup data is stored as encrypted content. Access to backups is restricted to your account by Firestore security rules.',
             ),
-            SizedBox(height: 8),
-            _ConsentPoint(
+            const SizedBox(height: 8),
+            const _ConsentPoint(
               icon: Icons.sync,
               text:
                   'Backup happens automatically in the background whenever you\'re online.',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  'By continuing you agree to our ',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pushNamed(ctx, '/privacy'),
+                  child: const Text(
+                    'Privacy Policy',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFFA726),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Text(
+                  ' and ',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pushNamed(ctx, '/terms'),
+                  child: const Text(
+                    'Terms & Conditions',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFFA726),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Text('.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54)),
+              ],
             ),
           ],
         ),
@@ -478,6 +508,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         child: SafeArea(
           child: PageView(
             controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
             onPageChanged: (page) => setState(() {}),
             children: [
               _buildWelcomePage(),

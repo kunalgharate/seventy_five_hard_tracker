@@ -41,12 +41,12 @@ extension AccountabilityTaskStatusExtension on AccountabilityTaskStatus {
       );
 }
 
-enum ProofStatus { not_required, submitted, approved, rejected }
+enum ProofStatus { notRequired, submitted, approved, rejected }
 
 extension ProofStatusExtension on ProofStatus {
   String get label {
     switch (this) {
-      case ProofStatus.not_required:
+      case ProofStatus.notRequired:
         return 'Not Required';
       case ProofStatus.submitted:
         return 'Proof Submitted';
@@ -57,10 +57,40 @@ extension ProofStatusExtension on ProofStatus {
     }
   }
 
-  static ProofStatus fromString(String v) => ProofStatus.values.firstWhere(
-        (e) => e.name == v,
-        orElse: () => ProofStatus.not_required,
-      );
+  /// Firestore wire value. Kept as snake_case for backward compatibility with
+  /// documents written before the enum was renamed to lowerCamelCase.
+  String get toWire {
+    switch (this) {
+      case ProofStatus.notRequired:
+        return 'not_required';
+      case ProofStatus.submitted:
+        return 'submitted';
+      case ProofStatus.approved:
+        return 'approved';
+      case ProofStatus.rejected:
+        return 'rejected';
+    }
+  }
+
+  /// Parses a Firestore wire value. Accepts both the legacy snake_case
+  /// ('not_required') and the enum name ('notRequired').
+  static ProofStatus fromWire(String? v) {
+    switch (v) {
+      case 'submitted':
+        return ProofStatus.submitted;
+      case 'approved':
+        return ProofStatus.approved;
+      case 'rejected':
+        return ProofStatus.rejected;
+      case 'not_required':
+      case 'notRequired':
+      default:
+        return ProofStatus.notRequired;
+    }
+  }
+
+  /// Deprecated: use [fromWire]. Retained so existing callers keep compiling.
+  static ProofStatus fromString(String v) => fromWire(v);
 }
 
 /// A task assigned by one user to an accountability partner.
@@ -140,7 +170,7 @@ class AccountabilityTask extends Equatable {
     this.dueDate,
     required this.assignedAt,
     this.completedAt,
-    this.proofStatus = ProofStatus.not_required,
+    this.proofStatus = ProofStatus.notRequired,
     this.proofUrl,
     this.proofReviewComment,
     this.proofSubmittedAt,
@@ -254,8 +284,7 @@ class AccountabilityTask extends Equatable {
         dueDate: _parseDate(d['dueDate']),
         assignedAt: _parseDateRequired(d['assignedAt']),
         completedAt: _parseDate(d['completedAt']),
-        proofStatus: ProofStatusExtension.fromString(
-            d['proofStatus'] as String? ?? 'not_required'),
+        proofStatus: ProofStatusExtension.fromWire(d['proofStatus'] as String?),
         proofUrl: d['proofUrl'] as String?,
         proofReviewComment: d['proofReviewComment'] as String?,
         proofSubmittedAt: _parseDate(d['proofSubmittedAt']),
@@ -284,10 +313,12 @@ class AccountabilityTask extends Equatable {
         'description': description,
         'status': status.name,
         'dueDate': dueDate != null ? Timestamp.fromDate(dueDate!) : null,
-        'assignedAt': FieldValue.serverTimestamp(),
+        // Preserve the model's assignment time. Using serverTimestamp() here
+        // would overwrite the original creation time on any re-serialization.
+        'assignedAt': Timestamp.fromDate(assignedAt),
         'completedAt':
             completedAt != null ? Timestamp.fromDate(completedAt!) : null,
-        'proofStatus': proofStatus.name,
+        'proofStatus': proofStatus.toWire,
         'proofUrl': proofUrl,
         'proofReviewComment': proofReviewComment,
         'proofSubmittedAt': proofSubmittedAt != null

@@ -61,6 +61,17 @@ class AccountabilityBloc
     on<LoadMyResponsibilities>(_onLoadMyResponsibilities);
   }
 
+  @override
+  Future<void> close() {
+    // Stop only the timers that were started by this bloc instance. The
+    // ReviewExpiryService is a **singleton** — calling full dispose() here
+    // would kill timers for the entire app if another widget/bloc also
+    // references the singleton. Instead we cancel just the precise timer
+    // that _onSubmitTaskForReview may have scheduled.
+    _expiryService.cancelPreciseTimer();
+    return super.close();
+  }
+
   Future<void> _onLoad(
     LoadAccountabilityData event,
     Emitter<AccountabilityState> emit,
@@ -74,6 +85,7 @@ class AccountabilityBloc
         _service.fetchMyInvitations(),
         _service.fetchIncomingTaskRequests(),
       ]);
+      if (isClosed) return;
       emit(AccountabilityLoaded(
         partners: results[0] as List<AccountabilityPartner>,
         myReviews: results[1] as List<PartnerReview>,
@@ -144,9 +156,6 @@ class AccountabilityBloc
       }
       debugPrint(
           '[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
-      if (changed) {
-        // Notify UI to reload challenge data
-      }
     } catch (e) {
       debugPrint('[AccountabilityBloc] _syncMissingChallenges error: $e');
     }
@@ -163,6 +172,7 @@ class AccountabilityBloc
         role: event.role,
       );
       if (partner != null) {
+        if (isClosed) return;
         emit(PartnerInvited(partner));
         // Reload the full list after emitting the success state
         add(LoadAccountabilityData());
@@ -183,6 +193,7 @@ class AccountabilityBloc
     emit(AccountabilityLoading());
     try {
       final partner = await _service.acceptInvite(event.code);
+      if (isClosed) return;
       if (partner != null) {
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
@@ -239,6 +250,7 @@ class AccountabilityBloc
         comment: event.comment,
       );
       if (review != null) {
+        if (isClosed) return;
         emit(ReviewSubmitted(review));
         add(LoadAccountabilityData());
       } else {
@@ -317,6 +329,7 @@ class AccountabilityBloc
     emit(AccountabilityLoading());
     try {
       final partner = await _service.acceptEmailInvite(event.invitationId);
+      if (isClosed) return;
       if (partner != null) {
         emit(EmailInviteAccepted(partner));
         add(LoadAccountabilityData());
@@ -360,6 +373,7 @@ class AccountabilityBloc
         debugPrint(
             '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
 
+        if (isClosed) return;
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
       } else {
@@ -396,6 +410,7 @@ class AccountabilityBloc
   ) async {
     try {
       final task = await _service.submitForReview(event.taskId);
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not submit for review.'));
         return;
@@ -411,17 +426,22 @@ class AccountabilityBloc
             taskId: task.id,
           );
         } catch (e) {
-          if (kDebugMode)
+          if (kDebugMode) {
             debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
         }
       }
 
-      // Schedule precise expiry timer
+      // Schedule precise expiry timer — but only if the bloc is still alive.
+      // If it closed during the notification await, scheduling would recreate
+      // a timer after close() already cancelled them.
+      if (isClosed) return;
       if (task.expiresAt != null) {
         _expiryService.scheduleNextExpiry(task.expiresAt!);
       }
 
-      emit(TaskSubmittedForReview(task.id, task.expiresAt!));
+      if (isClosed) return;
+      emit(TaskSubmittedForReview(task.id, task.expiresAt));
     } catch (e) {
       emit(AccountabilityError('Submit for review failed: $e'));
     }
@@ -436,6 +456,7 @@ class AccountabilityBloc
         event.taskId,
         improvementNote: event.improvementNote,
       );
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not approve task.'));
         return;
@@ -449,8 +470,9 @@ class AccountabilityBloc
           taskId: task.id,
         );
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
       }
 
       emit(TaskReviewCompleted(task.id, 'approved',
@@ -461,6 +483,7 @@ class AccountabilityBloc
         1, // TODO: pass actual current streak from ChallengeBloc
         'approved',
       );
+      if (isClosed) return;
       emit(StreakImpacted(newStreak, 'approved'));
     } catch (e) {
       emit(AccountabilityError('Approve task failed: $e'));
@@ -476,6 +499,7 @@ class AccountabilityBloc
         event.taskId,
         improvementNote: event.improvementNote,
       );
+      if (isClosed) return;
       if (task == null) {
         emit(const AccountabilityError('Could not reject task.'));
         return;
@@ -490,15 +514,21 @@ class AccountabilityBloc
           comment: event.improvementNote,
         );
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
       }
 
       emit(TaskReviewCompleted(task.id, 'rejected',
           comment: event.improvementNote));
 
       // Compute streak impact — rejected resets streak
-      emit(const StreakImpacted(1, 'rejected'));
+      final newStreak = _scoringEngine.compute75HardStreak(
+        1, // TODO: pass actual current streak from ChallengeBloc
+        'rejected',
+      );
+      if (isClosed) return;
+      emit(StreakImpacted(newStreak, 'rejected'));
     } catch (e) {
       emit(AccountabilityError('Reject task failed: $e'));
     }
@@ -515,8 +545,9 @@ class AccountabilityBloc
       }
     } catch (e) {
       // Non-critical — log and continue
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[AccountabilityBloc] Expiry check failed: $e');
+      }
     }
   }
 
@@ -534,11 +565,13 @@ class AccountabilityBloc
     try {
       final responsibilities = await _service.fetchMyResponsibilities();
       final pending = await _service.fetchPendingReviewsForMe();
+      if (isClosed) return;
       emit(MyResponsibilitiesLoaded(
         responsibilities: responsibilities,
         pendingReviews: pending,
       ));
     } catch (e) {
+      if (isClosed) return;
       emit(AccountabilityError('Failed to load responsibilities: $e'));
     }
   }

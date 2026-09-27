@@ -44,11 +44,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBeWcDsCfdfHboj0Va5K_9HtpF-GK9ZfkU',
-    appId: '1:496007025535:ios:193ffb745000941c34c04a',
+    appId: '1:496007025535:ios:d4e6c0b68081d63734c04a',
     messagingSenderId: '496007025535',
     projectId: 'dailymettle',
     storageBucket: 'dailymettle.firebasestorage.app',
-    iosBundleId: 'com.example.seventyFiveHardTracker',
+    iosBundleId: 'com.seventyfive.hard.challenge',
   );
 
   static const FirebaseOptions web = FirebaseOptions(

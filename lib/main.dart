@@ -36,6 +36,7 @@ import 'screens/main_navigation_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/privacy_policy_screen.dart';
+import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -159,6 +160,7 @@ class MyApp extends StatelessWidget {
           '/history': (context) => const HistoryScreen(),
           '/settings': (context) => const SettingsScreen(),
           '/privacy': (context) => const PrivacyPolicyScreen(),
+          '/terms': (context) => const TermsOfServiceScreen(),
         },
       ),
     );
@@ -406,13 +408,16 @@ class _InitialScreenState extends State<InitialScreen>
     // Fetch quote in background (non-blocking)
     unawaited(_fetchQuote());
 
+    // Capture blocs/repos before any await to avoid using BuildContext across
+    // an async gap (the InitialScreen can be disposed during startup awaits).
+    final bloc = context.read<ChallengeBloc>();
+    final taskRepo = context.read<RegularTaskBloc>().repository;
+
     // Initialize local database and permissions
     try {
       await SmartNotificationService().requestPermissions();
     } catch (_) {}
 
-    final bloc = context.read<ChallengeBloc>();
-    final taskRepo = context.read<RegularTaskBloc>().repository;
     await bloc.repository.init();
     await taskRepo.init();
 
