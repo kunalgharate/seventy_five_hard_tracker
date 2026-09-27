@@ -236,6 +236,10 @@ class AccountabilityService {
         acceptedAt: DateTime.now(),
       );
 
+      // Partnership changed — invalidate the cached allowedReaders list
+      // so the next publish picks up the new partner.
+      invalidateAllowedReaders();
+
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] acceptInvite: success, partnershipId=$partnershipId');
@@ -305,6 +309,8 @@ class AccountabilityService {
     if (!_isReady) return false;
     try {
       await _db.collection('partnerships').doc(partnershipId).delete();
+      // Partnership removed — invalidate the cached allowedReaders list.
+      invalidateAllowedReaders();
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] removePartner: $partnershipId deleted');
@@ -383,13 +389,22 @@ class AccountabilityService {
 
   /// Keeps `public_progress/{uid}.allowedReaders` in sync with the user's
   /// accepted partners, so Firestore rules can gate partner reads.
+  ///
+  /// Cached for the session: the first call fetches from Firestore, subsequent
+  /// calls reuse the result. Call [invalidateAllowedReaders] when a partnership
+  /// is accepted/removed to force a refresh on the next publish.
+  List<String>? _cachedAllowedReaders;
+
+  /// Forces the next [_syncAllowedReaders] call to re-fetch from Firestore.
+  void invalidateAllowedReaders() => _cachedAllowedReaders = null;
+
   Future<void> _syncAllowedReaders() async {
     final uid = currentUid;
     if (uid == null) return;
     try {
-      final readers = await _acceptedPartnerUids();
+      _cachedAllowedReaders ??= await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set(
-        {'allowedReaders': readers},
+        {'allowedReaders': _cachedAllowedReaders},
         SetOptions(merge: true),
       );
     } catch (e) {
@@ -533,11 +548,11 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
-      final readers = await _acceptedPartnerUids();
+      _cachedAllowedReaders ??= await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set({
         'challengeNames': challengeNames,
         'currentDay': currentDay,
-        'allowedReaders': readers,
+        'allowedReaders': _cachedAllowedReaders,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -1506,6 +1521,8 @@ class AccountabilityService {
       if (!partnershipDoc.exists) return null;
 
       final partner = _partnerFromDoc(partnershipDoc);
+      // Partnership accepted — invalidate the cached allowedReaders list.
+      invalidateAllowedReaders();
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] acceptEmailInvite: $invitationId accepted');
@@ -1642,6 +1659,10 @@ class AccountabilityService {
   }
 
   /// Remove a collaborator from a task.
+  ///
+  /// Uses a Firestore transaction so concurrent removals of different
+  /// collaborators don't overwrite each other (the plain read-filter-write
+  /// pattern has a TOCTOU race).
   Future<bool> removeTaskCollaborator({
     required String taskId,
     required String collaboratorUid,
@@ -1649,35 +1670,36 @@ class AccountabilityService {
     if (!_isReady) return false;
     try {
       final ref = _db.collection('task_collaborators').doc(taskId);
-      final snap = await ref.get();
-      if (!snap.exists) return false;
+      final removed = await _db.runTransaction<bool>((txn) async {
+        final snap = await txn.get(ref);
+        if (!snap.exists) return false;
 
-      // arrayRemove requires an exact match of the full stored map (which also
-      // contains email/name/photoUrl), so a partial {'uid': ...} never matches.
-      // Read the list, filter by uid in code, then write the result back.
-      final data = snap.data() ?? {};
-      final current = (data['collaborators'] as List?) ?? [];
-      final updated = current
-          .whereType<Map<String, dynamic>>()
-          .where((c) => c['uid'] != collaboratorUid)
-          .toList();
+        final data = snap.data() ?? {};
+        final current = (data['collaborators'] as List?) ?? [];
+        final updated = current
+            .whereType<Map<String, dynamic>>()
+            .where((c) => c['uid'] != collaboratorUid)
+            .toList();
 
-      // Nothing to remove — treat as failure so callers can surface it.
-      if (updated.length == current.length) return false;
+        // Nothing matched — nothing to remove.
+        if (updated.length == current.length) return false;
 
-      await ref.update({
-        'collaborators': updated,
-        // Keep the flat uid list (owner + remaining collaborators) in sync.
-        'collaboratorUids': [
-          if (data['owner'] is Map && (data['owner'] as Map)['uid'] != null)
-            (data['owner'] as Map)['uid'],
-          ...updated.map((c) => c['uid']).whereType<String>(),
-        ],
+        txn.update(ref, {
+          'collaborators': updated,
+          'collaboratorUids': [
+            if (data['owner'] is Map &&
+                (data['owner'] as Map)['uid'] != null)
+              (data['owner'] as Map)['uid'],
+            ...updated.map((c) => c['uid']).whereType<String>(),
+          ],
+        });
+        return true;
       });
-      return true;
+      return removed;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[AccountabilityService] removeTaskCollaborator error: $e');
+        debugPrint(
+            '[AccountabilityService] removeTaskCollaborator error: $e');
       }
       return false;
     }

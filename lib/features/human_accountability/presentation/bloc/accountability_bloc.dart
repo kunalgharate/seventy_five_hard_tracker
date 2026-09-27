@@ -63,10 +63,12 @@ class AccountabilityBloc
 
   @override
   Future<void> close() {
-    // The expiry service owns periodic/precise timers whose callbacks touch
-    // Firestore. Stop them when the bloc is disposed to prevent timer leaks
-    // and work running after close.
-    _expiryService.dispose();
+    // Stop only the timers that were started by this bloc instance. The
+    // ReviewExpiryService is a **singleton** — calling full dispose() here
+    // would kill timers for the entire app if another widget/bloc also
+    // references the singleton. Instead we cancel just the precise timer
+    // that _onSubmitTaskForReview may have scheduled.
+    _expiryService.cancelPreciseTimer();
     return super.close();
   }
 
@@ -518,7 +520,12 @@ class AccountabilityBloc
           comment: event.improvementNote));
 
       // Compute streak impact — rejected resets streak
-      emit(const StreakImpacted(1, 'rejected'));
+      final newStreak = _scoringEngine.compute75HardStreak(
+        1, // TODO: pass actual current streak from ChallengeBloc
+        'rejected',
+      );
+      if (isClosed) return;
+      emit(StreakImpacted(newStreak, 'rejected'));
     } catch (e) {
       emit(AccountabilityError('Reject task failed: $e'));
     }
@@ -555,11 +562,13 @@ class AccountabilityBloc
     try {
       final responsibilities = await _service.fetchMyResponsibilities();
       final pending = await _service.fetchPendingReviewsForMe();
+      if (isClosed) return;
       emit(MyResponsibilitiesLoaded(
         responsibilities: responsibilities,
         pendingReviews: pending,
       ));
     } catch (e) {
+      if (isClosed) return;
       emit(AccountabilityError('Failed to load responsibilities: $e'));
     }
   }

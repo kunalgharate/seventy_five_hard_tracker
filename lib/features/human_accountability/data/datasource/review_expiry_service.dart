@@ -93,6 +93,13 @@ class ReviewExpiryService {
     });
   }
 
+  /// Cancels only the per-task precise timer. The periodic health-check timer
+  /// is left running because the singleton outlives individual BLoC instances.
+  void cancelPreciseTimer() {
+    _preciseTimer?.cancel();
+    _preciseTimer = null;
+  }
+
   /// Stops all timers. Call on sign-out or app dispose.
   void dispose() {
     _periodicTimer?.cancel();
