@@ -432,7 +432,10 @@ class AccountabilityBloc
         }
       }
 
-      // Schedule precise expiry timer
+      // Schedule precise expiry timer — but only if the bloc is still alive.
+      // If it closed during the notification await, scheduling would recreate
+      // a timer after close() already cancelled them.
+      if (isClosed) return;
       if (task.expiresAt != null) {
         _expiryService.scheduleNextExpiry(task.expiresAt!);
       }

@@ -41,7 +41,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             ),
             _buildSection(
               'Cloud Backup (Optional)',
-              'When cloud backup is enabled, your task names, journal notes, and progress are encrypted on your device using AES-256 before being uploaded to Firebase Firestore, where they are stored as encrypted content. The encryption key is tied to your account, and access to your backup is restricted to your account by Firebase security rules. If you do not enable backup, no progress data leaves your device.',
+              'When cloud backup is enabled, your task names, journal notes, and progress are encrypted on your device using AES-256 before being uploaded to Firebase Firestore, where they are stored as encrypted content. The encryption key is tied to your account, and access to your backup is restricted to your account by Firebase security rules. If you do not enable backup, no full backup data leaves your device. Note: if you use the accountability partner feature, limited progress and task data is shared separately with your partners as described below, regardless of the backup setting.',
             ),
             _buildSection(
               'Accountability Partners (Optional)',
@@ -53,7 +53,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             ),
             _buildSection(
               'Analytics & Crash Reporting',
-              'We use Firebase Analytics and Firebase Crashlytics to understand aggregate, anonymous usage patterns and to diagnose crashes so we can improve stability. This may include app opens, feature usage, device model, and crash diagnostics. We do not use this data to track you across other companies\u2019 apps or websites.',
+              'We use Firebase Analytics and Firebase Crashlytics to understand usage patterns and to diagnose crashes so we can improve stability. Analytics events may include app opens, feature usage, device model, crash diagnostics, and the names of challenges and tasks you create. This data is associated with your account for analysis but is not used to track you across other companies\u2019 apps or websites.',
             ),
             _buildSection(
               'Notifications',

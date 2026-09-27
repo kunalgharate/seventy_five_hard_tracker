@@ -1725,9 +1725,29 @@ class AccountabilityService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
+        // Rebuild collaboratorUids from the full list to backfill docs
+        // created before this field existed. arrayUnion alone would only
+        // append the new uid, leaving legacy collaborators locked out by
+        // the security rule that checks this array.
+        final data = doc.data() ?? {};
+        final ownerUid = (data['owner'] is Map)
+            ? (data['owner'] as Map)['uid'] as String?
+            : null;
+        final existing = (data['collaborators'] as List?)
+                ?.whereType<Map<String, dynamic>>()
+                .map((c) => c['uid'] as String?)
+                .whereType<String>()
+                .toList() ??
+            [];
+        final allUids = <String>{
+          if (ownerUid != null) ownerUid,
+          ...existing,
+          collaborator.uid,
+        }.toList();
+
         await docRef.update({
           'collaborators': FieldValue.arrayUnion([collaborator.toFirestore()]),
-          'collaboratorUids': FieldValue.arrayUnion([collaborator.uid]),
+          'collaboratorUids': allUids,
           'updatedAt': FieldValue.serverTimestamp(),
         });
       }

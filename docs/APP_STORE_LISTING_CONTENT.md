@@ -15,20 +15,19 @@ Existing hosted Privacy Policy: https://sites.google.com/view/75hardchallengeapp
 ---
 
 ## App Name (max 30 chars)
-`DailyMettle: Habit Tracker`
-(The Play name "DailyMettle: Habit & Challenge" is 31 chars — 1 over Apple's 30-char
-limit. Use the above, or "DailyMettle - Habit Builder". Pick one and keep it consistent.)
+`DailyMettle: Habit & Challenge`
+(Exactly 30 characters — fits Apple's limit.)
 
 ## Subtitle (max 30 chars)
-`Build discipline, 75 Hard & more`
+`Build discipline, 75 Hard`
 (alt: `75 Hard & daily habit builder`)
 
 ## Promotional Text (max 170 chars, editable anytime without review)
 `Forge daily discipline and conquer the 75 Hard journey. Offline-first tracking, smart reminders, and daily motivation to keep you consistent from Day 1 to Day 75.`
 
 ## Keywords (max 100 chars, comma-separated, no spaces after commas for efficiency)
-`75 hard,habit,tracker,challenge,discipline,routine,goals,streak,motivation,productivity,self care,daily`
-(101→ trim if needed. Do NOT repeat words already in the app name/subtitle; Apple indexes those separately.)
+`75 hard,habit,tracker,challenge,discipline,routine,goals,streak,motivation,productivity,self care`
+(97 chars. Do NOT repeat words already in the app name/subtitle; Apple indexes those separately.)
 
 ## Description (full)
 ```
@@ -48,7 +47,7 @@ WHY DAILYMETTLE?
 
 • Accountability Partners — Invite a partner to review your progress and keep each other on track.
 
-• Encrypted Cloud Backup — Optional AES-256 encrypted sync so your data is safe and restorable across reinstalls.
+• Encrypted Cloud Backup — Optional AES-256 encrypted sync so your backup data is restorable across reinstalls.
 
 • Daily Journal — Reflect on each day with per-day notes and per-task journaling.
 
@@ -103,6 +102,7 @@ Data collected (all: NOT used for tracking, most NOT linked unless noted):
 | Data type | Collected | Linked to identity | Purpose |
 |---|---|---|---|
 | Email Address | Yes | Yes | App Functionality (Firebase Auth) |
+| Name | Yes | Yes | App Functionality (display name for partners) |
 | User ID | Yes | Yes | App Functionality |
 | Photos | Yes | Yes | App Functionality (photo proof) |
 | Product Interaction | Yes | No | Analytics (Firebase Analytics) |

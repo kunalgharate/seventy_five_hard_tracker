@@ -184,7 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final exportData = {
         'exported_at': DateTime.now().toIso8601String(),
-        'app_version': '1.0.3+4',
+        'app_version': '1.0.7+7',
         'active_session': state.activeSession?.toJson(),
         'all_sessions': state.allSessions.map((s) => s.toJson()).toList(),
         'current_progress':

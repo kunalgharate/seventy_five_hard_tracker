@@ -423,7 +423,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             const _ConsentPoint(
               icon: Icons.visibility_off,
               text:
-                  'The server stores only encrypted data. Access is restricted to your account by Firestore security rules.',
+                  'Your backup data is stored as encrypted content. Access to backups is restricted to your account by Firestore security rules.',
             ),
             const SizedBox(height: 8),
             const _ConsentPoint(

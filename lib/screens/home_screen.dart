@@ -160,10 +160,14 @@ class _HomeScreenState extends State<HomeScreen> {
               // Load accountability statuses only once per session —
               // not on every ChallengeLoaded emission (e.g. task toggles),
               // which would cause repeated Firestore reads and rebuilds.
+              // Mark as loaded only after success so failures can be retried.
               final sessionId = state.activeSession!.id;
               if (_accountabilityLoadedSessionId != sessionId) {
-                _accountabilityLoadedSessionId = sessionId;
-                _loadAccountabilityStatuses(state.activeSession!.challenges);
+                _loadAccountabilityStatuses(
+                  state.activeSession!.challenges,
+                ).then((_) {
+                  _accountabilityLoadedSessionId = sessionId;
+                });
               }
             } else if (state is ChallengeError) {
               ScaffoldMessenger.of(context).showSnackBar(

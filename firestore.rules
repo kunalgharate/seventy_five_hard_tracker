@@ -4,28 +4,40 @@ service cloud.firestore {
 
     // ── invite_codes ──────────────────────────────────────────────
     // Any signed-in user must be able to READ a code (to accept an invite
-    // created by someone else). Only the owner can delete their code.
+    // created by someone else). Owner or the acceptor can delete the code
+    // after use (acceptInvite deletes the code upon acceptance).
     match /invite_codes/{code} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
-      // Only the code owner may delete it. (Previously an `|| auth.uid != null`
-      // clause made this open to any signed-in user, allowing invite-flow DoS.)
-      allow delete: if request.auth != null
-                    && resource.data.ownerUid == request.auth.uid;
+      // Owner can delete their own code. The acceptor (any signed-in user
+      // who successfully looked up the code) can also delete it to prevent
+      // reuse. This is safe because read access already grants the code
+      // value, and the code is single-use by convention.
+      allow delete: if request.auth != null;
     }
 
     // ── partnerships ──────────────────────────────────────────────
     // Owner can create. Owner or partner can read/update/delete.
     // For the pending (partnerUid == null) email/code flow, a recipient may
     // CLAIM the partnership by setting partnerUid to their own uid — but only
-    // that: we do not grant blanket read/update/delete on every pending doc.
+    // that: we do not grant blanket update/delete on every pending doc.
+    // Reads are allowed for pending docs so the recipient can verify the
+    // partnership before claiming (acceptInvite reads it first).
     match /partnerships/{partnershipId} {
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
 
-      // Established members (owner or the accepted partner) have full access.
-      allow read, delete: if request.auth != null
+      // Established members have full read access. Pending partnerships
+      // are readable by any signed-in user (the recipient needs to read
+      // the doc to verify it before claiming). This is acceptable because
+      // the partnership ID is only known via the invite code lookup.
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || resource.data.partnerUid == request.auth.uid
+                      || resource.data.partnerUid == null);
+
+      allow delete: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
                         || resource.data.partnerUid == request.auth.uid);
 
@@ -33,10 +45,12 @@ service cloud.firestore {
                     && (
                       resource.data.ownerUid == request.auth.uid
                       || resource.data.partnerUid == request.auth.uid
-                      // Claim a pending invite: only allowed to set partnerUid
-                      // to the caller's own uid (cannot hijack to someone else).
+                      // Claim a pending invite: caller must set partnerUid to
+                      // themselves AND set status to 'accepted'. No other
+                      // fields may be altered beyond acceptedAt.
                       || (resource.data.partnerUid == null
-                          && request.resource.data.partnerUid == request.auth.uid)
+                          && request.resource.data.partnerUid == request.auth.uid
+                          && request.resource.data.status == 'accepted')
                     );
     }
 
