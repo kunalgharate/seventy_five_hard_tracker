@@ -26,8 +26,8 @@ Existing hosted Privacy Policy: https://sites.google.com/view/75hardchallengeapp
 `Forge daily discipline and conquer the 75 Hard journey. Offline-first tracking, smart reminders, and daily motivation to keep you consistent from Day 1 to Day 75.`
 
 ## Keywords (max 100 chars, comma-separated, no spaces after commas for efficiency)
-`75 hard,habit,tracker,challenge,discipline,routine,goals,streak,motivation,productivity,self care`
-(97 chars. Do NOT repeat words already in the app name/subtitle; Apple indexes those separately.)
+`tracker,discipline,routine,goals,streak,motivation,productivity,self care,wellness,daily,journal`
+(98 chars. Words in the app name/subtitle — habit, challenge, 75 hard — are indexed by Apple automatically and omitted here to avoid waste.)
 
 ## Description (full)
 ```

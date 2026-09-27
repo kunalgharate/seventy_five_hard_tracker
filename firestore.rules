@@ -4,38 +4,32 @@ service cloud.firestore {
 
     // ── invite_codes ──────────────────────────────────────────────
     // Any signed-in user must be able to READ a code (to accept an invite
-    // created by someone else). Owner or the acceptor can delete the code
-    // after use (acceptInvite deletes the code upon acceptance).
+    // created by someone else). Only the owner can delete their code.
+    // The acceptor no longer needs to delete — the client omits the delete
+    // call and relies on the owner to clean up, or the code stays inert
+    // (the partnership is already claimed, so the code is consumed).
     match /invite_codes/{code} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
-      // Owner can delete their own code. The acceptor (any signed-in user
-      // who successfully looked up the code) can also delete it to prevent
-      // reuse. This is safe because read access already grants the code
-      // value, and the code is single-use by convention.
-      allow delete: if request.auth != null;
+      allow delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
     }
 
     // ── partnerships ──────────────────────────────────────────────
-    // Owner can create. Owner or partner can read/update/delete.
-    // For the pending (partnerUid == null) email/code flow, a recipient may
-    // CLAIM the partnership by setting partnerUid to their own uid — but only
-    // that: we do not grant blanket update/delete on every pending doc.
-    // Reads are allowed for pending docs so the recipient can verify the
-    // partnership before claiming (acceptInvite reads it first).
+    // Owner can create. Owner or accepted partner can read/delete.
+    // The acceptor claims a pending partnership via an update-only
+    // transaction (no pre-read required), so pending docs do NOT need
+    // a blanket read rule. After the claim sets partnerUid, the normal
+    // owner-or-partner read rule applies.
     match /partnerships/{partnershipId} {
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
 
-      // Established members have full read access. Pending partnerships
-      // are readable by any signed-in user (the recipient needs to read
-      // the doc to verify it before claiming). This is acceptable because
-      // the partnership ID is only known via the invite code lookup.
+      // Only established members (owner or accepted partner) can read.
       allow read: if request.auth != null
                   && (resource.data.ownerUid == request.auth.uid
-                      || resource.data.partnerUid == request.auth.uid
-                      || resource.data.partnerUid == null);
+                      || resource.data.partnerUid == request.auth.uid);
 
       allow delete: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid

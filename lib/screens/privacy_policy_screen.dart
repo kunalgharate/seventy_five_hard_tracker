@@ -53,7 +53,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             ),
             _buildSection(
               'Analytics & Crash Reporting',
-              'We use Firebase Analytics and Firebase Crashlytics to understand usage patterns and to diagnose crashes so we can improve stability. Analytics events may include app opens, feature usage, device model, crash diagnostics, and the names of challenges and tasks you create. This data is associated with your account for analysis but is not used to track you across other companies\u2019 apps or websites.',
+              'We use Firebase Analytics and Firebase Crashlytics to understand usage patterns and to diagnose crashes so we can improve stability. Analytics events may include app opens, feature usage, device model, crash diagnostics, and the names of challenges and tasks you create. This data is associated with your app installation for analysis but is not linked to your sign-in account and is not used to track you across other companies\u2019 apps or websites.',
             ),
             _buildSection(
               'Notifications',

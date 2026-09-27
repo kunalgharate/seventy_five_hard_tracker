@@ -192,48 +192,42 @@ class AccountabilityService {
       }
 
       final partnershipRef = _db.collection('partnerships').doc(partnershipId);
-      final partnershipDoc = await partnershipRef.get();
 
-      if (!partnershipDoc.exists) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: partnership doc not found');
-        }
-        throw Exception(
-            'The partnership linked to this code no longer exists. Ask your partner to create a new invite.');
-      }
+      // Use a transaction to claim the partnership atomically. The
+      // transaction read is server-side (not subject to client read rules),
+      // so we don't need a blanket read rule on pending partnerships.
+      final updated = await _db.runTransaction<AccountabilityPartner>(
+        (txn) async {
+          final partnershipDoc = await txn.get(partnershipRef);
 
-      final existing = _partnerFromDoc(partnershipDoc);
+          if (!partnershipDoc.exists) {
+            throw Exception(
+                'The partnership linked to this code no longer exists. '
+                'Ask your partner to create a new invite.');
+          }
 
-      if (existing.ownerUid == uid) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: cannot accept own invite');
-        }
-        throw Exception('You cannot accept your own invite code.');
-      }
-      if (existing.status != PartnershipStatus.pending) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] acceptInvite: already accepted/declined');
-        }
-        throw Exception(
-            'This invite has already been accepted or is no longer valid.');
-      }
+          final existing = _partnerFromDoc(partnershipDoc);
 
-      await partnershipRef.update({
-        'partnerUid': uid,
-        'status': 'accepted',
-        'acceptedAt': FieldValue.serverTimestamp(),
-      });
+          if (existing.ownerUid == uid) {
+            throw Exception('You cannot accept your own invite code.');
+          }
+          if (existing.status != PartnershipStatus.pending) {
+            throw Exception(
+                'This invite has already been accepted or is no longer valid.');
+          }
 
-      // Clean up the invite code so it can't be reused
-      await _db.collection('invite_codes').doc(upperCode).delete();
+          txn.update(partnershipRef, {
+            'partnerUid': uid,
+            'status': 'accepted',
+            'acceptedAt': FieldValue.serverTimestamp(),
+          });
 
-      final updated = existing.copyWith(
-        partnerUid: uid,
-        status: PartnershipStatus.accepted,
-        acceptedAt: DateTime.now(),
+          return existing.copyWith(
+            partnerUid: uid,
+            status: PartnershipStatus.accepted,
+            acceptedAt: DateTime.now(),
+          );
+        },
       );
 
       // Partnership changed — invalidate the cached allowedReaders list
