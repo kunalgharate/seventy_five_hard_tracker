@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:seventy_five_hard_tracker/widgets/greeting_header.dart';
+import 'package:seventy_five_hard_tracker/widgets/challenge_hero_card.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
@@ -306,7 +308,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
-        // Progress Stats
+        // Greeting header (design: "Good morning, Alex")
+        const GreetingHeader(),
+
+        // Challenge hero card (design: gradient with circular %)
+        ChallengeHeroCard(
+          currentDay: currentDay,
+          totalDays: session.totalDaysTarget,
+          currentStreak: _computeCurrentStreak(state.currentProgress),
+          bestStreak: _computeBestStreak(state.currentProgress),
+        ),
+        const SizedBox(height: 8),
+
+        // Progress Stats (existing)
         ProgressStats(
           currentDay: currentDay,
           totalDays: 75,
@@ -923,6 +937,36 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  int _computeCurrentStreak(List<DailyProgress> progress) {
+    int streak = 0;
+    final sorted = [...progress]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    for (final p in sorted) {
+      if (p.isCompleted) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  int _computeBestStreak(List<DailyProgress> progress) {
+    int best = 0;
+    int current = 0;
+    final sorted = [...progress]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    for (final p in sorted) {
+      if (p.isCompleted) {
+        current++;
+        if (current > best) best = current;
+      } else {
+        current = 0;
+      }
+    }
+    return best;
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
