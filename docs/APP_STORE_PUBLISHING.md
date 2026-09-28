@@ -2,7 +2,7 @@
 
 App: **DailyMettle: Habit & Challenge**
 Bundle ID: `com.seventyfive.hard.challenge`
-Apple Team ID: `TP6DLDR636`
+Apple Team ID: `XJ2WNZKCMT`
 Firebase project: `dailymettle`
 Current version: `1.0.7 (build 7)`
 
@@ -33,7 +33,7 @@ These are complete in the project — you do NOT need to redo them:
 
 You need these before anything can be uploaded:
 
-1. **Apple Developer Program membership** ($99/year) on the account tied to Team `TP6DLDR636`.
+1. **Apple Developer Program membership** ($99/year) on the account tied to Team `XJ2WNZKCMT`.
    - Verify at https://developer.apple.com/account — membership must be active.
 
 2. **Register the App ID** (if not already):
