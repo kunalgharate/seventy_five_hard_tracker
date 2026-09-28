@@ -139,8 +139,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       widget.onProofRequired!();
     } else if (newValue &&
         (widget.proofStatus == ProofStatus.rejected ||
-            widget.accountabilityStatus ==
-                AccountabilityTaskStatus.rejected) &&
+            widget.accountabilityStatus == AccountabilityTaskStatus.rejected) &&
         widget.onProofRequired != null) {
       // Rejected — allow resubmission
       widget.onProofRequired!();
@@ -384,55 +383,56 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             child: GestureDetector(
               onTap: () => _openTaskDetail(),
               child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.challenge.title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: widget.isCompleted
-                        ? Colors.green[700]
-                        : widget.isEditable
-                            ? Colors.grey[800]
-                            : Colors.red[700],
-                    decoration:
-                        widget.isCompleted ? TextDecoration.lineThrough : null,
-                    decorationColor: Colors.green,
-                    decorationThickness: 2,
-                    height: 1.2,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.challenge.title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isCompleted
+                          ? Colors.green[700]
+                          : widget.isEditable
+                              ? Colors.grey[800]
+                              : Colors.red[700],
+                      decoration: widget.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null,
+                      decorationColor: Colors.green,
+                      decorationThickness: 2,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (_collaborators.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  _buildCollaboratorAvatars(),
-                ],
-                if (_hasReviewers) ...[
-                  const SizedBox(height: 3),
-                  _buildReviewStatusBadge(),
-                ],
-                const SizedBox(height: 2),
-                Text(
-                  _getStatusText(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: widget.isCompleted
-                        ? Colors.green[600]
-                        : widget.isEditable
-                            ? Colors.grey[600]
-                            : Colors.red[600],
-                    fontWeight: FontWeight.w500,
-                    height: 1.1,
+                  if (_collaborators.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    _buildCollaboratorAvatars(),
+                  ],
+                  if (_hasReviewers) ...[
+                    const SizedBox(height: 3),
+                    _buildReviewStatusBadge(),
+                  ],
+                  const SizedBox(height: 2),
+                  Text(
+                    _getStatusText(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: widget.isCompleted
+                          ? Colors.green[600]
+                          : widget.isEditable
+                              ? Colors.grey[600]
+                              : Colors.red[600],
+                      fontWeight: FontWeight.w500,
+                      height: 1.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+                ],
+              ),
             ),
           ),
           _buildTrailingActions(myUid),

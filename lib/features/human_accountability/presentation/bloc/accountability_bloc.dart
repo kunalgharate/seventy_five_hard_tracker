@@ -634,8 +634,7 @@ class AccountabilityBloc
         add(LoadReviewTabData());
         add(LoadAccountabilityData());
       } else {
-        emit(
-            const AccountabilityError('Could not accept review request.'));
+        emit(const AccountabilityError('Could not accept review request.'));
       }
     } catch (e) {
       if (isClosed) return;
@@ -667,8 +666,7 @@ class AccountabilityBloc
         add(LoadReviewTabData());
         add(LoadAccountabilityData());
       } else {
-        emit(
-            const AccountabilityError('Could not decline review request.'));
+        emit(const AccountabilityError('Could not decline review request.'));
       }
     } catch (e) {
       if (isClosed) return;

@@ -17,8 +17,7 @@ class MotivationBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.auto_awesome,
-              color: Colors.orange, size: 18),
+          const Icon(Icons.auto_awesome, color: Colors.orange, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

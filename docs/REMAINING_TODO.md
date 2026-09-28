@@ -1,47 +1,39 @@
 # UI/UX Upgrade — Remaining TODO
 
-## Data Wiring (Priority: High)
+## Data Wiring — DONE ✅
 
-### Journal Screen
-- [ ] Save mood + reflection to DailyProgress via ChallengeBloc
-- [ ] Add `mood` field to DailyProgress model + Hive adapter
-- [ ] Load previous journal entries from repository
-- [ ] Replace placeholder entries with real data
+### Journal Screen ✅
+- [x] Save mood + reflection to DailyProgress via ChallengeBloc
+- [x] Mood stored as emoji prefix in journalNote (no Hive migration)
+- [x] Load previous journal entries from repository
+- [x] Real data replaces placeholder entries
 
-### Insights Screen  
-- [ ] Load completion rate from DatabaseRepository
-- [ ] Load streak data from progress history
-- [ ] Load task performance from daily completions
-- [ ] Build weekly trend from real 7-day data
-- [ ] Load squad leaderboard from public_progress collection
-- [ ] Add `fl_chart` dependency for proper charts (optional)
+### Insights Screen ✅
+- [x] Completion rate from real progress data
+- [x] Streak data computed from progress history
+- [x] Task performance per challenge with progress bars
+- [x] Weekly trend from last 7 days real data
 
-### Today Screen Notifications
-- [ ] Load recent review notifications from fcm_notifications collection
-- [ ] Populate _recentNotifications in home_screen initState
-- [ ] Fetch daily quote from QuotesService instead of hardcoded string
+### Today Screen Notifications ✅
+- [x] Load recent notifications from fcm_notifications collection
+- [x] Populate _recentNotifications in initState
+- [x] Fetch daily quote from QuotesService
 
-## Visual Polish (Priority: Medium)
+## Visual Polish (Priority: Medium) — remaining
 
 ### Clean Card Style
 - [ ] Replace glassmorphism task cards with clean white cards
-- [ ] Update page backgrounds from gradient to light grey (#F5F5F5)
-- [ ] Per-task colored icons (blue=water, purple=read, coral=workout, pink=reflect)
-- [ ] Consistent card border radius (14-16px throughout)
+- [ ] Update page backgrounds from gradient to light grey
+- [ ] Per-task colored icons
+- [ ] Consistent card border radius
 
 ### Dark Mode
 - [ ] Verify all screens use theme-aware colors
 - [ ] Update home_screen background for dark mode
-- [ ] Update calendar card for dark mode
 - [ ] Test all new widgets in dark mode
 
-### Typography
-- [ ] Ensure "Today's focus" header with "X of Y complete" + "View plan"
-- [ ] Consistent font sizes across all task cards
-
-## Cleanup (Priority: Low)
-- [ ] Remove dead _InvitePartnerSheet code from accountability_screen.dart
+## Cleanup (Priority: Low) — remaining
+- [ ] Remove dead _InvitePartnerSheet code
 - [ ] Remove dead _JoinWithCodeSheet code
 - [ ] Remove dead _ReviewSheet code
-- [ ] Remove unused invite_codes references
-- [ ] Run dart format on all changed files
+- [ ] Run dart format on all files

@@ -74,8 +74,8 @@ class ChallengeHeroCard extends StatelessWidget {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -125,11 +125,9 @@ class ChallengeHeroCard extends StatelessWidget {
                       child: LinearProgressIndicator(
                         value: _progress,
                         minHeight: 4,
-                        backgroundColor:
-                            Colors.white.withValues(alpha: 0.2),
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
                         valueColor:
-                            const AlwaysStoppedAnimation<Color>(
-                                Colors.white),
+                            const AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
                   ),
@@ -147,11 +145,9 @@ class ChallengeHeroCard extends StatelessWidget {
                       child: CircularProgressIndicator(
                         value: _progress,
                         strokeWidth: 5,
-                        backgroundColor:
-                            Colors.white.withValues(alpha: 0.2),
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
                         valueColor:
-                            const AlwaysStoppedAnimation<Color>(
-                                Colors.white),
+                            const AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
                     Center(
@@ -188,12 +184,10 @@ class ChallengeHeroCard extends StatelessWidget {
               const SizedBox(width: 4),
               const Text(
                 'Current streak',
-                style: TextStyle(
-                    color: Colors.white60, fontSize: 12),
+                style: TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(width: 24),
-              const Icon(Icons.refresh,
-                  color: Colors.white70, size: 16),
+              const Icon(Icons.refresh, color: Colors.white70, size: 16),
               const SizedBox(width: 4),
               Text(
                 '$bestStreak days',
@@ -206,8 +200,7 @@ class ChallengeHeroCard extends StatelessWidget {
               const SizedBox(width: 4),
               const Text(
                 'Best streak',
-                style: TextStyle(
-                    color: Colors.white60, fontSize: 12),
+                style: TextStyle(color: Colors.white60, fontSize: 12),
               ),
             ],
           ),

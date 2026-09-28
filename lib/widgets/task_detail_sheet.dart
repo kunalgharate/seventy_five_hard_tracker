@@ -120,8 +120,7 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
                         _buildStatusSection(textColor),
                         const SizedBox(height: 16),
                         _buildReviewersSection(textColor, cardBg),
-                        if (_task != null &&
-                            _task!.proofUrl != null) ...[
+                        if (_task != null && _task!.proofUrl != null) ...[
                           const SizedBox(height: 16),
                           _buildProofSection(textColor),
                         ],
@@ -153,8 +152,7 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
         Row(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: typeColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
@@ -172,8 +170,7 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
             const SizedBox(width: 8),
             if (widget.isCompleted)
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
@@ -259,9 +256,7 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
         break;
       default:
         statusColor = Colors.grey;
-        statusText = proof == ProofStatus.notRequired
-            ? 'Pending'
-            : proof.label;
+        statusText = proof == ProofStatus.notRequired ? 'Pending' : proof.label;
         statusIcon = Icons.circle_outlined;
     }
 
@@ -270,8 +265,7 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
       decoration: BoxDecoration(
         color: statusColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: statusColor.withValues(alpha: 0.2)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -439,16 +433,14 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
         ...allComments.map((c) {
           final isApproval = c['_type'] == 'approved';
           final color = isApproval ? Colors.green : Colors.red;
-          final icon =
-              isApproval ? Icons.check_circle : Icons.cancel;
+          final icon = isApproval ? Icons.check_circle : Icons.cancel;
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: color.withValues(alpha: 0.15)),
+              border: Border.all(color: color.withValues(alpha: 0.15)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,

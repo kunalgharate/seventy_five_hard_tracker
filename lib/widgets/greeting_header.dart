@@ -78,9 +78,7 @@ class GreetingHeader extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.grey[800]
-                        : Colors.grey[100],
+                    color: isDark ? Colors.grey[800] : Colors.grey[100],
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -102,9 +100,7 @@ class GreetingHeader extends StatelessWidget {
                       ),
                       child: Center(
                         child: Text(
-                          notificationCount > 9
-                              ? '9+'
-                              : '$notificationCount',
+                          notificationCount > 9 ? '9+' : '$notificationCount',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 9,

@@ -44,8 +44,7 @@ class _JournalScreenState extends State<JournalScreen> {
               p.date.month == today.month &&
               p.date.day == today.day)
           .firstOrNull;
-      if (progress?.journalNote != null &&
-          progress!.journalNote!.isNotEmpty) {
+      if (progress?.journalNote != null && progress!.journalNote!.isNotEmpty) {
         final parts = progress.journalNote!.split('|');
         if (parts.length >= 2 && parts[0].length <= 2) {
           _selectedMood = parts[0];
@@ -65,8 +64,7 @@ class _JournalScreenState extends State<JournalScreen> {
 
     setState(() => _saving = true);
 
-    final journalNote =
-        mood.isNotEmpty ? '$mood|$text' : text;
+    final journalNote = mood.isNotEmpty ? '$mood|$text' : text;
 
     context.read<ChallengeBloc>().add(
           AddJournalNote(
@@ -149,26 +147,21 @@ class _JournalScreenState extends State<JournalScreen> {
                         : cardBg,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color:
-                          selected ? Colors.orange : Colors.grey[300]!,
+                      color: selected ? Colors.orange : Colors.grey[300]!,
                       width: selected ? 2 : 1,
                     ),
                   ),
                   child: Column(
                     children: [
-                      Text(m.$1,
-                          style: const TextStyle(fontSize: 28)),
+                      Text(m.$1, style: const TextStyle(fontSize: 28)),
                       const SizedBox(height: 4),
                       Text(
                         m.$2,
                         style: TextStyle(
                           fontSize: 11,
-                          color: selected
-                              ? Colors.orange
-                              : Colors.grey[500],
-                          fontWeight: selected
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+                          color: selected ? Colors.orange : Colors.grey[500],
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -252,9 +245,8 @@ class _JournalScreenState extends State<JournalScreen> {
                 return const SizedBox.shrink();
               }
               final entries = state.currentProgress
-                  .where((p) =>
-                      p.journalNote != null &&
-                      p.journalNote!.isNotEmpty)
+                  .where(
+                      (p) => p.journalNote != null && p.journalNote!.isNotEmpty)
                   .toList()
                 ..sort((a, b) => b.date.compareTo(a.date));
 
@@ -263,18 +255,15 @@ class _JournalScreenState extends State<JournalScreen> {
                   child: Text(
                     'No journal entries yet.\nStart writing today!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: Colors.grey[400], fontSize: 14),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                 );
               }
 
               return Column(
                 children: entries.take(14).map((p) {
-                  final (mood, text) =
-                      parseJournalNote(p.journalNote);
-                  return _buildEntry(
-                      cardBg, textColor, p.date, mood, text);
+                  final (mood, text) = parseJournalNote(p.journalNote);
+                  return _buildEntry(cardBg, textColor, p.date, mood, text);
                 }).toList(),
               );
             },
@@ -292,12 +281,9 @@ class _JournalScreenState extends State<JournalScreen> {
     String text,
   ) {
     final now = DateTime.now();
-    final isToday = date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
-    final dateStr = isToday
-        ? 'Today'
-        : DateFormat('EEEE, MMM d').format(date);
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
+    final dateStr = isToday ? 'Today' : DateFormat('EEEE, MMM d').format(date);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

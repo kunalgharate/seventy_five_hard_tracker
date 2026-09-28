@@ -235,145 +235,140 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) {
-          bool looking = false;
-          String? error;
+        bool looking = false;
+        String? error;
 
-          return StatefulBuilder(
-            builder: (ctx, setSheetState) {
-
-          return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              left: 20,
-              right: 20,
-              top: 16,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Add Partner by Email',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Enter the email of the person you want as an '
-                  'accountability partner.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    hintText: 'partner@email.com',
-                    prefixIcon: const Icon(Icons.email_outlined),
-                    errorText: error,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onSubmitted: (_) {},
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: looking
-                        ? null
-                        : () async {
-                            final email = emailCtrl.text.trim();
-                            if (email.isEmpty ||
-                                !email.contains('@')) {
-                              setSheetState(() =>
-                                  error = 'Enter a valid email');
-                              return;
-                            }
-                            setSheetState(() {
-                              looking = true;
-                              error = null;
-                            });
-                            try {
-                              final user =
-                                  await svc.findUserByEmail(email);
-                              if (user == null) {
-                                setSheetState(() {
-                                  looking = false;
-                                  error =
-                                      'No user found with this email. '
-                                      'They need to join DailyMettle first.';
-                                });
-                                // TODO: add Share button to invite
-                                return;
-                              }
-                              // Auto-create partnership
-                              await svc.ensurePartnership(
-                                user.uid,
-                                user.displayName,
-                              );
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              bloc.add(LoadAccountabilityData());
-                              _loadReviewBadge();
-                              if (mounted) {
-                                _showSnack(
-                                  '${user.displayName} added as partner!',
-                                  isSuccess: true,
-                                );
-                              }
-                            } catch (e) {
-                              setSheetState(() {
-                                looking = false;
-                                error = 'Failed: $e';
-                              });
-                            }
-                          },
-                    icon: looking
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.person_add),
-                    label: Text(
-                        looking ? 'Looking up...' : 'Add Partner'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                left: 20,
+                right: 20,
+                top: 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          );
-        },
-      );
+                  const SizedBox(height: 16),
+                  Text(
+                    'Add Partner by Email',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Enter the email of the person you want as an '
+                    'accountability partner.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      hintText: 'partner@email.com',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      errorText: error,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onSubmitted: (_) {},
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: looking
+                          ? null
+                          : () async {
+                              final email = emailCtrl.text.trim();
+                              if (email.isEmpty || !email.contains('@')) {
+                                setSheetState(
+                                    () => error = 'Enter a valid email');
+                                return;
+                              }
+                              setSheetState(() {
+                                looking = true;
+                                error = null;
+                              });
+                              try {
+                                final user = await svc.findUserByEmail(email);
+                                if (user == null) {
+                                  setSheetState(() {
+                                    looking = false;
+                                    error = 'No user found with this email. '
+                                        'They need to join DailyMettle first.';
+                                  });
+                                  // TODO: add Share button to invite
+                                  return;
+                                }
+                                // Auto-create partnership
+                                await svc.ensurePartnership(
+                                  user.uid,
+                                  user.displayName,
+                                );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                bloc.add(LoadAccountabilityData());
+                                _loadReviewBadge();
+                                if (mounted) {
+                                  _showSnack(
+                                    '${user.displayName} added as partner!',
+                                    isSuccess: true,
+                                  );
+                                }
+                              } catch (e) {
+                                setSheetState(() {
+                                  looking = false;
+                                  error = 'Failed: $e';
+                                });
+                              }
+                            },
+                      icon: looking
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.person_add),
+                      label: Text(looking ? 'Looking up...' : 'Add Partner'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -950,8 +945,7 @@ class _PartnersTab extends StatelessWidget {
                 onTap: () {
                   // Trigger the email-based invite from the main screen
                   final screenState = context
-                      .findAncestorStateOfType<
-                          _AccountabilityScreenState>();
+                      .findAncestorStateOfType<_AccountabilityScreenState>();
                   screenState?._showAddPartnerByEmail();
                 },
               ),

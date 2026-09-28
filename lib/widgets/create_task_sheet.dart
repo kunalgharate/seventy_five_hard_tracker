@@ -374,9 +374,8 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.12)
-                : Colors.transparent,
+            color:
+                selected ? color.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected ? color : Colors.grey[300]!,

@@ -2372,9 +2372,8 @@ class AccountabilityService {
         all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
       }
       final list = all.values.toList()
-        ..sort((a, b) =>
-            (b.reviewedAt ?? b.assignedAt)
-                .compareTo(a.reviewedAt ?? a.assignedAt));
+        ..sort((a, b) => (b.reviewedAt ?? b.assignedAt)
+            .compareTo(a.reviewedAt ?? a.assignedAt));
       return list.take(50).toList();
     } catch (e) {
       if (kDebugMode) {
@@ -2394,8 +2393,7 @@ class AccountabilityService {
       return true;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] acceptReviewRequest error: $e');
+        debugPrint('[AccountabilityService] acceptReviewRequest error: $e');
       }
       return false;
     }
@@ -2414,8 +2412,7 @@ class AccountabilityService {
       return true;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] declineReviewRequest error: $e');
+        debugPrint('[AccountabilityService] declineReviewRequest error: $e');
       }
       return false;
     }
@@ -2445,8 +2442,7 @@ class AccountabilityService {
       return AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] submitProofForReview error: $e');
+        debugPrint('[AccountabilityService] submitProofForReview error: $e');
       }
       return null;
     }

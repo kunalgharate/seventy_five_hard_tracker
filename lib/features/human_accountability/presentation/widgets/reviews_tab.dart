@@ -83,8 +83,7 @@ class _ReviewsTabV2State extends State<ReviewsTabV2> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.rate_review_outlined,
-                size: 64, color: Colors.grey[300]),
+            Icon(Icons.rate_review_outlined, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
             Text(
               'No reviews yet',
@@ -121,8 +120,7 @@ class _ReviewsTabV2State extends State<ReviewsTabV2> {
               count: state.incomingRequests.length,
             ),
             const SizedBox(height: 8),
-            ...state.incomingRequests
-                .map((t) => _ReviewRequestCard(task: t)),
+            ...state.incomingRequests.map((t) => _ReviewRequestCard(task: t)),
             const SizedBox(height: 20),
           ],
           if (state.tasksToReview.isNotEmpty) ...[
@@ -133,8 +131,7 @@ class _ReviewsTabV2State extends State<ReviewsTabV2> {
               count: state.tasksToReview.length,
             ),
             const SizedBox(height: 8),
-            ...state.tasksToReview
-                .map((t) => _ProofReviewCard(task: t)),
+            ...state.tasksToReview.map((t) => _ProofReviewCard(task: t)),
             const SizedBox(height: 20),
           ],
           if (state.myPendingTasks.isNotEmpty) ...[
@@ -145,8 +142,7 @@ class _ReviewsTabV2State extends State<ReviewsTabV2> {
               count: state.myPendingTasks.length,
             ),
             const SizedBox(height: 8),
-            ...state.myPendingTasks
-                .map((t) => _MyPendingCard(task: t)),
+            ...state.myPendingTasks.map((t) => _MyPendingCard(task: t)),
             const SizedBox(height: 20),
           ],
           if (state.reviewHistory.isNotEmpty) ...[
@@ -156,9 +152,7 @@ class _ReviewsTabV2State extends State<ReviewsTabV2> {
               color: Colors.grey,
             ),
             const SizedBox(height: 8),
-            ...state.reviewHistory
-                .take(20)
-                .map((t) => _HistoryCard(task: t)),
+            ...state.reviewHistory.take(20).map((t) => _HistoryCard(task: t)),
           ],
         ],
       ),
@@ -198,8 +192,7 @@ class _SectionHeader extends StatelessWidget {
         if (count != null) ...[
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
@@ -230,8 +223,7 @@ class _ReviewRequestCard extends StatelessWidget {
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -241,10 +233,8 @@ class _ReviewRequestCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor:
-                      Colors.blue.withValues(alpha: 0.15),
-                  child: const Icon(Icons.person,
-                      size: 20, color: Colors.blue),
+                  backgroundColor: Colors.blue.withValues(alpha: 0.15),
+                  child: const Icon(Icons.person, size: 20, color: Colors.blue),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -260,8 +250,7 @@ class _ReviewRequestCard extends StatelessWidget {
                       ),
                       Text(
                         'wants you to review',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[500]),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                       ),
                     ],
                   ),
@@ -340,8 +329,7 @@ class _ProofReviewCard extends StatelessWidget {
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -351,8 +339,7 @@ class _ProofReviewCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor:
-                      Colors.orange.withValues(alpha: 0.15),
+                  backgroundColor: Colors.orange.withValues(alpha: 0.15),
                   child: const Icon(Icons.camera_alt,
                       size: 20, color: Colors.orange),
                 ),
@@ -370,8 +357,7 @@ class _ProofReviewCard extends StatelessWidget {
                       ),
                       Text(
                         'submitted proof for review',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[500]),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                       ),
                     ],
                   ),
@@ -411,8 +397,7 @@ class _ProofReviewCard extends StatelessWidget {
                           height: 80,
                           color: Colors.grey[200],
                           child: const Center(
-                            child: Icon(Icons.broken_image,
-                                color: Colors.grey),
+                            child: Icon(Icons.broken_image, color: Colors.grey),
                           ),
                         ),
                       ),
@@ -426,8 +411,7 @@ class _ProofReviewCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _showRejectDialog(context, task),
+                    onPressed: () => _showRejectDialog(context, task),
                     icon: const Icon(Icons.close, size: 16),
                     label: const Text('Reject'),
                     style: OutlinedButton.styleFrom(
@@ -464,8 +448,7 @@ class _ProofReviewCard extends StatelessWidget {
     );
   }
 
-  void _showRejectDialog(
-      BuildContext context, AccountabilityTask task) {
+  void _showRejectDialog(BuildContext context, AccountabilityTask task) {
     final commentCtrl = TextEditingController();
     final bloc = context.read<AccountabilityBloc>();
     showDialog(
@@ -475,8 +458,7 @@ class _ProofReviewCard extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-                'Why is the proof for "${task.title}" not acceptable?'),
+            Text('Why is the proof for "${task.title}" not acceptable?'),
             const SizedBox(height: 12),
             TextField(
               controller: commentCtrl,
@@ -498,13 +480,10 @@ class _ProofReviewCard extends StatelessWidget {
               final comment = commentCtrl.text.trim();
               if (comment.isEmpty) return;
               Navigator.pop(ctx);
-              bloc.add(
-                  RejectProof(task.id, comment: comment));
+              bloc.add(RejectProof(task.id, comment: comment));
             },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red),
-            child: const Text('Reject',
-                style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Reject', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -531,8 +510,7 @@ class _ExpiryBadge extends StatelessWidget {
             : '${remaining.inMinutes}m left';
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
@@ -567,16 +545,14 @@ class _MyPendingCard extends StatelessWidget {
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundColor:
-                  Colors.purple.withValues(alpha: 0.15),
+              backgroundColor: Colors.purple.withValues(alpha: 0.15),
               child: const Icon(Icons.hourglass_top,
                   size: 20, color: Colors.purple),
             ),
@@ -595,8 +571,7 @@ class _MyPendingCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Waiting for reviewer approval...',
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.purple[400]),
+                    style: TextStyle(fontSize: 12, color: Colors.purple[400]),
                   ),
                   if (task.proofUrl != null)
                     Padding(
@@ -609,8 +584,7 @@ class _MyPendingCard extends StatelessWidget {
                           Text(
                             'Proof submitted',
                             style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[400]),
+                                fontSize: 11, color: Colors.grey[400]),
                           ),
                         ],
                       ),
@@ -635,8 +609,7 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isApproved =
-        task.status == AccountabilityTaskStatus.approved;
+    final isApproved = task.status == AccountabilityTaskStatus.approved;
     final color = isApproved ? Colors.green : Colors.red;
     final icon = isApproved ? Icons.check_circle : Icons.cancel;
     final myUid = AccountabilityService().currentUid;
@@ -645,8 +618,7 @@ class _HistoryCard extends StatelessWidget {
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 6),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -674,8 +646,7 @@ class _HistoryCard extends StatelessWidget {
                                 '${task.assignedByName}\'s task'
                             : 'You rejected '
                                 '${task.assignedByName}\'s task',
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
                   if (task.proofReviewComment != null &&
                       task.proofReviewComment!.isNotEmpty)
@@ -698,8 +669,7 @@ class _HistoryCard extends StatelessWidget {
             if (task.reviewedAt != null)
               Text(
                 DateFormat('MMM d').format(task.reviewedAt!),
-                style: TextStyle(
-                    fontSize: 11, color: Colors.grey[400]),
+                style: TextStyle(fontSize: 11, color: Colors.grey[400]),
               ),
           ],
         ),

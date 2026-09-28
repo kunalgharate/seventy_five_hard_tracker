@@ -227,16 +227,14 @@ class AccountabilityTask extends Equatable {
   bool get hasEnoughApprovals => approvals.length >= requiredApprovals;
 
   /// Whether this reviewer (by UID) has already approved.
-  bool hasApprovedBy(String uid) =>
-      approvals.any((a) => a['uid'] == uid);
+  bool hasApprovedBy(String uid) => approvals.any((a) => a['uid'] == uid);
 
   /// Whether this reviewer (by UID) has already rejected.
-  bool hasRejectedBy(String uid) =>
-      rejections.any((r) => r['uid'] == uid);
+  bool hasRejectedBy(String uid) => rejections.any((r) => r['uid'] == uid);
 
   /// Whether the task has any reviewers assigned.
-  bool get hasReviewers => accountableUserIds.length > 1 ||
-      reviewerEmails.isNotEmpty;
+  bool get hasReviewers =>
+      accountableUserIds.length > 1 || reviewerEmails.isNotEmpty;
 
   AccountabilityTask copyWith({
     AccountabilityTaskStatus? status,
@@ -343,8 +341,7 @@ class AccountabilityTask extends Equatable {
         partnerUid: d['partnerUid'] as String?,
         requiredApprovals: (d['requiredApprovals'] as int?) ?? 1,
         reviewerEmails:
-            (d['reviewerEmails'] as List<dynamic>?)?.cast<String>() ??
-                const [],
+            (d['reviewerEmails'] as List<dynamic>?)?.cast<String>() ?? const [],
         approvals: (d['approvals'] as List<dynamic>?)
                 ?.map((e) => Map<String, dynamic>.from(e as Map))
                 .toList() ??

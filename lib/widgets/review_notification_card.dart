@@ -70,9 +70,7 @@ class ReviewNotificationCard extends StatelessWidget {
               radius: 18,
               backgroundColor: iconColor.withValues(alpha: 0.12),
               child: Text(
-                reviewerName.isNotEmpty
-                    ? reviewerName[0].toUpperCase()
-                    : '?',
+                reviewerName.isNotEmpty ? reviewerName[0].toUpperCase() : '?',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: iconColor,
@@ -95,8 +93,7 @@ class ReviewNotificationCard extends StatelessWidget {
                       children: [
                         TextSpan(
                           text: '$reviewerName  ',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         TextSpan(text: actionText),
                       ],

@@ -45,8 +45,7 @@ class _InsightsBody extends StatelessWidget {
 
   int _computeStreak(List<DailyProgress> progress) {
     int streak = 0;
-    final sorted = [...progress]
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final sorted = [...progress]..sort((a, b) => b.date.compareTo(a.date));
     for (final p in sorted) {
       if (p.isCompleted) {
         streak++;
@@ -59,8 +58,7 @@ class _InsightsBody extends StatelessWidget {
 
   int _computeBestStreak(List<DailyProgress> progress) {
     int best = 0, current = 0;
-    final sorted = [...progress]
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final sorted = [...progress]..sort((a, b) => a.date.compareTo(b.date));
     for (final p in sorted) {
       if (p.isCompleted) {
         current++;
@@ -81,10 +79,8 @@ class _InsightsBody extends StatelessWidget {
     final progress = state.currentProgress;
     final session = state.activeSession!;
     final totalDays = progress.length;
-    final completedDays =
-        progress.where((p) => p.isCompleted).length;
-    final pct =
-        totalDays > 0 ? (completedDays / totalDays * 100) : 0.0;
+    final completedDays = progress.where((p) => p.isCompleted).length;
+    final pct = totalDays > 0 ? (completedDays / totalDays * 100) : 0.0;
     final streak = _computeStreak(progress);
     final bestStreak = _computeBestStreak(progress);
 
@@ -150,9 +146,7 @@ class _InsightsBody extends StatelessWidget {
         // ── Weekly trend ──
         Text('Weekly Trend',
             style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: textColor)),
+                fontSize: 16, fontWeight: FontWeight.w600, color: textColor)),
         const SizedBox(height: 12),
         Container(
           height: 140,
@@ -165,7 +159,15 @@ class _InsightsBody extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: weekDays.map((d) {
-              final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              final dayNames = [
+                'Mon',
+                'Tue',
+                'Wed',
+                'Thu',
+                'Fri',
+                'Sat',
+                'Sun'
+              ];
               final label = dayNames[d.$1.weekday - 1];
               final done = d.$2;
               return Column(
@@ -181,8 +183,7 @@ class _InsightsBody extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(label,
-                      style: TextStyle(
-                          fontSize: 10, color: Colors.grey[500])),
+                      style: TextStyle(fontSize: 10, color: Colors.grey[500])),
                 ],
               );
             }).toList(),
@@ -193,9 +194,7 @@ class _InsightsBody extends StatelessWidget {
         // ── Task performance ──
         Text('Task Performance',
             style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: textColor)),
+                fontSize: 16, fontWeight: FontWeight.w600, color: textColor)),
         const SizedBox(height: 12),
         ...taskStats.entries.toList().asMap().entries.map((e) {
           final idx = e.key;
@@ -214,8 +213,7 @@ class _InsightsBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(name,
@@ -239,8 +237,7 @@ class _InsightsBody extends StatelessWidget {
                     value: p,
                     minHeight: 6,
                     backgroundColor: Colors.grey[200],
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(color),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
                   ),
                 ),
               ],
@@ -292,8 +289,7 @@ class _StatCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: TextStyle(
-                        fontSize: 13, color: Colors.grey[500])),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[500])),
                 Text(value,
                     style: GoogleFonts.poppins(
                         fontSize: 22,
@@ -302,8 +298,7 @@ class _StatCard extends StatelessWidget {
               ],
             ),
           ),
-          Text(subtitle,
-              style: TextStyle(fontSize: 12, color: color)),
+          Text(subtitle, style: TextStyle(fontSize: 12, color: color)),
         ],
       ),
     );
