@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
+import 'package:seventy_five_hard_tracker/widgets/create_task_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
@@ -922,6 +923,41 @@ class _PartnersTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
+        // ── Quick action cards (design: prominent Create + Invite) ──
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionCard(
+                icon: Icons.add_task,
+                label: 'Create task',
+                gradient: const [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+                onTap: () async {
+                  final result = await CreateTaskSheet.show(context);
+                  if (result == true && context.mounted) {
+                    context
+                        .read<AccountabilityBloc>()
+                        .add(LoadAccountabilityData());
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _QuickActionCard(
+                icon: Icons.person_add_alt_1,
+                label: 'Invite partner',
+                gradient: const [Color(0xFF7B61FF), Color(0xFF9B8AFF)],
+                onTap: () {
+                  // Trigger the email-based invite from the main screen
+                  final screenState = context
+                      .findAncestorStateOfType<
+                          _AccountabilityScreenState>();
+                  screenState?._showAddPartnerByEmail();
+                },
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 20),
 
         // ── My Responsibilities (tasks I need to review) ─────────
@@ -3161,6 +3197,62 @@ class _DecisionButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gradient action card for "Create task" / "Invite partner" on Squad tab.
+class _QuickActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final List<Color> gradient;
+  final VoidCallback onTap;
+
+  const _QuickActionCard({
+    required this.icon,
+    required this.label,
+    required this.gradient,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: gradient.first.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
