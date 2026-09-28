@@ -203,3 +203,85 @@ class MyResponsibilitiesLoaded extends AccountabilityState {
   @override
   List<Object> get props => [responsibilities, pendingReviews];
 }
+
+// ── Phase 4: Multi-Reviewer Review Tab States ─────────────────────────────────
+
+/// Loaded data for the Reviews tab with all sections.
+class ReviewTabLoaded extends AccountabilityState {
+  /// Tasks where I'm a reviewer and status == requested (need accept/decline)
+  final List<AccountabilityTask> incomingRequests;
+
+  /// Tasks where I'm a reviewer and proofStatus == submitted (need review)
+  final List<AccountabilityTask> tasksToReview;
+
+  /// Tasks where I'm the owner and status == pendingReview (awaiting)
+  final List<AccountabilityTask> myPendingTasks;
+
+  /// Tasks where review is completed (approved/rejected history)
+  final List<AccountabilityTask> reviewHistory;
+
+  const ReviewTabLoaded({
+    this.incomingRequests = const [],
+    this.tasksToReview = const [],
+    this.myPendingTasks = const [],
+    this.reviewHistory = const [],
+  });
+
+  /// Total count of items requiring my action (requests + reviews).
+  int get actionCount => incomingRequests.length + tasksToReview.length;
+
+  @override
+  List<Object> get props =>
+      [incomingRequests, tasksToReview, myPendingTasks, reviewHistory];
+}
+
+/// Emitted after a review request is accepted.
+class ReviewRequestAccepted extends AccountabilityState {
+  final String taskId;
+  const ReviewRequestAccepted(this.taskId);
+
+  @override
+  List<Object> get props => [taskId];
+}
+
+/// Emitted after a review request is declined.
+class ReviewRequestDeclined extends AccountabilityState {
+  final String taskId;
+  const ReviewRequestDeclined(this.taskId);
+
+  @override
+  List<Object> get props => [taskId];
+}
+
+/// Emitted after proof is submitted for review.
+class ProofSubmittedForReview extends AccountabilityState {
+  final String taskId;
+  final String challengeId;
+  const ProofSubmittedForReview(this.taskId, this.challengeId);
+
+  @override
+  List<Object> get props => [taskId, challengeId];
+}
+
+/// Emitted after a reviewer approves proof. Includes whether the task
+/// auto-completed (enough approvals reached).
+class ProofApproved extends AccountabilityState {
+  final String taskId;
+  final bool autoCompleted;
+  final String? challengeId;
+  const ProofApproved(this.taskId,
+      {this.autoCompleted = false, this.challengeId});
+
+  @override
+  List<Object?> get props => [taskId, autoCompleted, challengeId];
+}
+
+/// Emitted after a reviewer rejects proof.
+class ProofRejected extends AccountabilityState {
+  final String taskId;
+  final String comment;
+  const ProofRejected(this.taskId, {required this.comment});
+
+  @override
+  List<Object> get props => [taskId, comment];
+}

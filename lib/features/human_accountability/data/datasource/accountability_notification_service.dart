@@ -203,4 +203,121 @@ class AccountabilityNotificationService {
           'taskId': taskId,
         },
       );
+
+  // ── Phase 4: Multi-reviewer notifications ──────────────────────────────
+
+  /// Notify a reviewer that they've been requested to review a task.
+  Future<void> notifyReviewRequested({
+    required String recipientUid,
+    required String ownerName,
+    required String taskName,
+    required String taskId,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.taskNeedsReview,
+        title: 'Review Request',
+        body: '$ownerName wants you to review \'$taskName\'',
+        data: {
+          'type': 'review_requested',
+          'taskId': taskId,
+        },
+      );
+
+  /// Notify the task owner that a reviewer accepted their request.
+  Future<void> notifyRequestAccepted({
+    required String recipientUid,
+    required String reviewerName,
+    required String taskName,
+    required String taskId,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.invitationAccepted,
+        title: 'Request Accepted',
+        body: '$reviewerName accepted your review request for \'$taskName\'',
+        data: {
+          'type': 'request_accepted',
+          'taskId': taskId,
+        },
+      );
+
+  /// Notify the task owner that a reviewer declined their request.
+  Future<void> notifyRequestDeclined({
+    required String recipientUid,
+    required String reviewerName,
+    required String taskName,
+    required String taskId,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.invitationDeclined,
+        title: 'Request Declined',
+        body: '$reviewerName declined your review request for \'$taskName\'',
+        data: {
+          'type': 'request_declined',
+          'taskId': taskId,
+        },
+      );
+
+  /// Notify all reviewers that proof has been submitted.
+  Future<void> notifyProofSubmitted({
+    required List<String> reviewerUids,
+    required String ownerName,
+    required String taskName,
+    required String taskId,
+  }) async {
+    for (final uid in reviewerUids) {
+      await sendNotification(
+        recipientUid: uid,
+        type: AccountabilityNotificationType.taskNeedsReview,
+        title: 'Proof Submitted',
+        body: '$ownerName submitted proof for \'$taskName\'',
+        data: {
+          'type': 'proof_submitted',
+          'taskId': taskId,
+        },
+      );
+    }
+  }
+
+  /// Notify the task owner that their proof was approved.
+  Future<void> notifyProofApproved({
+    required String recipientUid,
+    required String reviewerName,
+    required String taskName,
+    required String taskId,
+    bool autoCompleted = false,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.reviewApproved,
+        title: autoCompleted ? 'Task Completed ✅' : 'Proof Approved ✅',
+        body: autoCompleted
+            ? '$reviewerName approved \'$taskName\' — task completed!'
+            : '$reviewerName approved your proof for \'$taskName\'',
+        data: {
+          'type': 'proof_approved',
+          'taskId': taskId,
+        },
+      );
+
+  /// Notify the task owner that their proof was rejected.
+  Future<void> notifyProofRejected({
+    required String recipientUid,
+    required String reviewerName,
+    required String taskName,
+    required String taskId,
+    required String comment,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.reviewRejected,
+        title: 'Task Needs Work',
+        body: '$reviewerName rejected \'$taskName\': $comment',
+        data: {
+          'type': 'proof_rejected',
+          'taskId': taskId,
+        },
+      );
 }

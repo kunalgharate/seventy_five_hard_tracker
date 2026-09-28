@@ -200,3 +200,68 @@ class CheckExpiredTasks extends AccountabilityEvent {}
 
 /// Load tasks that are pending the current user's review (partner responsibilities).
 class LoadMyResponsibilities extends AccountabilityEvent {}
+
+// ── Phase 4: Multi-Reviewer Review System Events ─────────────────────────────
+
+/// Load tasks grouped for the Reviews tab:
+/// - Incoming review requests (status == requested, I'm reviewer)
+/// - Tasks pending my review (proofStatus == submitted, I'm reviewer)
+/// - My tasks awaiting review (I'm owner, status == pendingReview)
+/// - Review history (approved/rejected)
+class LoadReviewTabData extends AccountabilityEvent {}
+
+/// Reviewer accepts a review request (status: requested → pending).
+class AcceptReviewRequest extends AccountabilityEvent {
+  final String taskId;
+  const AcceptReviewRequest(this.taskId);
+
+  @override
+  List<Object> get props => [taskId];
+}
+
+/// Reviewer declines a review request (status: requested → declined).
+class DeclineReviewRequest extends AccountabilityEvent {
+  final String taskId;
+  const DeclineReviewRequest(this.taskId);
+
+  @override
+  List<Object> get props => [taskId];
+}
+
+/// Owner submits proof for a task that has reviewers.
+/// Triggers notifications to all accepted reviewers.
+class SubmitProofForReview extends AccountabilityEvent {
+  final String taskId;
+  final String challengeId;
+  final String proofUrl;
+  const SubmitProofForReview({
+    required this.taskId,
+    required this.challengeId,
+    required this.proofUrl,
+  });
+
+  @override
+  List<Object> get props => [taskId, challengeId, proofUrl];
+}
+
+/// Reviewer approves a proof from the Reviews tab.
+/// If approvals >= requiredApprovals, task auto-completes.
+class ApproveProof extends AccountabilityEvent {
+  final String taskId;
+  final String? comment;
+  const ApproveProof(this.taskId, {this.comment});
+
+  @override
+  List<Object?> get props => [taskId, comment];
+}
+
+/// Reviewer rejects a proof from the Reviews tab.
+/// Owner gets notified and can resubmit.
+class RejectProof extends AccountabilityEvent {
+  final String taskId;
+  final String comment;
+  const RejectProof(this.taskId, {required this.comment});
+
+  @override
+  List<Object> get props => [taskId, comment];
+}

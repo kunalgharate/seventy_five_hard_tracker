@@ -2268,4 +2268,296 @@ class AccountabilityService {
       return [];
     }
   }
+
+  // ── Phase 4: Multi-reviewer approval system ─────────────────────────────
+
+  /// Fetches all tasks where the current user is a reviewer and
+  /// status == requested (pending accept/decline).
+  Future<List<AccountabilityTask>> fetchIncomingReviewRequests() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUserIds', arrayContains: uid)
+          .where('status', isEqualTo: 'requested')
+          .get();
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .where((t) => t.assignedByUid != uid) // exclude own tasks
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchIncomingReviewRequests error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetches tasks where the current user is a reviewer and proof has been
+  /// submitted (proofStatus == submitted, status == pendingReview).
+  Future<List<AccountabilityTask>> fetchTasksToReview() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUserIds', arrayContains: uid)
+          .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
+          .get();
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .where((t) => t.assignedByUid != uid) // exclude own tasks
+          .where((t) => !t.hasApprovedBy(uid)) // not already reviewed by me
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] fetchTasksToReview error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetches tasks where the current user is the owner and status is
+  /// pendingReview (awaiting reviewer action).
+  Future<List<AccountabilityTask>> fetchMyPendingReviewTasks() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('assignedByUid', isEqualTo: uid)
+          .where('status', isEqualTo: 'pendingReview')
+          .get();
+      return snap.docs
+          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchMyPendingReviewTasks error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Fetches completed review history (approved/rejected) for the current
+  /// user — both as owner and reviewer. Limited to last 50.
+  Future<List<AccountabilityTask>> fetchReviewHistory() async {
+    if (!_isReady) return [];
+    try {
+      final uid = currentUid!;
+      // Tasks I own that are approved/rejected
+      final ownSnap = await _db
+          .collection('accountability_tasks')
+          .where('assignedByUid', isEqualTo: uid)
+          .where('status', whereIn: ['approved', 'rejected'])
+          .orderBy('reviewedAt', descending: true)
+          .limit(25)
+          .get();
+      // Tasks I reviewed
+      final reviewSnap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUserIds', arrayContains: uid)
+          .where('status', whereIn: ['approved', 'rejected'])
+          .orderBy('reviewedAt', descending: true)
+          .limit(25)
+          .get();
+      final all = <String, AccountabilityTask>{};
+      for (final d in ownSnap.docs) {
+        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+      }
+      for (final d in reviewSnap.docs) {
+        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+      }
+      final list = all.values.toList()
+        ..sort((a, b) =>
+            (b.reviewedAt ?? b.assignedAt)
+                .compareTo(a.reviewedAt ?? a.assignedAt));
+      return list.take(50).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] fetchReviewHistory error: $e');
+      }
+      return [];
+    }
+  }
+
+  /// Accept a review request — status: requested → pending.
+  Future<bool> acceptReviewRequest(String taskId) async {
+    if (!_isReady) return false;
+    try {
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'status': AccountabilityTaskStatus.pending.name,
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] acceptReviewRequest error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Decline a review request — status: requested → declined.
+  /// Also removes this reviewer from accountableUserIds.
+  Future<bool> declineReviewRequest(String taskId) async {
+    if (!_isReady) return false;
+    try {
+      final uid = currentUid!;
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'status': AccountabilityTaskStatus.declined.name,
+        'accountableUserIds': FieldValue.arrayRemove([uid]),
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] declineReviewRequest error: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Submit proof and move task to pendingReview status.
+  /// Called when the owner toggles a task that has reviewers.
+  Future<AccountabilityTask?> submitProofForReview({
+    required String taskId,
+    required String proofUrl,
+  }) async {
+    if (!_isReady) return null;
+    try {
+      final now = DateTime.now();
+      final expiresAt = now.add(const Duration(hours: 24));
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'proofStatus': ProofStatus.submitted.toWire,
+        'proofUrl': proofUrl,
+        'proofSubmittedAt': Timestamp.fromDate(now),
+        'status': AccountabilityTaskStatus.pendingReview.name,
+        'submittedAt': Timestamp.fromDate(now),
+        'expiresAt': Timestamp.fromDate(expiresAt),
+      });
+      final doc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!doc.exists) return null;
+      return AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] submitProofForReview error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Reviewer approves a proof. Adds to the approvals array.
+  /// Returns the updated task (with hasEnoughApprovals check).
+  Future<AccountabilityTask?> approveProof({
+    required String taskId,
+    String? comment,
+  }) async {
+    if (!_isReady) return null;
+    try {
+      final uid = currentUid!;
+      final name = currentUserDisplayName;
+      final now = DateTime.now();
+
+      final approval = {
+        'uid': uid,
+        'name': name,
+        'timestamp': Timestamp.fromDate(now),
+        if (comment != null && comment.isNotEmpty) 'comment': comment,
+      };
+
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'approvals': FieldValue.arrayUnion([approval]),
+        'proofReviewedAt': Timestamp.fromDate(now),
+      });
+
+      // Re-read to check if enough approvals
+      final doc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!doc.exists) return null;
+      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+
+      // If enough approvals, auto-complete
+      if (task.hasEnoughApprovals) {
+        await _db.collection('accountability_tasks').doc(taskId).update({
+          'status': AccountabilityTaskStatus.approved.name,
+          'proofStatus': ProofStatus.approved.toWire,
+          'reviewDecision': 'approved',
+          'reviewedAt': Timestamp.fromDate(now),
+          'completedAt': Timestamp.fromDate(now),
+        });
+        return task.copyWith(
+          status: AccountabilityTaskStatus.approved,
+          proofStatus: ProofStatus.approved,
+          reviewDecision: 'approved',
+          completedAt: now,
+        );
+      }
+
+      return task;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] approveProof error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Reviewer rejects a proof. Adds to rejections, reverts to pending.
+  Future<AccountabilityTask?> rejectProof({
+    required String taskId,
+    required String comment,
+  }) async {
+    if (!_isReady) return null;
+    try {
+      final uid = currentUid!;
+      final name = currentUserDisplayName;
+      final now = DateTime.now();
+
+      final rejection = {
+        'uid': uid,
+        'name': name,
+        'timestamp': Timestamp.fromDate(now),
+        'comment': comment,
+      };
+
+      await _db.collection('accountability_tasks').doc(taskId).update({
+        'rejections': FieldValue.arrayUnion([rejection]),
+        'proofStatus': ProofStatus.rejected.toWire,
+        'proofReviewComment': comment,
+        'proofReviewedAt': Timestamp.fromDate(now),
+        'status': AccountabilityTaskStatus.rejected.name,
+        'reviewDecision': 'rejected',
+        'reviewedAt': Timestamp.fromDate(now),
+      });
+
+      final doc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!doc.exists) return null;
+      return AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] rejectProof error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Fetches the count of tasks pending the current user's review action
+  /// (incoming requests + submitted proofs). Used for tab badge.
+  Future<int> fetchPendingReviewCount() async {
+    if (!_isReady) return 0;
+    try {
+      final requests = await fetchIncomingReviewRequests();
+      final toReview = await fetchTasksToReview();
+      return requests.length + toReview.length;
+    } catch (e) {
+      return 0;
+    }
+  }
 }

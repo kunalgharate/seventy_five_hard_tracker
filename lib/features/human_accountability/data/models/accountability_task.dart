@@ -156,6 +156,21 @@ class AccountabilityTask extends Equatable {
   /// Firebase UID of the assigned reviewing partner
   final String? partnerUid;
 
+  // ── Multi-reviewer approval fields (GitHub PR model) ──
+  /// Number of approvals required to auto-complete the task. Default 1.
+  final int requiredApprovals;
+
+  /// Emails of all assigned reviewers (for display purposes).
+  final List<String> reviewerEmails;
+
+  /// List of individual approval records.
+  /// Each entry: { 'uid': string, 'name': string, 'timestamp': Timestamp, 'comment': string? }
+  final List<Map<String, dynamic>> approvals;
+
+  /// List of individual rejection records.
+  /// Each entry: { 'uid': string, 'name': string, 'timestamp': Timestamp, 'comment': string }
+  final List<Map<String, dynamic>> rejections;
+
   const AccountabilityTask({
     required this.id,
     required this.assignedByUid,
@@ -183,6 +198,10 @@ class AccountabilityTask extends Equatable {
     this.reviewDecision,
     this.reviewComment,
     this.partnerUid,
+    this.requiredApprovals = 1,
+    this.reviewerEmails = const [],
+    this.approvals = const [],
+    this.rejections = const [],
   });
 
   bool get isApproved => status == AccountabilityTaskStatus.approved;
@@ -204,6 +223,21 @@ class AccountabilityTask extends Equatable {
   bool get is75Hard => taskType == 'hard';
   bool get isRegular => taskType == 'regular';
 
+  /// Whether enough reviewers have approved to auto-complete.
+  bool get hasEnoughApprovals => approvals.length >= requiredApprovals;
+
+  /// Whether this reviewer (by UID) has already approved.
+  bool hasApprovedBy(String uid) =>
+      approvals.any((a) => a['uid'] == uid);
+
+  /// Whether this reviewer (by UID) has already rejected.
+  bool hasRejectedBy(String uid) =>
+      rejections.any((r) => r['uid'] == uid);
+
+  /// Whether the task has any reviewers assigned.
+  bool get hasReviewers => accountableUserIds.length > 1 ||
+      reviewerEmails.isNotEmpty;
+
   AccountabilityTask copyWith({
     AccountabilityTaskStatus? status,
     DateTime? completedAt,
@@ -224,6 +258,10 @@ class AccountabilityTask extends Equatable {
     String? reviewDecision,
     String? reviewComment,
     String? partnerUid,
+    int? requiredApprovals,
+    List<String>? reviewerEmails,
+    List<Map<String, dynamic>>? approvals,
+    List<Map<String, dynamic>>? rejections,
   }) =>
       AccountabilityTask(
         id: id,
@@ -252,6 +290,10 @@ class AccountabilityTask extends Equatable {
         reviewDecision: reviewDecision ?? this.reviewDecision,
         reviewComment: reviewComment ?? this.reviewComment,
         partnerUid: partnerUid ?? this.partnerUid,
+        requiredApprovals: requiredApprovals ?? this.requiredApprovals,
+        reviewerEmails: reviewerEmails ?? this.reviewerEmails,
+        approvals: approvals ?? this.approvals,
+        rejections: rejections ?? this.rejections,
       );
 
   static DateTime? _parseDate(dynamic v) {
@@ -299,6 +341,18 @@ class AccountabilityTask extends Equatable {
         reviewDecision: d['reviewDecision'] as String?,
         reviewComment: d['reviewComment'] as String?,
         partnerUid: d['partnerUid'] as String?,
+        requiredApprovals: (d['requiredApprovals'] as int?) ?? 1,
+        reviewerEmails:
+            (d['reviewerEmails'] as List<dynamic>?)?.cast<String>() ??
+                const [],
+        approvals: (d['approvals'] as List<dynamic>?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            const [],
+        rejections: (d['rejections'] as List<dynamic>?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            const [],
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -337,6 +391,10 @@ class AccountabilityTask extends Equatable {
         'reviewDecision': reviewDecision,
         'reviewComment': reviewComment,
         'partnerUid': partnerUid,
+        'requiredApprovals': requiredApprovals,
+        'reviewerEmails': reviewerEmails,
+        'approvals': approvals,
+        'rejections': rejections,
       };
 
   @override
@@ -367,5 +425,9 @@ class AccountabilityTask extends Equatable {
         reviewDecision,
         reviewComment,
         partnerUid,
+        requiredApprovals,
+        reviewerEmails,
+        approvals,
+        rejections,
       ];
 }
