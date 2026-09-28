@@ -118,10 +118,18 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   bool get _hasReviewers => _collaborators.isNotEmpty;
 
   /// Intercepts the toggle: if reviewers exist and task is being completed,
-  /// open proof upload instead of toggling. Otherwise, normal toggle.
+  /// open proof upload instead of toggling. Also intercepts rejected tasks
+  /// to allow proof resubmission. Otherwise, normal toggle.
   void _handleToggle(bool newValue) {
     if (newValue && _hasReviewers && widget.onProofRequired != null) {
       // User is trying to complete → require proof upload
+      widget.onProofRequired!();
+    } else if (newValue &&
+        (widget.proofStatus == ProofStatus.rejected ||
+            widget.accountabilityStatus ==
+                AccountabilityTaskStatus.rejected) &&
+        widget.onProofRequired != null) {
+      // Rejected — allow resubmission
       widget.onProofRequired!();
     } else {
       widget.onToggle(newValue);
@@ -614,9 +622,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       icon = Icons.check_circle;
     } else if (accStatus == AccountabilityTaskStatus.rejected ||
         proof == ProofStatus.rejected) {
-      text = 'Rejected — resubmit';
+      text = 'Tap to resubmit proof';
       color = Colors.red;
-      icon = Icons.error_outline;
+      icon = Icons.refresh;
     } else if (accStatus == AccountabilityTaskStatus.requested) {
       text = 'Waiting for reviewer';
       color = Colors.blue;
@@ -628,7 +636,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       icon = Icons.camera_alt_outlined;
     }
 
-    return Container(
+    final isRejected = accStatus == AccountabilityTaskStatus.rejected ||
+        proof == ProofStatus.rejected;
+
+    Widget badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
@@ -650,6 +661,16 @@ class _DailyTaskCardState extends State<DailyTaskCard>
         ],
       ),
     );
+
+    // Make tappable when rejected so user can resubmit proof
+    if (isRejected && widget.onProofRequired != null) {
+      badge = GestureDetector(
+        onTap: widget.onProofRequired,
+        child: badge,
+      );
+    }
+
+    return badge;
   }
 
   Widget _buildCollaboratorAvatars() {
