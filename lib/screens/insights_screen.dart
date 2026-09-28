@@ -1,189 +1,274 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 
-/// Insights screen — charts, streaks, task performance, leaderboard.
-class InsightsScreen extends StatefulWidget {
+/// Insights screen — real data from ChallengeBloc.
+class InsightsScreen extends StatelessWidget {
   const InsightsScreen({super.key});
-
-  @override
-  State<InsightsScreen> createState() => _InsightsScreenState();
-}
-
-class _InsightsScreenState extends State<InsightsScreen> {
-  String _period = 'Week';
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? Colors.grey[900]! : const Color(0xFFF5F5F5);
-    final cardBg = isDark ? Colors.grey[850]! : Colors.white;
     final textColor = isDark ? Colors.white : Colors.grey[900]!;
 
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: Text(
-          'Insights',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-        ),
+        title: Text('Insights',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: textColor,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // ── Period toggle ──
-          Row(
-            children: ['Week', 'Month', 'All Time'].map((p) {
-              final selected = _period == p;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _period = p),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: selected ? Colors.orange : cardBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color:
-                            selected ? Colors.orange : Colors.grey[300]!,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        p,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: selected ? Colors.white : Colors.grey[600],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 20),
-
-          // ── Completion rate card ──
-          _buildStatCard(
-            cardBg,
-            textColor,
-            'Completion Rate',
-            '87%',
-            Icons.trending_up,
-            Colors.green,
-            '+5% from last week',
-          ),
-          const SizedBox(height: 12),
-
-          // ── Streak card ──
-          _buildStatCard(
-            cardBg,
-            textColor,
-            'Current Streak',
-            '18 days',
-            Icons.local_fire_department,
-            Colors.orange,
-            'Best: 24 days',
-          ),
-          const SizedBox(height: 12),
-
-          // ── Tasks completed card ──
-          _buildStatCard(
-            cardBg,
-            textColor,
-            'Tasks Completed',
-            '54',
-            Icons.check_circle_outline,
-            Colors.blue,
-            'This $_period',
-          ),
-          const SizedBox(height: 24),
-
-          // ── Task performance breakdown ──
-          Text(
-            'Task Performance',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildTaskPerformance(
-              cardBg, textColor, 'Drink 3L water', 0.95, Colors.blue),
-          _buildTaskPerformance(
-              cardBg, textColor, 'Read 10 pages', 0.78, Colors.purple),
-          _buildTaskPerformance(
-              cardBg, textColor, '45 min workout', 0.85, Colors.deepOrange),
-          _buildTaskPerformance(
-              cardBg, textColor, 'Daily reflection', 0.62, Colors.pink),
-          const SizedBox(height: 24),
-
-          // ── Weekly trend ──
-          Text(
-            'Weekly Trend',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 160,
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _buildBar('Mon', 0.8, Colors.orange),
-                _buildBar('Tue', 1.0, Colors.green),
-                _buildBar('Wed', 0.6, Colors.orange),
-                _buildBar('Thu', 1.0, Colors.green),
-                _buildBar('Fri', 0.9, Colors.orange),
-                _buildBar('Sat', 0.7, Colors.orange),
-                _buildBar('Sun', 0.0, Colors.grey[300]!),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ── Squad leaderboard ──
-          Text(
-            'Squad Leaderboard',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildLeaderRow(cardBg, textColor, 1, 'You', '18 days', true),
-          _buildLeaderRow(cardBg, textColor, 2, 'Priya', '15 days', false),
-          _buildLeaderRow(cardBg, textColor, 3, 'Jordan', '12 days', false),
-        ],
+      body: BlocBuilder<ChallengeBloc, ChallengeState>(
+        builder: (context, state) {
+          if (state is! ChallengeLoaded || !state.hasActiveSession) {
+            return Center(
+              child: Text('Start a challenge to see insights.',
+                  style: TextStyle(color: Colors.grey[500])),
+            );
+          }
+          return _InsightsBody(state: state);
+        },
       ),
     );
   }
+}
 
-  Widget _buildStatCard(
-    Color cardBg,
-    Color textColor,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-    String subtitle,
-  ) {
+class _InsightsBody extends StatelessWidget {
+  final ChallengeLoaded state;
+  const _InsightsBody({required this.state});
+
+  int _computeStreak(List<DailyProgress> progress) {
+    int streak = 0;
+    final sorted = [...progress]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    for (final p in sorted) {
+      if (p.isCompleted) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  int _computeBestStreak(List<DailyProgress> progress) {
+    int best = 0, current = 0;
+    final sorted = [...progress]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    for (final p in sorted) {
+      if (p.isCompleted) {
+        current++;
+        if (current > best) best = current;
+      } else {
+        current = 0;
+      }
+    }
+    return best;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? Colors.grey[850]! : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+
+    final progress = state.currentProgress;
+    final session = state.activeSession!;
+    final totalDays = progress.length;
+    final completedDays =
+        progress.where((p) => p.isCompleted).length;
+    final pct =
+        totalDays > 0 ? (completedDays / totalDays * 100) : 0.0;
+    final streak = _computeStreak(progress);
+    final bestStreak = _computeBestStreak(progress);
+
+    // Task performance: count per challenge
+    final challenges = session.challenges;
+    final taskStats = <String, (int completed, int total)>{};
+    for (final c in challenges) {
+      int done = 0, total = 0;
+      for (final p in progress) {
+        if (p.challengeCompletions.containsKey(c.id)) {
+          total++;
+          if (p.challengeCompletions[c.id] == true) done++;
+        }
+      }
+      taskStats[c.title] = (done, total);
+    }
+
+    // Weekly trend (last 7 days)
+    final now = DateTime.now();
+    final weekDays = List.generate(7, (i) {
+      final date = now.subtract(Duration(days: 6 - i));
+      final match = progress.where((p) =>
+          p.date.year == date.year &&
+          p.date.month == date.month &&
+          p.date.day == date.day);
+      return (date, match.isNotEmpty && match.first.isCompleted);
+    });
+
+    final taskColors = [
+      Colors.blue,
+      Colors.purple,
+      Colors.deepOrange,
+      Colors.pink,
+      Colors.teal,
+      Colors.amber,
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // ── Stat cards ──
+        _StatCard(
+          cardBg: cardBg,
+          textColor: textColor,
+          title: 'Completion Rate',
+          value: '${pct.toStringAsFixed(0)}%',
+          icon: Icons.trending_up,
+          color: Colors.green,
+          subtitle: '$completedDays of $totalDays days',
+        ),
+        const SizedBox(height: 12),
+        _StatCard(
+          cardBg: cardBg,
+          textColor: textColor,
+          title: 'Current Streak',
+          value: '$streak days',
+          icon: Icons.local_fire_department,
+          color: Colors.orange,
+          subtitle: 'Best: $bestStreak days',
+        ),
+        const SizedBox(height: 24),
+
+        // ── Weekly trend ──
+        Text('Weekly Trend',
+            style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: textColor)),
+        const SizedBox(height: 12),
+        Container(
+          height: 140,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: weekDays.map((d) {
+              final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              final label = dayNames[d.$1.weekday - 1];
+              final done = d.$2;
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    width: 28,
+                    height: done ? 80 : 20,
+                    decoration: BoxDecoration(
+                      color: done ? Colors.green : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10, color: Colors.grey[500])),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Task performance ──
+        Text('Task Performance',
+            style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: textColor)),
+        const SizedBox(height: 12),
+        ...taskStats.entries.toList().asMap().entries.map((e) {
+          final idx = e.key;
+          final name = e.value.key;
+          final (done, total) = e.value.value;
+          final p = total > 0 ? done / total : 0.0;
+          final color = taskColors[idx % taskColors.length];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(name,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: textColor),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Text('${(p * 100).toInt()}%',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: color)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: p,
+                    minHeight: 6,
+                    backgroundColor: Colors.grey[200],
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final Color cardBg, textColor, color;
+  final String title, value, subtitle;
+  final IconData icon;
+
+  const _StatCard({
+    required this.cardBg,
+    required this.textColor,
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -206,163 +291,19 @@ class _InsightsScreenState extends State<InsightsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                ),
-                Text(
-                  value,
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey[500])),
+                Text(value,
+                    style: GoogleFonts.poppins(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: textColor)),
               ],
             ),
           ),
-          Text(
-            subtitle,
-            style: TextStyle(fontSize: 12, color: color),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTaskPerformance(
-    Color cardBg,
-    Color textColor,
-    String name,
-    double pct,
-    Color color,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(name,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: textColor)),
-              Text('${(pct * 100).toInt()}%',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: color)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 6,
-              backgroundColor: Colors.grey[200],
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBar(String day, double pct, Color color) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Container(
-          width: 28,
-          height: 100 * pct,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(day, style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-      ],
-    );
-  }
-
-  Widget _buildLeaderRow(
-    Color cardBg,
-    Color textColor,
-    int rank,
-    String name,
-    String streak,
-    bool isYou,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isYou ? Colors.orange.withValues(alpha: 0.08) : cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: isYou
-            ? Border.all(color: Colors.orange.withValues(alpha: 0.3))
-            : null,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: rank == 1
-                  ? Colors.amber
-                  : rank == 2
-                      ? Colors.grey[400]
-                      : Colors.brown[300],
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                '$rank',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isYou ? FontWeight.bold : FontWeight.w500,
-                color: textColor,
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              const Icon(Icons.local_fire_department,
-                  size: 16, color: Colors.orange),
-              const SizedBox(width: 4),
-              Text(
-                streak,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange[700],
-                ),
-              ),
-            ],
-          ),
+          Text(subtitle,
+              style: TextStyle(fontSize: 12, color: color)),
         ],
       ),
     );
