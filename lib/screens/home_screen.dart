@@ -14,6 +14,8 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
@@ -488,6 +490,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onSubmitProof: () => _submitProof(challenge),
                                   onReviewProof: () => _reviewProof(challenge),
                                   onViewProof: () => _viewProof(challenge),
+                                  onProofRequired: () =>
+                                      _handleProofRequired(challenge),
                                 ),
                         ),
                       ),
@@ -786,6 +790,50 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } catch (_) {
         // Non-critical — card will just show default state
+      }
+    }
+  }
+
+  /// Called when user tries to toggle a task that has reviewers.
+  /// Opens proof upload sheet instead of completing the task directly.
+  /// On successful upload, submits for review via the AccountabilityBloc.
+  Future<void> _handleProofRequired(Challenge challenge) async {
+    final svc = AccountabilityService();
+
+    // Find or get the accountability task for this challenge
+    final task = await svc.fetchTaskByChallengeId(challenge.id);
+    final taskId = task?.id;
+    if (taskId == null) {
+      // No accountability task — fall back to normal proof submission
+      _submitProof(challenge);
+      return;
+    }
+
+    if (!mounted) return;
+    final result = await PhotoProofSheet.show(
+      context: context,
+      taskId: taskId,
+      taskName: challenge.title,
+      date: _selectedDay,
+    );
+
+    if (result == true && mounted) {
+      // Get the proof URL from the updated task
+      final updated = await svc.fetchTaskById(taskId);
+      if (updated?.proofUrl != null && mounted) {
+        // Submit proof for review via BLoC — notifies all reviewers
+        context.read<AccountabilityBloc>().add(
+              SubmitProofForReview(
+                taskId: taskId,
+                challengeId: challenge.id,
+                proofUrl: updated!.proofUrl!,
+              ),
+            );
+        setState(() {
+          _proofStatuses[challenge.id] = ProofStatus.submitted;
+          _accountabilityStatuses[challenge.id] =
+              AccountabilityTaskStatus.pendingReview;
+        });
       }
     }
   }

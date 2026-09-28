@@ -31,6 +31,10 @@ class DailyTaskCard extends StatefulWidget {
   final VoidCallback? onReviewProof;
   final VoidCallback? onViewProof;
 
+  /// Called when the user tries to toggle a task that has reviewers.
+  /// The parent should open the proof upload sheet instead of toggling.
+  final VoidCallback? onProofRequired;
+
   const DailyTaskCard({
     super.key,
     required this.challenge,
@@ -48,6 +52,7 @@ class DailyTaskCard extends StatefulWidget {
     this.onSubmitProof,
     this.onReviewProof,
     this.onViewProof,
+    this.onProofRequired,
   });
 
   @override
@@ -107,6 +112,20 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     setState(() {
       _collaborators = result?.collaborators ?? [];
     });
+  }
+
+  /// Whether this task has collaborator reviewers assigned.
+  bool get _hasReviewers => _collaborators.isNotEmpty;
+
+  /// Intercepts the toggle: if reviewers exist and task is being completed,
+  /// open proof upload instead of toggling. Otherwise, normal toggle.
+  void _handleToggle(bool newValue) {
+    if (newValue && _hasReviewers && widget.onProofRequired != null) {
+      // User is trying to complete → require proof upload
+      widget.onProofRequired!();
+    } else {
+      widget.onToggle(newValue);
+    }
   }
 
   @override
@@ -336,7 +355,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             onTap: (widget.isEditable &&
                     _isOwner(myUid) &&
                     !_isRequestedAndUnaccepted())
-                ? () => widget.onToggle(!widget.isCompleted)
+                ? () => _handleToggle(!widget.isCompleted)
                 : null,
           ),
           const SizedBox(width: 10),
@@ -368,6 +387,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 if (_collaborators.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   _buildCollaboratorAvatars(),
+                ],
+                if (_hasReviewers) ...[
+                  const SizedBox(height: 3),
+                  _buildReviewStatusBadge(),
                 ],
                 const SizedBox(height: 2),
                 Text(
@@ -566,7 +589,66 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     return AppleCheckbox(
       isChecked: widget.isCompleted,
       isEnabled: widget.isEditable,
-      onChanged: (value) => widget.onToggle(value),
+      onChanged: (value) => _handleToggle(value),
+    );
+  }
+
+  /// Shows the current review status as a compact colored badge.
+  Widget _buildReviewStatusBadge() {
+    final accStatus = widget.accountabilityStatus;
+    final proof = widget.proofStatus;
+
+    String text;
+    Color color;
+    IconData icon;
+
+    if (accStatus == AccountabilityTaskStatus.pendingReview ||
+        proof == ProofStatus.submitted) {
+      text = 'Awaiting review';
+      color = Colors.orange;
+      icon = Icons.hourglass_top;
+    } else if (accStatus == AccountabilityTaskStatus.approved ||
+        proof == ProofStatus.approved) {
+      text = 'Approved';
+      color = Colors.green;
+      icon = Icons.check_circle;
+    } else if (accStatus == AccountabilityTaskStatus.rejected ||
+        proof == ProofStatus.rejected) {
+      text = 'Rejected — resubmit';
+      color = Colors.red;
+      icon = Icons.error_outline;
+    } else if (accStatus == AccountabilityTaskStatus.requested) {
+      text = 'Waiting for reviewer';
+      color = Colors.blue;
+      icon = Icons.person_add;
+    } else {
+      // No status to show — task has reviewers but no proof action yet
+      text = 'Proof required';
+      color = Colors.grey;
+      icon = Icons.camera_alt_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
