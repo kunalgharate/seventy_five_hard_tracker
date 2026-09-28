@@ -44,6 +44,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   late final TabController _tabs;
   StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
+  int _reviewBadgeCount = 0;
 
   @override
   void initState() {
@@ -51,6 +52,12 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
     _tabs = TabController(length: 2, vsync: this);
     context.read<AccountabilityBloc>().add(LoadAccountabilityData());
     _subscribeToTaskStream();
+    _loadReviewBadge();
+  }
+
+  Future<void> _loadReviewBadge() async {
+    final count = await AccountabilityService().fetchPendingReviewCount();
+    if (mounted) setState(() => _reviewBadgeCount = count);
   }
 
   void _subscribeToTaskStream() {
@@ -138,10 +145,15 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           fontWeight: FontWeight.w600,
           fontSize: 13,
         ),
-        tabs: const [
-          Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Partners'),
+        tabs: [
+          const Tab(
+              icon: Icon(Icons.people_outline, size: 18), text: 'Partners'),
           Tab(
-            icon: Icon(Icons.rate_review_outlined, size: 18),
+            icon: Badge(
+              isLabelVisible: _reviewBadgeCount > 0,
+              label: Text('$_reviewBadgeCount'),
+              child: const Icon(Icons.rate_review_outlined, size: 18),
+            ),
             text: 'Reviews',
           ),
         ],
@@ -249,6 +261,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   }
 
   void _handleStateChange(BuildContext context, AccountabilityState state) {
+    // Refresh the review badge count on any state change
+    _loadReviewBadge();
     if (state is PartnerInvited) {
       _showInviteCodeDialog(context, state.partner);
     } else if (state is InviteAccepted) {
@@ -932,9 +946,34 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
   List<Map<String, dynamic>> _recentDays = [];
   List<String> _challengeNames = [];
   List<AccountabilityTask> _accountabilityTasks = [];
+  int _pendingReviewCount = 0;
   bool _loading = false;
   bool _expanded = false;
   bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Eagerly load task count for the badge (lightweight)
+    _loadPendingCount();
+  }
+
+  Future<void> _loadPendingCount() async {
+    try {
+      final tasks = await AccountabilityService()
+          .fetchTasksForPartnership(widget.partner.id);
+      if (!mounted) return;
+      final myUid = AccountabilityService().currentUid;
+      setState(() {
+        _pendingReviewCount = tasks
+            .where((t) =>
+                t.assignedByUid != myUid &&
+                (t.status == AccountabilityTaskStatus.pendingReview ||
+                    t.proofStatus == ProofStatus.submitted))
+            .length;
+      });
+    } catch (_) {}
+  }
 
   Future<void> _loadTasks({bool forceRefresh = false}) async {
     if (_loading) return;
@@ -976,6 +1015,14 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           _recentDays = results[0] as List<Map<String, dynamic>>;
           _challengeNames = results[1] as List<String>;
           _accountabilityTasks = results[2] as List<AccountabilityTask>;
+          // Count tasks pending review action from me
+          final myUid2 = AccountabilityService().currentUid;
+          _pendingReviewCount = _accountabilityTasks
+              .where((t) =>
+                  t.assignedByUid != myUid2 &&
+                  (t.status == AccountabilityTaskStatus.pendingReview ||
+                      t.proofStatus == ProofStatus.submitted))
+              .length;
           _loading = false;
           _loaded = true;
         });
@@ -1059,6 +1106,25 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (_pendingReviewCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$_pendingReviewCount to review',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
