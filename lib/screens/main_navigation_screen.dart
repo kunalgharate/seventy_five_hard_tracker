@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
-import '../main.dart';
 import 'home_screen.dart';
 import 'regular_tasks_screen.dart';
+import 'journal_screen.dart';
+import 'insights_screen.dart';
 import 'profile_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_screen.dart';
 
@@ -21,14 +22,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late final List<Widget> _screens = [
     const HomeScreen(),
     const RegularTasksScreen(),
+    const JournalScreen(),
+    const InsightsScreen(),
     AccountabilityScreen(
-      onGoToProfile: () => setState(() => _currentIndex = 3),
+      onGoToProfile: () => setState(() => _currentIndex = 5),
     ),
     const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
@@ -39,25 +44,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           }
           setState(() => _currentIndex = index);
         },
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: Colors.grey[600],
+        selectedItemColor: Colors.orange[700],
+        unselectedItemColor: isDark ? Colors.grey[500] : Colors.grey[600],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
         type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.fitness_center),
-            label: '75 Hard',
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Today',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.task_alt),
-            label: 'Daily Tasks',
+            icon: Icon(Icons.checklist_outlined),
+            activeIcon: Icon(Icons.checklist),
+            label: 'Habits',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.menu_book_outlined),
+            activeIcon: Icon(Icons.menu_book),
+            label: 'Journal',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.insights_outlined),
+            activeIcon: Icon(Icons.insights),
+            label: 'Insights',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),
-            label: 'Partners',
+            activeIcon: Icon(Icons.people),
+            label: 'Squad',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Account',
           ),
         ],
       ),
