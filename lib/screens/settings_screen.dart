@@ -146,7 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const ListTile(
                   leading: Icon(Icons.info_outline),
                   title: Text('App Version'),
-                  subtitle: Text('1.0.7+7'),
+                  subtitle: Text('1.0.8+8'),
                 ),
                 ListTile(
                   leading: const Icon(Icons.privacy_tip),
@@ -184,7 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final exportData = {
         'exported_at': DateTime.now().toIso8601String(),
-        'app_version': '1.0.7+7',
+        'app_version': '1.0.8+8',
         'active_session': state.activeSession?.toJson(),
         'all_sessions': state.allSessions.map((s) => s.toJson()).toList(),
         'current_progress':
