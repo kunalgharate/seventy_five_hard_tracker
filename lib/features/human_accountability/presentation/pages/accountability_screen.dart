@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
@@ -113,7 +114,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
                       emailInvitations: loaded?.emailInvitations ?? [],
                       taskRequests: loaded?.taskRequests ?? [],
                     ),
-                    _ReviewsTab(reviews: loaded?.myReviews ?? []),
+                    const ReviewsTabV2(),
                   ],
                 );
               },
@@ -2300,131 +2301,6 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
 }
 
 // ── Reviews Tab ──────────────────────────────────────────────────────────────
-
-class _ReviewsTab extends StatelessWidget {
-  final List<PartnerReview> reviews;
-  const _ReviewsTab({required this.reviews});
-
-  @override
-  Widget build(BuildContext context) {
-    // Use a real-time stream so reviews appear immediately when partner submits
-    return StreamBuilder<List<PartnerReview>>(
-      stream: AccountabilityService().reviewsStream(),
-      builder: (context, snap) {
-        final liveReviews = snap.data ?? reviews;
-        if (liveReviews.isEmpty) {
-          return const _EmptyState(
-            icon: Icons.rate_review_outlined,
-            title: 'No reviews yet',
-            subtitle:
-                'Once partners review your progress, their feedback appears here.',
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-          itemCount: liveReviews.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) => _ReviewCard(review: liveReviews[i]),
-        );
-      },
-    );
-  }
-}
-
-class _ReviewCard extends StatelessWidget {
-  final PartnerReview review;
-  const _ReviewCard({required this.review});
-
-  @override
-  Widget build(BuildContext context) {
-    final isApproved = review.decision == ReviewDecision.approved;
-    final isRejected = review.decision == ReviewDecision.rejected;
-    final color = isApproved
-        ? Colors.green
-        : isRejected
-            ? Colors.red
-            : Colors.orange;
-    final icon = isApproved
-        ? Icons.check_circle
-        : isRejected
-            ? Icons.cancel
-            : Icons.hourglass_empty;
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          review.reviewerName,
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        DateFormat('MMM d').format(review.createdAt),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      review.decision.label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  if (review.comment != null && review.comment!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '"${review.comment}"',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[700],
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    'For: ${review.dateKey}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ── Invite Partner Bottom Sheet ──────────────────────────────────────────────
 
