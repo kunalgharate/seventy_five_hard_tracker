@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:glassmorphism/glassmorphism.dart';
+import 'package:seventy_five_hard_tracker/widgets/task_detail_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -116,6 +117,18 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   /// Whether this task has collaborator reviewers assigned.
   bool get _hasReviewers => _collaborators.isNotEmpty;
+
+  /// Opens the task detail bottom sheet.
+  void _openTaskDetail() {
+    TaskDetailSheet.show(
+      context: context,
+      challengeId: widget.challenge.id,
+      taskName: widget.challenge.title,
+      description: widget.challenge.category,
+      isCompleted: widget.isCompleted,
+      taskType: widget.challenge.taskType,
+    );
+  }
 
   /// Intercepts the toggle: if reviewers exist and task is being completed,
   /// open proof upload instead of toggling. Also intercepts rejected tasks
@@ -368,7 +381,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
+            child: GestureDetector(
+              onTap: () => _openTaskDetail(),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
@@ -417,6 +432,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+            ),
             ),
           ),
           _buildTrailingActions(myUid),
