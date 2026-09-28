@@ -7,6 +7,8 @@ import 'package:seventy_five_hard_tracker/widgets/greeting_header.dart';
 import 'package:seventy_five_hard_tracker/widgets/challenge_hero_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/review_notification_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/motivation_banner.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:seventy_five_hard_tracker/services/quotes_service.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
@@ -54,11 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _accountabilityLoadedSessionId;
 
   /// Recent review notifications for inline display.
-  final List<Map<String, String>> _recentNotifications = [];
+  List<Map<String, String>> _recentNotifications = [];
 
   /// Daily motivational quote.
-  final String _dailyQuote =
+  String _dailyQuote =
       'Discipline is choosing between what you want now and what you want most.';
+
+  // ignore: prefer_final_fields is intentional — updated after init
 
   /// Whether a challenge should render as a water tracker card.
   /// Only challenges explicitly categorized as 'water' use the tracker.
@@ -68,6 +72,45 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     context.read<ChallengeBloc>().add(LoadChallengeData());
+    _loadRecentNotifications();
+    _loadDailyQuote();
+  }
+
+  Future<void> _loadRecentNotifications() async {
+    try {
+      final svc = AccountabilityService();
+      final uid = svc.currentUid;
+      if (uid == null) return;
+      final snap = await FirebaseFirestore.instance
+          .collection('fcm_notifications')
+          .where('recipientUid', isEqualTo: uid)
+          .where('delivered', isEqualTo: true)
+          .orderBy('createdAt', descending: true)
+          .limit(3)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _recentNotifications = snap.docs.map((d) {
+          final data = d.data();
+          final type = data['type'] as String? ?? '';
+          String action = 'feedback';
+          if (type.contains('approved')) action = 'approved';
+          if (type.contains('rejected')) action = 'rejected';
+          return {
+            'reviewer': (data['title'] as String? ?? '').split(' ').first,
+            'task': data['body'] as String? ?? '',
+            'action': action,
+          };
+        }).toList();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadDailyQuote() async {
+    try {
+      final quote = await QuotesService().getMotivationalQuote();
+      if (mounted) setState(() => _dailyQuote = quote);
+    } catch (_) {}
   }
 
   @override
@@ -330,8 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 8),
 
         // Review notification cards (design: between hero and tasks)
-        ..._recentNotifications.take(3).map((n) =>
-            ReviewNotificationCard(
+        ..._recentNotifications.take(3).map((n) => ReviewNotificationCard(
               reviewerName: n['reviewer'] ?? '',
               taskName: n['task'] ?? '',
               action: n['action'] ?? 'approved',
@@ -965,8 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _computeCurrentStreak(List<DailyProgress> progress) {
     int streak = 0;
-    final sorted = [...progress]
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final sorted = [...progress]..sort((a, b) => b.date.compareTo(a.date));
     for (final p in sorted) {
       if (p.isCompleted) {
         streak++;
@@ -980,8 +1021,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _computeBestStreak(List<DailyProgress> progress) {
     int best = 0;
     int current = 0;
-    final sorted = [...progress]
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final sorted = [...progress]..sort((a, b) => a.date.compareTo(b.date));
     for (final p in sorted) {
       if (p.isCompleted) {
         current++;
