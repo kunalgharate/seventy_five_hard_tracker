@@ -194,8 +194,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFFFFA726).withValues(alpha: 0.1),
-                  const Color(0xFFFF7043).withValues(alpha: 0.05),
+                  const Color(0xFFFF7918).withValues(alpha: 0.1),
+                  const Color(0xFFFF5449).withValues(alpha: 0.05),
                 ],
               ),
               borderRadius:
@@ -206,7 +206,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFA726),
+                    color: const Color(0xFFFF7918),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
@@ -363,7 +363,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: const BorderSide(
-                                color: Color(0xFFFFA726), width: 2),
+                                color: Color(0xFFFF7918), width: 2),
                           ),
                           contentPadding: const EdgeInsets.all(16),
                         ),
@@ -382,7 +382,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: _hasUnsavedChanges
-                                    ? const Color(0xFFFFA726)
+                                    ? const Color(0xFFFF7918)
                                     : Colors.grey[300],
                                 foregroundColor: _hasUnsavedChanges
                                     ? Colors.white

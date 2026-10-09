@@ -37,7 +37,9 @@ import 'history_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onGoToSquad});
+
+  final VoidCallback? onGoToSquad;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -360,44 +362,50 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
-        // Greeting header (design: "Good morning, Alex")
-        const GreetingHeader(),
-
-        // Challenge hero card (design: gradient with circular %)
-        ChallengeHeroCard(
-          currentDay: currentDay,
-          totalDays: session.totalDaysTarget,
-          currentStreak: _computeCurrentStreak(state.currentProgress),
-          bestStreak: _computeBestStreak(state.currentProgress),
-        ),
-        const SizedBox(height: 8),
-
-        // Review notification cards (design: between hero and tasks)
-        ..._recentNotifications.take(3).map((n) => ReviewNotificationCard(
-              reviewerName: n['reviewer'] ?? '',
-              taskName: n['task'] ?? '',
-              action: n['action'] ?? 'approved',
-              comment: n['comment'],
-              onDismiss: () {
-                setState(() => _recentNotifications.remove(n));
-              },
-            )),
-
-        // Progress Stats (existing)
-        ProgressStats(
-          currentDay: currentDay,
-          totalDays: 75,
-          session: session,
-          progress: state.currentProgress,
-        ),
-
-        // Calendar
+        // Everything scrolls together so no section gets clipped and the
+        // task list is always reachable.
         Expanded(
           child: SingleChildScrollView(
             controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             child: Column(
               children: [
+                // Greeting header (design: "Welcome, {name}")
+                const GreetingHeader(),
+
+                // Challenge hero card (design: gradient with circular %)
+                ChallengeHeroCard(
+                  currentDay: currentDay,
+                  totalDays: session.totalDaysTarget,
+                  currentStreak: _computeCurrentStreak(state.currentProgress),
+                  bestStreak: _computeBestStreak(state.currentProgress),
+                ),
+                const SizedBox(height: 8),
+
+                // Review notification cards
+                ..._recentNotifications.take(3).map((n) =>
+                    ReviewNotificationCard(
+                      reviewerName: n['reviewer'] ?? '',
+                      taskName: n['task'] ?? '',
+                      action: n['action'] ?? 'approved',
+                      comment: n['comment'],
+                      onDismiss: () {
+                        setState(() => _recentNotifications.remove(n));
+                      },
+                    )),
+
+                // Daily Tasks for Selected Day — shown right under the hero
+                // (Figma "Today's focus") so tasks are immediately visible.
+                _buildDailyTasks(session, state.currentProgress),
+
+                // Progress Stats
+                ProgressStats(
+                  currentDay: currentDay,
+                  totalDays: 75,
+                  session: session,
+                  progress: state.currentProgress,
+                ),
+
                 Card(
                   margin: const EdgeInsets.all(16),
                   child: Padding(
@@ -440,9 +448,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-
-                // Daily Tasks for Selected Day
-                _buildDailyTasks(session, state.currentProgress),
               ],
             ),
           ),

@@ -1,35 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../widgets/custom_app_bar.dart';
+import '../core/theme/figma_tokens.dart';
+import '../core/theme/figma_widgets.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 
-/// Insights screen — real data from ChallengeBloc.
+/// Insights screen — real data from ChallengeBloc, styled to match the Figma
+/// design (dark highlight card, gradient bar chart, 2x2 metrics grid,
+/// per-habit performance bars).
 class InsightsScreen extends StatelessWidget {
   const InsightsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? Colors.grey[900]! : const Color(0xFFF5F5F5);
-    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+    final bg = isDark ? FigmaTokens.darkBg : FigmaTokens.soft;
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: Text('Insights',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: textColor,
-      ),
+      appBar: const CustomAppBar(title: 'Your insights', centerTitle: false),
       body: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
           if (state is! ChallengeLoaded || !state.hasActiveSession) {
             return Center(
               child: Text('Start a challenge to see insights.',
-                  style: TextStyle(color: Colors.grey[500])),
+                  style: FigmaTokens.body(13, color: FigmaTokens.muted)),
             );
           }
           return _InsightsBody(state: state);
@@ -73,8 +70,6 @@ class _InsightsBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? Colors.grey[850]! : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.grey[900]!;
 
     final progress = state.currentProgress;
     final session = state.activeSession!;
@@ -83,10 +78,11 @@ class _InsightsBody extends StatelessWidget {
     final pct = totalDays > 0 ? (completedDays / totalDays * 100) : 0.0;
     final streak = _computeStreak(progress);
     final bestStreak = _computeBestStreak(progress);
+    final perfectDays = completedDays;
 
-    // Task performance: count per challenge
+    // Task performance: completion ratio per challenge
     final challenges = session.challenges;
-    final taskStats = <String, (int completed, int total)>{};
+    final taskStats = <String, double>{};
     for (final c in challenges) {
       int done = 0, total = 0;
       for (final p in progress) {
@@ -95,210 +91,268 @@ class _InsightsBody extends StatelessWidget {
           if (p.challengeCompletions[c.id] == true) done++;
         }
       }
-      taskStats[c.title] = (done, total);
+      taskStats[c.title] = total > 0 ? done / total : 0.0;
     }
 
-    // Weekly trend (last 7 days)
+    // Weekly completion % per day (last 7 days) — ratio of tasks done that day
     final now = DateTime.now();
-    final weekDays = List.generate(7, (i) {
+    final weekBars = List.generate(7, (i) {
       final date = now.subtract(Duration(days: 6 - i));
       final match = progress.where((p) =>
           p.date.year == date.year &&
           p.date.month == date.month &&
           p.date.day == date.day);
-      return (date, match.isNotEmpty && match.first.isCompleted);
+      double ratio = 0;
+      if (match.isNotEmpty) {
+        final p = match.first;
+        final total = session.challenges.length;
+        if (total > 0) {
+          final done = p.challengeCompletions.values.where((v) => v).length;
+          ratio = done / total;
+        }
+      }
+      return (date, ratio);
     });
 
-    final taskColors = [
-      Colors.blue,
-      Colors.purple,
-      Colors.deepOrange,
-      Colors.pink,
-      Colors.teal,
-      Colors.amber,
+    // "This week" completion rate = avg of weekly bar ratios
+    final weekPct = weekBars.isEmpty
+        ? 0
+        : (weekBars.map((e) => e.$2).reduce((a, b) => a + b) /
+                weekBars.length *
+                100)
+            .round();
+
+    final dayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final perfBarColors = [
+      const Color(0xFF328CE6),
+      const Color(0xFF8862DC),
+      FigmaTokens.coral,
+      const Color(0xFF328CE6),
+      const Color(0xFF8862DC),
+      FigmaTokens.coral,
     ];
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
       children: [
-        // ── Stat cards ──
-        _StatCard(
-          cardBg: cardBg,
-          textColor: textColor,
-          title: 'Completion Rate',
-          value: '${pct.toStringAsFixed(0)}%',
-          icon: Icons.trending_up,
-          color: Colors.green,
-          subtitle: '$completedDays of $totalDays days',
-        ),
-        const SizedBox(height: 12),
-        _StatCard(
-          cardBg: cardBg,
-          textColor: textColor,
-          title: 'Current Streak',
-          value: '$streak days',
-          icon: Icons.local_fire_department,
-          color: Colors.orange,
-          subtitle: 'Best: $bestStreak days',
-        ),
-        const SizedBox(height: 24),
-
-        // ── Weekly trend ──
-        Text('Weekly Trend',
-            style: GoogleFonts.poppins(
-                fontSize: 16, fontWeight: FontWeight.w600, color: textColor)),
-        const SizedBox(height: 12),
+        // ── Dark highlight card: this week % + trend + bar chart ──
         Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: cardBg,
-            borderRadius: BorderRadius.circular(16),
+            gradient: FigmaTokens.darkCardGradient,
+            borderRadius: BorderRadius.circular(FigmaTokens.rCardLg),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: weekDays.map((d) {
-              final dayNames = [
-                'Mon',
-                'Tue',
-                'Wed',
-                'Thu',
-                'Fri',
-                'Sat',
-                'Sun'
-              ];
-              final label = dayNames[d.$1.weekday - 1];
-              final done = d.$2;
-              return Column(
-                mainAxisAlignment: MainAxisAlignment.end,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 28,
-                    height: done ? 80 : 20,
-                    decoration: BoxDecoration(
-                      color: done ? Colors.green : Colors.grey[300],
-                      borderRadius: BorderRadius.circular(6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.auto_awesome,
+                                size: 14, color: FigmaTokens.coral),
+                            const SizedBox(width: 6),
+                            Text('THIS WEEK',
+                                style: FigmaTokens.body(9,
+                                    weight: FontWeight.w800,
+                                    color: FigmaTokens.coral)),
+                          ],
+                        ),
+                        const SizedBox(height: 7),
+                        Text('$weekPct%',
+                            style: FigmaTokens.heading(32, color: Colors.white)),
+                        Text('completion rate',
+                            style: FigmaTokens.body(10,
+                                color: const Color(0xFFCABDC2))),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(label,
-                      style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 9, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF64CB88).withValues(alpha: 0.13),
+                      borderRadius: BorderRadius.circular(FigmaTokens.rChip),
+                    ),
+                    child: Text('↑ ${pct.toStringAsFixed(0)}%',
+                        style: FigmaTokens.body(10,
+                            weight: FontWeight.w800,
+                            color: const Color(0xFF82D09D))),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 96,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: List.generate(weekBars.length, (i) {
+                    final ratio = weekBars[i].$2;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.5),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Container(
+                              constraints: const BoxConstraints(maxWidth: 23),
+                              height: (ratio * 72).clamp(8, 72),
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [FigmaTokens.orange, FigmaTokens.pink],
+                                ),
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(5),
+                                  bottom: Radius.circular(2),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(dayLetters[i],
+                                style: FigmaTokens.body(8,
+                                    color: const Color(0xFFAB9DA3))),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 13),
+
+        // ── 2x2 metrics grid ──
+        Row(
+          children: [
+            Expanded(
+                child: _Metric(
+                    icon: Icons.local_fire_department,
+                    tint: const Color(0xFFE86D24),
+                    bg: const Color(0xFFFFF0E5),
+                    value: '$streak',
+                    label: 'Current streak')),
+            const SizedBox(width: 9),
+            Expanded(
+                child: _Metric(
+                    icon: Icons.emoji_events,
+                    tint: const Color(0xFFDF4E78),
+                    bg: const Color(0xFFFFEAF0),
+                    value: '$completedDays',
+                    label: 'Total check-ins')),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Row(
+          children: [
+            Expanded(
+                child: _Metric(
+                    icon: Icons.calendar_today,
+                    tint: const Color(0xFFC49122),
+                    bg: const Color(0xFFFFF5D9),
+                    value: '$perfectDays',
+                    label: 'Perfect days')),
+            const SizedBox(width: 9),
+            Expanded(
+                child: _Metric(
+                    icon: Icons.my_location,
+                    tint: const Color(0xFF43966B),
+                    bg: const Color(0xFFE7F5EC),
+                    value: '$bestStreak',
+                    label: 'Best streak')),
+          ],
+        ),
+
+        // ── Habit performance ──
+        const FigmaSectionHead(title: 'Habit performance', note: null),
+        FigmaCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(
+            children: taskStats.entries.toList().asMap().entries.map((e) {
+              final idx = e.key;
+              final name = e.value.key;
+              final ratio = e.value.value;
+              final isLast = idx == taskStats.length - 1;
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  border: isLast
+                      ? null
+                      : Border(
+                          bottom: BorderSide(
+                              color: isDark
+                                  ? FigmaTokens.darkLine
+                                  : FigmaTokens.line)),
+                ),
+                child: FigmaPerformanceBar(
+                  label: name,
+                  percent: (ratio * 100).round(),
+                  color: perfBarColors[idx % perfBarColors.length],
+                ),
               );
             }).toList(),
           ),
         ),
-        const SizedBox(height: 24),
-
-        // ── Task performance ──
-        Text('Task Performance',
-            style: GoogleFonts.poppins(
-                fontSize: 16, fontWeight: FontWeight.w600, color: textColor)),
-        const SizedBox(height: 12),
-        ...taskStats.entries.toList().asMap().entries.map((e) {
-          final idx = e.key;
-          final name = e.value.key;
-          final (done, total) = e.value.value;
-          final p = total > 0 ? done / total : 0.0;
-          final color = taskColors[idx % taskColors.length];
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(name,
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: textColor),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    Text('${(p * 100).toInt()}%',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: color)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: p,
-                    minHeight: 6,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
+        const SizedBox(height: 8),
       ],
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
-  final Color cardBg, textColor, color;
-  final String title, value, subtitle;
+class _Metric extends StatelessWidget {
   final IconData icon;
-
-  const _StatCard({
-    required this.cardBg,
-    required this.textColor,
-    required this.title,
-    required this.value,
+  final Color tint;
+  final Color bg;
+  final String value;
+  final String label;
+  const _Metric({
     required this.icon,
-    required this.color,
-    required this.subtitle,
+    required this.tint,
+    required this.bg,
+    required this.value,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : FigmaTokens.ink;
+    return FigmaCard(
+      padding: const EdgeInsets.all(13),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 35,
+            height: 35,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              color: bg,
+              borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: tint, size: 18),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 9),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-                Text(value,
-                    style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: textColor)),
+                Text(value, style: FigmaTokens.heading(16, color: textColor)),
+                const SizedBox(height: 2),
+                Text(label,
+                    style: FigmaTokens.body(8, color: FigmaTokens.muted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
-          Text(subtitle, style: TextStyle(fontSize: 12, color: color)),
         ],
       ),
     );

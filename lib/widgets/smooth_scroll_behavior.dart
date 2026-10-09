@@ -37,7 +37,7 @@ class SmoothScrollBehavior extends ScrollBehavior {
       case TargetPlatform.windows:
         return GlowingOverscrollIndicator(
           axisDirection: details.direction,
-          color: const Color(0xFFFFA726), // Orange glow to match theme
+          color: const Color(0xFFFF7918), // Orange glow to match theme
           child: child,
         );
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:async';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
@@ -21,6 +22,7 @@ import 'package:seventy_five_hard_tracker/services/challenge_icon_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/services/task_templates.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
+import 'package:seventy_five_hard_tracker/core/theme/figma_tokens.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -277,18 +279,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     // The widget may have been disposed while awaiting the session stream.
     if (!mounted) return;
 
-    // Sync to cloud immediately if user is signed in
+    // Sync to cloud in the background if signed in — do NOT block navigation
+    // on the network, or a slow/failed sync would strand the user on the
+    // onboarding screen even though the challenge is already saved locally.
     if (FirebaseAuth.instance.currentUser != null) {
-      try {
-        final syncSvc = CloudSyncService();
-        final db = context.read<ChallengeBloc>().repository;
-        final taskRepo = context.read<RegularTaskBloc>().repository;
-        await syncSvc.syncToCloud(db, taskRepo);
-      } catch (_) {}
+      final syncSvc = CloudSyncService();
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
+      unawaited(syncSvc.syncToCloud(db, taskRepo).catchError((_) => false));
     }
 
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/home');
+      // The ChallengeBloc has already emitted ChallengeLoaded(hasActiveSession:
+      // true), so any existing Today/Home screen will rebuild to show the new
+      // challenge automatically. If onboarding was pushed on top of the main
+      // navigation (from the Today empty-state), just pop back to it to avoid
+      // stacking a second MainNavigationScreen. Otherwise (first run from the
+      // splash/initial screen) replace with /home.
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      } else {
+        navigator.pushReplacementNamed('/home');
+      }
     }
   }
 
@@ -394,7 +407,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.lock, color: Color(0xFFFFA726), size: 22),
+            Icon(Icons.lock, color: Color(0xFFFF7918), size: 22),
             SizedBox(width: 8),
             Text('Cloud Backup'),
           ],
@@ -445,7 +458,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     'Privacy Policy',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFFFFA726),
+                      color: Color(0xFFFF7918),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -460,7 +473,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     'Terms & Conditions',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFFFFA726),
+                      color: Color(0xFFFF7918),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -479,7 +492,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFA726),
+              backgroundColor: const Color(0xFFFF7918),
               foregroundColor: Colors.white,
             ),
             child: const Text('Enable Backup'),
@@ -538,13 +551,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Colors.orange, Colors.red],
-                    ),
+                    gradient: FigmaTokens.brandGradient,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.orange.withValues(
+                        color: FigmaTokens.coral.withValues(
                             alpha: 0.3 + (_pulseController.value * 0.3)),
                         blurRadius: 20 + (_pulseController.value * 20),
                         spreadRadius: _pulseController.value * 5,
@@ -552,14 +563,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ],
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
                       '75',
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      style: FigmaTokens.heading(48, color: Colors.white),
                     ),
                   ),
                 ),
@@ -576,11 +583,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             animatedTexts: [
               TypewriterAnimatedText(
                 '75 Hard Challenge',
-                textStyle: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+                textStyle: FigmaTokens.heading(32, color: FigmaTokens.ink),
                 speed: const Duration(milliseconds: 100),
               ),
             ],
@@ -613,7 +616,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           // Continue Button with Scale and Glow
           _isLoggingIn
               ? const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))
+                  valueColor: AlwaysStoppedAnimation<Color>(FigmaTokens.coral))
               : Column(
                   children: [
                     // Show different button based on auth state
@@ -622,8 +625,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       _buildAnimatedButton(
                         text: 'Sign In & Start Setup',
                         onPressed: handleInitialLogin,
-                        gradient: const LinearGradient(
-                            colors: [Colors.orange, Colors.red]),
+                        gradient: FigmaTokens.brandGradient,
                       ),
                       const SizedBox(height: 12),
                       // Guest/Local option
@@ -649,8 +651,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         ),
-                        gradient: const LinearGradient(
-                            colors: [Colors.orange, Colors.red]),
+                        gradient: FigmaTokens.brandGradient,
                       ),
                     ],
                   ],
@@ -696,7 +697,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         width: 8,
                         height: 8,
                         decoration: const BoxDecoration(
-                          color: Colors.orange,
+                          color: FigmaTokens.orange,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -942,7 +943,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 curve: Curves.easeInOut,
               );
             },
-            gradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
+            gradient: FigmaTokens.brandGradient,
           )
               .animate()
               .fadeIn(delay: 700.ms, duration: 400.ms)
@@ -1411,7 +1412,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _buildAnimatedButton(
             text: 'Start 75 Hard Challenge!',
             onPressed: _startChallenge,
-            gradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
+            gradient: FigmaTokens.brandGradient,
           ),
         ],
       ),

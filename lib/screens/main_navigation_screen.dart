@@ -20,7 +20,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   late final List<Widget> _screens = [
-    const HomeScreen(),
+    HomeScreen(
+      onGoToSquad: () => setState(() => _currentIndex = 4),
+    ),
     const RegularTasksScreen(),
     const JournalScreen(),
     const InsightsScreen(),
@@ -44,9 +46,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           }
           setState(() => _currentIndex = index);
         },
-        selectedItemColor: Colors.orange[700],
-        unselectedItemColor: isDark ? Colors.grey[500] : Colors.grey[600],
-        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        selectedItemColor: const Color(0xFFFF5449),
+        unselectedItemColor: isDark ? Colors.grey[500] : const Color(0xFFA59DA2),
+        backgroundColor: isDark ? const Color(0xFF1A1618) : Colors.white,
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 11,

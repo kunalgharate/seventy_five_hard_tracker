@@ -222,11 +222,11 @@ void main() {
         reason: 'InitialScreen must use a LinearGradient',
       );
 
-      // Verify AppColors.primary color value is #FFA726
+      // Verify AppColors.primary color value is #FF7918 (Figma --orange)
       expect(
-        mainDartContent.contains('0xFFFFA726'),
+        mainDartContent.contains('0xFFFF7918'),
         isTrue,
-        reason: 'AppColors.primary must be defined as 0xFFFFA726 (#FFA726)',
+        reason: 'AppColors.primary must be defined as 0xFFFF7918 (#FF7918)',
       );
     });
   });

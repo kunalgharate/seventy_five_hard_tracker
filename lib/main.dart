@@ -30,6 +30,7 @@ import 'features/human_accountability/presentation/bloc/accountability_bloc.dart
 import 'features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
+import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -42,10 +43,11 @@ import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// App-wide theme colors — single source of truth.
+/// Aligned to the Figma "Design Daily Metal App" palette.
 class AppColors {
-  static const primary = Color(0xFFFFA726);
-  static const secondary = Color(0xFFFF7043);
-  static const accent = Color(0xFFEC407A);
+  static const primary = Color(0xFFFF7918); // Figma --orange
+  static const secondary = Color(0xFFFF5449); // Figma --coral
+  static const accent = Color(0xFFED356B); // Figma --pink
 }
 
 void main() async {
@@ -141,14 +143,13 @@ class MyApp extends StatelessWidget {
         BlocProvider(
           create: (context) => DisciplineScoreBloc(),
         ),
-        BlocProvider(
-          create: (context) => DisciplineScoreBloc(),
-        ),
       ],
       child: MaterialApp(
         title: 'Daily mettle',
         debugShowCheckedModeBanner: false,
-        theme: _buildTheme(),
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
+        themeMode: ThemeMode.system,
         home: const InitialScreen(),
         navigatorObservers: connectivity.isFirebaseReady
             ? [AnalyticsService().getObserver()]
@@ -166,87 +167,110 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  ThemeData _buildTheme() {
+  ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final onSurface = isDark ? Colors.white : Colors.black87;
+    final onSurfaceMuted = isDark ? Colors.white70 : Colors.black54;
     return ThemeData(
       useMaterial3: true,
+      brightness: brightness,
+      scaffoldBackgroundColor:
+          isDark ? const Color(0xFF1A1618) : const Color(0xFFFAF7F5),
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
-        brightness: Brightness.light,
+        brightness: brightness,
+      ).copyWith(
+        // Warm-neutral surfaces that pair with the brand palette and give
+        // clear contrast against white text in dark mode.
+        surface: isDark ? const Color(0xFF1A1618) : Colors.white,
+        onSurface: onSurface,
       ),
-      textTheme: GoogleFonts.interTextTheme().copyWith(
-        displayLarge: GoogleFonts.poppins(
+      cardColor: isDark ? const Color(0xFF262123) : Colors.white,
+      cardTheme: CardThemeData(
+        color: isDark ? const Color(0xFF262123) : Colors.white,
+        elevation: isDark ? 0 : 1,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(FigmaTokens.rCard),
+          side: BorderSide(
+            color: isDark
+                ? const Color(0xFF3A3335)
+                : const Color(0xFFEEE9E7),
+          ),
+        ),
+      ),
+      textTheme: GoogleFonts.dmSansTextTheme().copyWith(
+        displayLarge: GoogleFonts.manrope(
             fontSize: 32,
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: -0.5),
-        displayMedium: GoogleFonts.poppins(
+        displayMedium: GoogleFonts.manrope(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: -0.25),
-        displaySmall: GoogleFonts.poppins(
-            fontSize: 24, fontWeight: FontWeight.w600, color: Colors.black87),
-        headlineLarge: GoogleFonts.poppins(
-            fontSize: 22, fontWeight: FontWeight.w600, color: Colors.black87),
-        headlineMedium: GoogleFonts.poppins(
-            fontSize: 20, fontWeight: FontWeight.w600, color: Colors.black87),
-        headlineSmall: GoogleFonts.poppins(
-            fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
-        titleLarge: GoogleFonts.inter(
+        displaySmall: GoogleFonts.manrope(
+            fontSize: 24, fontWeight: FontWeight.w600, color: onSurface),
+        headlineLarge: GoogleFonts.manrope(
+            fontSize: 22, fontWeight: FontWeight.w600, color: onSurface),
+        headlineMedium: GoogleFonts.manrope(
+            fontSize: 20, fontWeight: FontWeight.w600, color: onSurface),
+        headlineSmall: GoogleFonts.manrope(
+            fontSize: 18, fontWeight: FontWeight.w600, color: onSurface),
+        titleLarge: GoogleFonts.dmSans(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.15),
-        titleMedium: GoogleFonts.inter(
+        titleMedium: GoogleFonts.dmSans(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.1),
-        titleSmall: GoogleFonts.inter(
+        titleSmall: GoogleFonts.dmSans(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.1),
-        bodyLarge: GoogleFonts.inter(
+        bodyLarge: GoogleFonts.dmSans(
             fontSize: 16,
             fontWeight: FontWeight.normal,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.5),
-        bodyMedium: GoogleFonts.inter(
+        bodyMedium: GoogleFonts.dmSans(
             fontSize: 14,
             fontWeight: FontWeight.normal,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.25),
-        bodySmall: GoogleFonts.inter(
+        bodySmall: GoogleFonts.dmSans(
             fontSize: 12,
             fontWeight: FontWeight.normal,
-            color: Colors.black54,
+            color: onSurfaceMuted,
             letterSpacing: 0.4),
-        labelLarge: GoogleFonts.inter(
+        labelLarge: GoogleFonts.dmSans(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.1),
-        labelMedium: GoogleFonts.inter(
+        labelMedium: GoogleFonts.dmSans(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
+            color: onSurface,
             letterSpacing: 0.5),
-        labelSmall: GoogleFonts.inter(
+        labelSmall: GoogleFonts.dmSans(
             fontSize: 10,
             fontWeight: FontWeight.w500,
-            color: Colors.black54,
+            color: onSurfaceMuted,
             letterSpacing: 0.5),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black87,
+        foregroundColor: onSurface,
         titleTextStyle: TextStyle(
-            fontSize: 20, fontWeight: FontWeight.w600, color: Colors.black87),
-        systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark),
+            fontSize: 20, fontWeight: FontWeight.w600, color: onSurface),
+        systemOverlayStyle:
+            isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -260,13 +284,15 @@ class MyApp extends StatelessWidget {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: isDark ? Colors.grey[850] : Colors.grey[50],
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[300]!)),
+            borderSide: BorderSide(
+                color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[300]!)),
+            borderSide: BorderSide(
+                color: isDark ? Colors.grey[700]! : Colors.grey[300]!)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: AppColors.primary, width: 2)),
@@ -278,20 +304,22 @@ class MyApp extends StatelessWidget {
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
           elevation: 4, shape: CircleBorder()),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         elevation: 8,
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
         selectedItemColor: AppColors.primary,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: isDark ? Colors.grey[500] : Colors.grey,
         type: BottomNavigationBarType.fixed,
-        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600),
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      dividerTheme:
-          DividerThemeData(color: Colors.grey[200], thickness: 1, space: 1),
+      dividerTheme: DividerThemeData(
+          color: isDark ? Colors.grey[800] : Colors.grey[200],
+          thickness: 1,
+          space: 1),
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.grey[100]!,
+        backgroundColor: isDark ? Colors.grey[800]! : Colors.grey[100]!,
         selectedColor: AppColors.primary.withValues(alpha: 0.2),
-        labelStyle: const TextStyle(color: Colors.black87),
+        labelStyle: TextStyle(color: onSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
@@ -413,10 +441,11 @@ class _InitialScreenState extends State<InitialScreen>
     final bloc = context.read<ChallengeBloc>();
     final taskRepo = context.read<RegularTaskBloc>().repository;
 
-    // Initialize local database and permissions
-    try {
-      await SmartNotificationService().requestPermissions();
-    } catch (_) {}
+    // Request notification permission WITHOUT blocking the splash flow.
+    // Awaiting this would freeze the splash behind the system permission
+    // dialog until the user responds; instead we fire-and-forget so DB init
+    // and navigation proceed normally.
+    unawaited(SmartNotificationService().requestPermissions().catchError((_) {}));
 
     await bloc.repository.init();
     await taskRepo.init();
@@ -537,7 +566,7 @@ class _InitialScreenState extends State<InitialScreen>
         const SizedBox(height: 4),
         Text(
           'HABIT & CHALLENGE',
-          style: GoogleFonts.inter(
+          style: GoogleFonts.dmSans(
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: Colors.white.withValues(alpha: 0.75),
@@ -579,7 +608,7 @@ class _InitialScreenState extends State<InitialScreen>
         Text(
           'Challenge Your Body,\nStrengthen Your Mind',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
+          style: GoogleFonts.dmSans(
             fontSize: 14,
             fontWeight: FontWeight.w400,
             color: Colors.white.withValues(alpha: 0.88),
@@ -649,7 +678,7 @@ class _InitialScreenState extends State<InitialScreen>
         const SizedBox(height: 12),
         Text(
           'Fetching your daily quote…',
-          style: GoogleFonts.inter(
+          style: GoogleFonts.dmSans(
             fontSize: 13,
             color: Colors.white.withValues(alpha: 0.7),
             letterSpacing: 0.2,
@@ -704,7 +733,7 @@ class _InitialScreenState extends State<InitialScreen>
             Flexible(
               child: Text(
                 quote.author,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.dmSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: Colors.white.withValues(alpha: 0.9),
@@ -726,7 +755,7 @@ class _InitialScreenState extends State<InitialScreen>
               const SizedBox(width: 4),
               Text(
                 'Offline quote',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.dmSans(
                   fontSize: 10,
                   color: Colors.white.withValues(alpha: 0.45),
                 ),

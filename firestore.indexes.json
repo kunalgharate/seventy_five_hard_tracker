@@ -28,8 +28,82 @@
       "collectionGroup": "accountability_tasks",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "partnershipId", "order": "ASCENDING" },
+        { "fieldPath": "assignedByUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "partnershipId", "order": "ASCENDING" },
+        { "fieldPath": "accountableUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "challengeId", "order": "ASCENDING" },
+        { "fieldPath": "assignedByUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "assignedByUid", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "partnerUid", "order": "ASCENDING" },
+        { "fieldPath": "assignedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountableUserIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountableUserIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "proofStatus", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedByUid", "order": "ASCENDING" },
+        { "fieldPath": "assignedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountableUid", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fcm_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientUid", "order": "ASCENDING" },
+        { "fieldPath": "delivered", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {

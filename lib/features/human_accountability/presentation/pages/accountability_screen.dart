@@ -26,6 +26,8 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/main.dart';
 import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
+import 'package:seventy_five_hard_tracker/core/theme/figma_tokens.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 
 // ── Main screen ──────────────────────────────────────────────────────────────
 
@@ -40,9 +42,7 @@ class AccountabilityScreen extends StatefulWidget {
   State<AccountabilityScreen> createState() => _AccountabilityScreenState();
 }
 
-class _AccountabilityScreenState extends State<AccountabilityScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+class _AccountabilityScreenState extends State<AccountabilityScreen> {
   StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
   int _reviewBadgeCount = 0;
@@ -50,7 +50,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
     context.read<AccountabilityBloc>().add(LoadAccountabilityData());
     _subscribeToTaskStream();
     _loadReviewBadge();
@@ -79,7 +78,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   void dispose() {
     _tasksStreamSub?.cancel();
     _assignedByMeStreamSub?.cancel();
-    _tabs.dispose();
     super.dispose();
   }
 
@@ -87,8 +85,32 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: CustomAppBar(
-        title: 'Accountability',
+        title: 'Squad',
         actions: [
+          // Reviews — moved out of the old nested tab bar into a single action.
+          IconButton(
+            tooltip: 'Reviews',
+            icon: Badge(
+              isLabelVisible: _reviewBadgeCount > 0,
+              label: Text('$_reviewBadgeCount'),
+              child: const Icon(Icons.rate_review_outlined),
+            ),
+            onPressed: () {
+              Navigator.of(context)
+                  .push(
+                    MaterialPageRoute(
+                      builder: (_) => BlocProvider.value(
+                        value: context.read<AccountabilityBloc>(),
+                        child: const Scaffold(
+                          appBar: CustomAppBar(title: 'Reviews'),
+                          body: ReviewsTabV2(),
+                        ),
+                      ),
+                    ),
+                  )
+                  .then((_) => _loadReviewBadge());
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -98,67 +120,26 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildTabBar(),
-          Expanded(
-            child: BlocConsumer<AccountabilityBloc, AccountabilityState>(
-              listener: _handleStateChange,
-              builder: (context, state) {
-                if (state is AccountabilityLoading ||
-                    state is AccountabilityInitial) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (state is AccountabilityError) {
-                  return _buildError(state.message);
-                }
-                final loaded = state is AccountabilityLoaded ? state : null;
-                return TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _PartnersTab(
-                      partners: loaded?.partners ?? [],
-                      incomingRequests: loaded?.incomingRequests ?? [],
-                      emailInvitations: loaded?.emailInvitations ?? [],
-                      taskRequests: loaded?.taskRequests ?? [],
-                    ),
-                    const ReviewsTabV2(),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+      body: BlocConsumer<AccountabilityBloc, AccountabilityState>(
+        listener: _handleStateChange,
+        builder: (context, state) {
+          if (state is AccountabilityLoading ||
+              state is AccountabilityInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (state is AccountabilityError) {
+            return _buildError(state.message);
+          }
+          final loaded = state is AccountabilityLoaded ? state : null;
+          return _PartnersTab(
+            partners: loaded?.partners ?? [],
+            incomingRequests: loaded?.incomingRequests ?? [],
+            emailInvitations: loaded?.emailInvitations ?? [],
+            taskRequests: loaded?.taskRequests ?? [],
+          );
+        },
       ),
       floatingActionButton: _buildFab(),
-    );
-  }
-
-  Widget _buildTabBar() {
-    return Container(
-      color: AppColors.primary,
-      child: TabBar(
-        controller: _tabs,
-        indicatorColor: Colors.white,
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.white70,
-        labelStyle: GoogleFonts.inter(
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-        ),
-        tabs: [
-          const Tab(
-              icon: Icon(Icons.people_outline, size: 18), text: 'Partners'),
-          Tab(
-            icon: Badge(
-              isLabelVisible: _reviewBadgeCount > 0,
-              label: Text('$_reviewBadgeCount'),
-              child: const Icon(Icons.rate_review_outlined, size: 18),
-            ),
-            text: 'Reviews',
-          ),
-        ],
-      ),
     );
   }
 
@@ -221,156 +202,25 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
         ),
       );
     } else {
-      _showAddPartnerByEmail();
+      _showEmailInviteSheet();
     }
   }
 
-  void _showAddPartnerByEmail() {
-    final emailCtrl = TextEditingController();
-    final svc = AccountabilityService();
-    final bloc = context.read<AccountabilityBloc>();
-
+  /// Opens the proper email-invite sheet which sends a PENDING invitation
+  /// (via SendEmailInvite) so the recipient can accept it on their device.
+  /// This replaces the old auto-accept path (_showAddPartnerByEmail →
+  /// ensurePartnership) which created an already-accepted partnership and
+  /// left the recipient with nothing to accept.
+  void _showEmailInviteSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) {
-        bool looking = false;
-        String? error;
-
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-                left: 20,
-                right: 20,
-                top: 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Add Partner by Email',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Enter the email of the person you want as an '
-                    'accountability partner.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      hintText: 'partner@email.com',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      errorText: error,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onSubmitted: (_) {},
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: looking
-                          ? null
-                          : () async {
-                              final email = emailCtrl.text.trim();
-                              if (email.isEmpty || !email.contains('@')) {
-                                setSheetState(
-                                    () => error = 'Enter a valid email');
-                                return;
-                              }
-                              setSheetState(() {
-                                looking = true;
-                                error = null;
-                              });
-                              try {
-                                final user = await svc.findUserByEmail(email);
-                                if (user == null) {
-                                  setSheetState(() {
-                                    looking = false;
-                                    error = 'No user found with this email. '
-                                        'They need to join DailyMettle first.';
-                                  });
-                                  // TODO: add Share button to invite
-                                  return;
-                                }
-                                // Auto-create partnership
-                                await svc.ensurePartnership(
-                                  user.uid,
-                                  user.displayName,
-                                );
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                bloc.add(LoadAccountabilityData());
-                                _loadReviewBadge();
-                                if (mounted) {
-                                  _showSnack(
-                                    '${user.displayName} added as partner!',
-                                    isSuccess: true,
-                                  );
-                                }
-                              } catch (e) {
-                                setSheetState(() {
-                                  looking = false;
-                                  error = 'Failed: $e';
-                                });
-                              }
-                            },
-                      icon: looking
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.person_add),
-                      label: Text(looking ? 'Looking up...' : 'Add Partner'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+      builder: (_) => BlocProvider.value(
+        value: context.read<AccountabilityBloc>(),
+        child: const _InviteByEmailSheet(),
+      ),
+    ).then((_) => _loadReviewBadge());
   }
 
   Widget _buildError(String message) {
@@ -469,44 +319,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen>
         content: Text(msg),
         backgroundColor: isSuccess ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // ── Invite sheet ─────────────────────────────────────────────────
-
-  // ignore: unused_element
-  void _showInviteSheet(BuildContext context) {
-    final syncService = CloudSyncService();
-    if (!syncService.isSignedIn) {
-      Navigator.of(context).pushNamed('/login');
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BlocProvider.value(
-        value: context.read<AccountabilityBloc>(),
-        child: const _InvitePartnerSheet(),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  void _showJoinSheet(BuildContext context) {
-    final syncService = CloudSyncService();
-    if (!syncService.isSignedIn) {
-      Navigator.of(context).pushNamed('/login');
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BlocProvider.value(
-        value: context.read<AccountabilityBloc>(),
-        child: const _JoinWithCodeSheet(),
       ),
     );
   }
@@ -918,6 +730,14 @@ class _PartnersTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
+        // ── Figma squad stats banner ──
+        _SquadBanner(
+          partners: accepted.length,
+          incoming: incomingRequests.length + emailInvitations.length,
+          taskRequests: taskRequests.length,
+        ),
+        const SizedBox(height: 14),
+
         // ── Quick action cards (design: prominent Create + Invite) ──
         Row(
           children: [
@@ -925,7 +745,7 @@ class _PartnersTab extends StatelessWidget {
               child: _QuickActionCard(
                 icon: Icons.add_task,
                 label: 'Create task',
-                gradient: const [Color(0xFFFF6B35), Color(0xFFFF8E53)],
+                gradient: const [Color(0xFFFF7918), Color(0xFFFF5449)],
                 onTap: () async {
                   final result = await CreateTaskSheet.show(context);
                   if (result == true && context.mounted) {
@@ -943,10 +763,18 @@ class _PartnersTab extends StatelessWidget {
                 label: 'Invite partner',
                 gradient: const [Color(0xFF7B61FF), Color(0xFF9B8AFF)],
                 onTap: () {
-                  // Trigger the email-based invite from the main screen
+                  // Trigger the email-based invite from the main screen.
+                  // Uses the proper SendEmailInvite (pending) flow so the
+                  // recipient can accept it on their device.
                   final screenState = context
                       .findAncestorStateOfType<_AccountabilityScreenState>();
-                  screenState?._showAddPartnerByEmail();
+                  if (screenState != null) {
+                    if (!CloudSyncService().isSignedIn) {
+                      screenState._showInviteDialog();
+                    } else {
+                      screenState._showEmailInviteSheet();
+                    }
+                  }
                 },
               ),
             ),
@@ -1051,8 +879,230 @@ class _PartnersTab extends StatelessWidget {
             (inv) => _EmailInvitationCard(invitation: inv),
           ),
         ],
+
+        // ── Figma leaderboard (squad streaks) ──
+        if (accepted.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _SquadLeaderboard(partners: accepted),
+        ],
       ],
     );
+  }
+}
+
+/// Figma squad stats banner: Partners / Shared / Approved / Pending counts.
+class _SquadBanner extends StatelessWidget {
+  final int partners;
+  final int incoming;
+  final int taskRequests;
+  const _SquadBanner({
+    required this.partners,
+    required this.incoming,
+    required this.taskRequests,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final items = [
+      ('$partners', 'Partners', false),
+      ('$taskRequests', 'Shared', false),
+      ('$incoming', 'Requests', true),
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+      decoration: BoxDecoration(
+        color: isDark ? FigmaTokens.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: isDark ? FigmaTokens.darkLine : FigmaTokens.line),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0)
+              Container(
+                  width: 1,
+                  height: 28,
+                  color: isDark ? FigmaTokens.darkLine : FigmaTokens.line),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(items[i].$1,
+                      style: FigmaTokens.heading(16,
+                          color: items[i].$3
+                              ? FigmaTokens.orange
+                              : (isDark ? Colors.white : FigmaTokens.ink))),
+                  const SizedBox(height: 2),
+                  Text(items[i].$2,
+                      style: FigmaTokens.body(9, color: FigmaTokens.muted)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Figma leaderboard: dark gradient card ranking squad members by streak,
+/// with the current user highlighted. Uses real partners + the user's
+/// current streak from ChallengeBloc.
+class _SquadLeaderboard extends StatelessWidget {
+  final List<AccountabilityPartner> partners;
+  const _SquadLeaderboard({required this.partners});
+
+  int _myStreak(BuildContext context) {
+    final state = context.read<ChallengeBloc>().state;
+    if (state is ChallengeLoaded) {
+      final sorted = [...state.currentProgress]
+        ..sort((a, b) => b.date.compareTo(a.date));
+      int streak = 0;
+      for (final p in sorted) {
+        if (p.isCompleted) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+      return streak;
+    }
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final myStreak = _myStreak(context);
+    final myName = AccountabilityService().currentUserDisplayName;
+
+    // Build members: me + partners. Partner streaks aren't locally known, so we
+    // show their last-known value if available (role-based placeholder = 0).
+    final members = <({String name, String initials, int streak, bool me})>[
+      (
+        name: myName.isEmpty ? 'You' : myName,
+        initials: _initials(myName.isEmpty ? 'You' : myName),
+        streak: myStreak,
+        me: true,
+      ),
+      ...partners.map((p) => (
+            name: p.partnerName,
+            initials: _initials(p.partnerName),
+            streak: 0,
+            me: false,
+          )),
+    ]..sort((a, b) => b.streak.compareTo(a.streak));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 4, 2, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Leaderboard', style: FigmaTokens.heading(17)),
+                    const SizedBox(height: 3),
+                    Text('Current squad streaks',
+                        style: FigmaTokens.body(11, color: FigmaTokens.muted)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.emoji_events, color: FigmaTokens.orange),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+          decoration: BoxDecoration(
+            gradient: FigmaTokens.darkCardGradient,
+            borderRadius: BorderRadius.circular(19),
+          ),
+          child: Column(
+            children: List.generate(members.length, (i) {
+              final m = members[i];
+              final isLast = i == members.length - 1;
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: m.me ? Colors.white.withValues(alpha: 0.07) : null,
+                  borderRadius: m.me ? BorderRadius.circular(11) : null,
+                  border: isLast
+                      ? null
+                      : Border(
+                          bottom: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.09))),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      child: Text('${i + 1}',
+                          textAlign: TextAlign.center,
+                          style: FigmaTokens.heading(11,
+                              color: i == 0
+                                  ? const Color(0xFFFFBD6F)
+                                  : const Color(0xFFB8AAB0))),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        gradient: FigmaTokens.tileGradient(i),
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(m.initials,
+                          style: FigmaTokens.heading(9, color: Colors.white)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(m.name,
+                              style: FigmaTokens.body(11,
+                                  weight: FontWeight.w700,
+                                  color: Colors.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          Text(m.me ? 'You' : 'Squad member',
+                              style: FigmaTokens.body(8,
+                                  color: const Color(0xFFA99CA1))),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.local_fire_department,
+                        size: 14, color: Color(0xFFFF9A48)),
+                    const SizedBox(width: 3),
+                    Text('${m.streak}',
+                        style: FigmaTokens.heading(11,
+                            color: const Color(0xFFFF9A48))),
+                    const SizedBox(width: 3),
+                    Text('days',
+                        style: FigmaTokens.body(8,
+                            color: const Color(0xFFA99CA1))),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
   }
 }
 
@@ -2686,127 +2736,6 @@ class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
           ),
         );
     Navigator.pop(context);
-  }
-}
-
-// ── Join With Code Sheet ─────────────────────────────────────────────────────
-
-class _JoinWithCodeSheet extends StatefulWidget {
-  const _JoinWithCodeSheet();
-
-  @override
-  State<_JoinWithCodeSheet> createState() => _JoinWithCodeSheetState();
-}
-
-class _JoinWithCodeSheetState extends State<_JoinWithCodeSheet> {
-  final _codeCtrl = TextEditingController();
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _codeCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SheetHandle(),
-            const SizedBox(height: 8),
-            Text(
-              'Join with Invite Code',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter the 6-character code your partner shared with you.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _codeCtrl,
-              textCapitalization: TextCapitalization.characters,
-              textAlign: TextAlign.center,
-              maxLength: 6,
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 6,
-              ),
-              decoration: InputDecoration(
-                hintText: 'XXXXXX',
-                hintStyle: TextStyle(
-                  color: Colors.grey[400],
-                  letterSpacing: 6,
-                  fontSize: 24,
-                ),
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.secondary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Join',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _submit() {
-    final code = _codeCtrl.text.trim().toUpperCase();
-    if (code.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a 6-character code')),
-      );
-      return;
-    }
-    setState(() => _loading = true);
-    // Dispatch the event — the parent AccountabilityScreen's BlocConsumer
-    // listener (_handleStateChange) will close this sheet on success/failure
-    // via the navigator, so we do NOT pop here.
-    context.read<AccountabilityBloc>().add(AcceptInvite(code));
   }
 }
 

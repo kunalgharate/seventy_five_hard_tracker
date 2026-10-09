@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:glassmorphism/glassmorphism.dart';
+import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/task_detail_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -285,54 +285,63 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 ),
               ),
             ),
-          GlassmorphicContainer(
-            width: double.infinity,
-            height: 88,
-            borderRadius: 16,
-            blur: 20,
-            alignment: Alignment.bottomCenter,
-            border: 2,
-            linearGradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: widget.isCompleted
-                  ? [
-                      Colors.green[400]!.withValues(alpha: 0.1),
-                      Colors.green[600]!.withValues(alpha: 0.05),
-                    ]
-                  : widget.isEditable
-                      ? [
-                          Colors.blue[400]!.withValues(alpha: 0.1),
-                          Colors.purple[400]!.withValues(alpha: 0.05),
-                        ]
-                      : [
-                          Colors.red[400]!.withValues(alpha: 0.1),
-                          Colors.orange[400]!.withValues(alpha: 0.05),
-                        ],
-            ),
-            borderGradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: widget.isCompleted
-                  ? [
-                      Colors.green[400]!.withValues(alpha: 0.5),
-                      Colors.green[600]!.withValues(alpha: 0.2),
-                    ]
-                  : widget.isEditable
-                      ? [
-                          Colors.blue[400]!.withValues(alpha: 0.5),
-                          Colors.purple[400]!.withValues(alpha: 0.2),
-                        ]
-                      : [
-                          Colors.red[400]!.withValues(alpha: 0.5),
-                          Colors.orange[400]!.withValues(alpha: 0.2),
-                        ],
-            ),
-            child: _buildCardContent(),
-          ),
+          _buildCleanCard(context),
         ],
       ),
     ).animate().slideX(delay: ((widget.dayNumber ?? 0) * 100).ms);
+  }
+
+  /// Consistent corner radius used across all task cards.
+  static const double kCardRadius = 16;
+
+  /// Status accent color used for the card's left edge and subtle tint.
+  /// Completed = green, active = per-task color, missed = red.
+  Color _statusAccent() {
+    if (widget.isCompleted) return Colors.green;
+    if (!widget.isEditable) return Colors.red;
+    return DynamicColorService.getColorForText(widget.challenge.title);
+  }
+
+  /// Clean, theme-aware white/dark card that replaces the old glassmorphism
+  /// container. Uses the app surface color so it adapts to dark mode, a
+  /// consistent border radius, a soft shadow, and a per-task colored left edge.
+  Widget _buildCleanCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = _statusAccent();
+    final surface = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 88),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(kCardRadius),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(kCardRadius),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Per-task / status colored left accent bar.
+            Container(width: 4, color: accent),
+            Expanded(child: _buildCardContent()),
+          ],
+        ),
+      ),
+    );
   }
 
   bool get _hasPartner =>
@@ -395,7 +404,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                       color: widget.isCompleted
                           ? Colors.green[700]
                           : widget.isEditable
-                              ? Colors.grey[800]
+                              ? Theme.of(context).textTheme.titleMedium?.color
                               : Colors.red[700],
                       decoration: widget.isCompleted
                           ? TextDecoration.lineThrough

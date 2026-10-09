@@ -150,15 +150,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: AppColors.primary,
           flexibleSpace: FlexibleSpaceBar(
             background: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
                     AppColors.primary,
-                    AppColors.primary
-                        .withBlue(255), // gradient end (shifted blue channel)
+                    AppColors.secondary,
+                    AppColors.accent,
                   ],
+                  stops: [0.0, 0.55, 1.0],
                 ),
               ),
               child: SafeArea(

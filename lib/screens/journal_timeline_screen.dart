@@ -17,8 +17,10 @@ class JournalTimelineScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor:
+          isDark ? const Color(0xFF1A1618) : const Color(0xFFFAF7F5),
       appBar: const CustomAppBar(
         title: 'Journal History',
       ),

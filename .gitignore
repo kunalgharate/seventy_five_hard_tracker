@@ -58,3 +58,4 @@ key.properties
 *-base64*.txt
 dayschallenge-*.json
 service-account*.json
+ios/build/

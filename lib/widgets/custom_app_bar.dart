@@ -21,62 +21,32 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFA726), // Orange - matches splash screen
-            Color(0xFFFF7043), // Orange-red
-            Color(0xFFEC407A), // Pink - matches splash screen
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-        ),
-        centerTitle: centerTitle,
-        backgroundColor: Colors.transparent,
-        elevation: elevation,
-        leading: leading,
-        automaticallyImplyLeading: automaticallyImplyLeading,
-        iconTheme: const IconThemeData(
-          color: Colors.white,
-          size: 24,
-        ),
-        actions: actions?.map((action) {
-          // Ensure action buttons have white color
-          if (action is IconButton) {
-            return IconButton(
-              onPressed: action.onPressed,
-              icon: action.icon,
-              color: Colors.white,
-              iconSize: 24,
-            );
-          }
-          return action;
-        }).toList(),
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-          statusBarBrightness: Brightness.dark,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF1A1618) : const Color(0xFFFAF7F5);
+    final fg = isDark ? Colors.white : const Color(0xFF282429);
+
+    return AppBar(
+      title: Text(
+        title,
+        style: TextStyle(
+          color: fg,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.2,
         ),
       ),
+      centerTitle: centerTitle,
+      backgroundColor: bg,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 0,
+      elevation: elevation,
+      leading: leading,
+      automaticallyImplyLeading: automaticallyImplyLeading,
+      iconTheme: IconThemeData(color: fg, size: 24),
+      actionsIconTheme: IconThemeData(color: fg, size: 24),
+      actions: actions,
+      systemOverlayStyle:
+          isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
     );
   }
 
@@ -106,9 +76,9 @@ extension CustomAppBarExtension on Widget {
 
 // Utility class for consistent app bar styling
 class AppBarTheme {
-  static const Color primaryColor = Color(0xFFFFA726);
-  static const Color secondaryColor = Color(0xFFFF7043);
-  static const Color accentColor = Color(0xFFEC407A);
+  static const Color primaryColor = Color(0xFFFF7918);
+  static const Color secondaryColor = Color(0xFFFF5449);
+  static const Color accentColor = Color(0xFFED356B);
 
   static const LinearGradient gradient = LinearGradient(
     begin: Alignment.topLeft,

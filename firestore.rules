@@ -172,7 +172,9 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && (resource.data.assignedByUid == request.auth.uid
                       || resource.data.accountableUid == request.auth.uid
-                      || resource.data.partnerUid == request.auth.uid);
+                      || resource.data.partnerUid == request.auth.uid
+                      || (resource.data.accountableUserIds != null
+                          && request.auth.uid in resource.data.accountableUserIds));
       allow create: if request.auth != null
                     && request.resource.data.assignedByUid == request.auth.uid;
       allow update: if request.auth != null

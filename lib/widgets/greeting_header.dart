@@ -17,15 +17,21 @@ class GreetingHeader extends StatelessWidget {
 
   String get _greeting {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    return hour < 17 ? 'Welcome' : 'Welcome back';
   }
 
   String get _userName {
     final user = FirebaseAuth.instance.currentUser;
-    if (user?.displayName != null && user!.displayName!.isNotEmpty) {
-      return user.displayName!.split(' ').first;
+    final display = user?.displayName;
+    if (display != null && display.trim().isNotEmpty) {
+      return display.trim().split(' ').first;
+    }
+    final email = user?.email;
+    if (email != null && email.contains('@')) {
+      final prefix = email.split('@').first.trim();
+      if (prefix.isNotEmpty) {
+        return prefix[0].toUpperCase() + prefix.substring(1);
+      }
     }
     return 'there';
   }
@@ -121,8 +127,7 @@ class GreetingHeader extends StatelessWidget {
   Widget _buildAvatar() {
     final user = FirebaseAuth.instance.currentUser;
     if (user?.photoURL != null && user!.photoURL!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+      return ClipOval(
         child: Image.network(
           user.photoURL!,
           width: 44,
@@ -140,11 +145,13 @@ class GreetingHeader extends StatelessWidget {
     return Container(
       width: 44,
       height: 44,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFF6B35), Color(0xFFFF3D7F)],
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFFF7918), Color(0xFFFF5449), Color(0xFFED356B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(14),
+        shape: BoxShape.circle,
       ),
       child: Center(
         child: Text(

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/app_user.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 
 /// Bottom sheet to create a new task from the Squad screen.
 /// Reviewer assignment is optional — tasks without reviewers
@@ -107,24 +111,50 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         accountableName = _selectedReviewer!.displayName;
       }
 
-      final task = await _svc.createAccountabilityTask(
-        accountableUid: accountableUid,
-        accountableName: accountableName,
-        partnershipId: partnershipId ?? '',
-        title: title,
-        description: _descCtrl.text.trim(),
-      );
+      // ── Routine tasks must appear in the Habits tab ──
+      // Create a local RegularTask so it shows up under "Your habits",
+      // not only as an accountability task.
+      if (_taskType == 'regular') {
+        final regularTask = RegularTask(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: title,
+          category: 'general',
+          reminderType: 'once',
+          isReminderEnabled: false,
+          createdAt: DateTime.now(),
+        );
+        if (mounted) {
+          context.read<RegularTaskBloc>().add(AddRegularTask(regularTask));
+        }
+      }
+
+      // Create an accountability task when the task is a 75 Hard task OR a
+      // reviewer was chosen (so the partner gets something to review).
+      // A plain routine task with no reviewer only needs the RegularTask above.
+      bool ok = true;
+      if (_taskType == 'hard' || _selectedReviewer != null) {
+        final created = await _svc.createAccountabilityTask(
+          accountableUid: accountableUid,
+          accountableName: accountableName,
+          partnershipId: partnershipId ?? '',
+          title: title,
+          description: _descCtrl.text.trim(),
+        );
+        ok = created != null;
+      }
 
       if (!mounted) return;
       setState(() => _creating = false);
 
-      if (task != null) {
+      if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_selectedReviewer != null
                 ? 'Task created! ${_selectedReviewer!.displayName} '
                     'will be asked to review.'
-                : 'Task created!'),
+                : _taskType == 'regular'
+                    ? 'Routine task added to your Habits!'
+                    : 'Task created!'),
             backgroundColor: Colors.green,
           ),
         );

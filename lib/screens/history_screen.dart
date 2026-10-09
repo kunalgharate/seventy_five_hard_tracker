@@ -352,7 +352,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFFA726),
+            backgroundColor: const Color(0xFFFF7918),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -391,7 +391,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 _dispatchRestart(session.id);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFA726),
+                backgroundColor: const Color(0xFFFF7918),
               ),
               child: const Text(
                 'End & Restart',

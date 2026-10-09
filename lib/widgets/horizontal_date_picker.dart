@@ -94,7 +94,7 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFFFFA726),
+                      color: Color(0xFFFF7918),
                     ),
                   ),
                 ),
@@ -150,8 +150,8 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    Color(0xFFFFA726),
-                                    Color(0xFFFF7043),
+                                    Color(0xFFFF7918),
+                                    Color(0xFFFF5449),
                                   ],
                                 )
                               : null,
@@ -171,7 +171,7 @@ class _HorizontalDatePickerState extends State<HorizontalDatePicker> {
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: const Color(0xFFFFA726)
+                                    color: const Color(0xFFFF7918)
                                         .withValues(alpha: 0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),

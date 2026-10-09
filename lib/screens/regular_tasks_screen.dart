@@ -21,6 +21,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/edit_regular_task_sheet.dart';
+import 'package:seventy_five_hard_tracker/core/theme/figma_tokens.dart';
 
 class RegularTasksScreen extends StatefulWidget {
   const RegularTasksScreen({super.key});
@@ -61,7 +62,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
         }
 
         return Scaffold(
-          appBar: const CustomAppBar(title: 'Regular Tasks'),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? FigmaTokens.darkBg
+              : FigmaTokens.soft,
+          appBar: const CustomAppBar(title: 'Your habits'),
           body: state is RegularTaskLoading
               ? const Center(child: CircularProgressIndicator())
               : tasks.isNotEmpty
@@ -73,7 +77,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               : FloatingActionButton(
                   heroTag: 'addRegularTask',
                   onPressed: () => _showAddTaskSheet(context),
-                  backgroundColor: Colors.orange[600],
+                  backgroundColor: FigmaTokens.orange,
                   child: const Icon(Icons.add, color: Colors.white),
                 ),
         );
@@ -274,7 +278,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                             : Icons.person_add_alt_1_outlined,
                         color:
                             (_taskCollaborators[task.id]?.isNotEmpty ?? false)
-                                ? const Color(0xFFFFA726)
+                                ? const Color(0xFFFF7918)
                                 : Colors.grey[500],
                         size: 16,
                       ),
@@ -532,7 +536,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Create Regular Task'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange[600],
+                backgroundColor: FigmaTokens.orange,
                 foregroundColor: Colors.white,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 14),

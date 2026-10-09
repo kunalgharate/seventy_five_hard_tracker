@@ -1,10 +1,11 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/figma_tokens.dart';
 
-/// Gradient hero card showing challenge progress — matches the design:
-/// orange→red→pink gradient, "57 days to go", circular % ring,
-/// current streak + best streak row.
+/// Gradient hero card showing challenge progress — matches the Figma
+/// "challenge-hero" scene: orange→coral→pink gradient, "N days to go",
+/// circular % orbit, day pill, decorative ring flourish, and a
+/// current-streak + best-streak row.
 class ChallengeHeroCard extends StatelessWidget {
   final int currentDay;
   final int totalDays;
@@ -30,182 +31,194 @@ class ChallengeHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFFFF6B35),
-            Color(0xFFFF3D7F),
-            Color(0xFFE91E63),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF6B35).withValues(alpha: 0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        gradient: FigmaTokens.brandGradient,
+        borderRadius: BorderRadius.circular(FigmaTokens.rCardLg),
+        boxShadow: FigmaTokens.gradientShadow,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          // Top row: label + day badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.auto_awesome,
-                      color: Colors.white70, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    challengeLabel ?? '75 HARD CHALLENGE',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'DAY $currentDay',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
+          // Decorative ring flourish (Figma .challenge-hero:after)
+          Positioned(
+            right: -85,
+            bottom: -105,
+            child: Container(
+              width: 190,
+              height: 190,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 42,
                 ),
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-
-          // Main content: days to go + circular progress
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Keep your promise.',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$_daysToGo days to go',
-                    style: GoogleFonts.poppins(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Mini progress bar
-                  SizedBox(
-                    width: 140,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: _progress,
-                        minHeight: 4,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              // Circular percentage ring
-              SizedBox(
-                width: 64,
-                height: 64,
-                child: Stack(
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: label + day pill
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    SizedBox(
-                      width: 64,
-                      height: 64,
-                      child: CircularProgressIndicator(
-                        value: _progress,
-                        strokeWidth: 5,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                    Center(
-                      child: Text(
-                        '$_percentage%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_awesome,
+                            color: Colors.white, size: 15),
+                        const SizedBox(width: 6),
+                        Text(
+                          (challengeLabel ?? '75 Hard Challenge').toUpperCase(),
+                          style: FigmaTokens.body(9,
+                              weight: FontWeight.w800, color: Colors.white),
                         ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(FigmaTokens.rChip),
+                      ),
+                      child: Text(
+                        'DAY $currentDay',
+                        style: FigmaTokens.body(9,
+                            weight: FontWeight.w800, color: Colors.white),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-          // Bottom row: current streak + best streak
-          Row(
-            children: [
-              const Icon(Icons.local_fire_department,
-                  color: Colors.white70, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                '$currentStreak days',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                // Main: kicker + days-to-go + progress orbit
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Keep your promise.',
+                          style: FigmaTokens.body(11,
+                              color: Colors.white.withValues(alpha: 0.8)),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '$_daysToGo days to go',
+                          style: FigmaTokens.heading(25, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                    _ProgressOrbit(progress: _progress, percent: _percentage),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                'Current streak',
-                style: TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-              const SizedBox(width: 24),
-              const Icon(Icons.refresh, color: Colors.white70, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                '$bestStreak days',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 17),
+
+                // Thin progress track
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(FigmaTokens.rChip),
+                  child: LinearProgressIndicator(
+                    value: _progress,
+                    minHeight: 4,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                'Best streak',
-                style: TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-            ],
+                const SizedBox(height: 15),
+
+                // Streak stats
+                Row(
+                  children: [
+                    _StreakStat(
+                      icon: Icons.local_fire_department,
+                      value: '$currentStreak days',
+                      label: 'Current streak',
+                    ),
+                    const SizedBox(width: 30),
+                    _StreakStat(
+                      icon: Icons.emoji_events,
+                      value: '$bestStreak days',
+                      label: 'Best streak',
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Circular progress "orbit" matching the Figma conic-gradient ring.
+class _ProgressOrbit extends StatelessWidget {
+  final double progress;
+  final int percent;
+  const _ProgressOrbit({required this.progress, required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 58,
+      height: 58,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 58,
+            height: 58,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 5,
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          Text(
+            '$percent%',
+            style: FigmaTokens.body(10,
+                weight: FontWeight.w800, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StreakStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  const _StreakStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white, size: 17),
+        const SizedBox(width: 7),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style:
+                    FigmaTokens.body(10, weight: FontWeight.w700, color: Colors.white)),
+            Text(label,
+                style: FigmaTokens.body(8,
+                    color: Colors.white.withValues(alpha: 0.8))),
+          ],
+        ),
+      ],
     );
   }
 }

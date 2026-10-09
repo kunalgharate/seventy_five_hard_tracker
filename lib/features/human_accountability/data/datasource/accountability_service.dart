@@ -1145,10 +1145,19 @@ class AccountabilityService {
       // Step 2: run parallel queries
       final futures = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
 
-      // Q1: exact partnershipId match
+      // Q1: partnershipId match — but SCOPED to the current user, because the
+      // security rules reject an unscoped partnershipId-only query
+      // (permission-denied). A readable task always has the user as either the
+      // assigner or the accountable party, so query both and merge.
       futures.add(_db
           .collection('accountability_tasks')
           .where('partnershipId', isEqualTo: partnershipId)
+          .where('assignedByUid', isEqualTo: myUid)
+          .get());
+      futures.add(_db
+          .collection('accountability_tasks')
+          .where('partnershipId', isEqualTo: partnershipId)
+          .where('accountableUid', isEqualTo: myUid)
           .get());
 
       if (otherUid != null) {
@@ -1611,6 +1620,20 @@ class AccountabilityService {
           .map((e) => Collaborator.fromFirestore(e as Map<String, dynamic>))
           .toList();
       return (owner: owner, collaborators: collaborators);
+    } on FirebaseException catch (e) {
+      // permission-denied here simply means the current user is neither the
+      // owner nor a listed collaborator on this task's collaborators doc —
+      // an expected, non-error case. Treat it as "no shared collaborators"
+      // (me as sole owner) rather than logging a scary error.
+      if (e.code == 'permission-denied') {
+        final me = currentUserAsCollaborator;
+        if (me == null) return null;
+        return (owner: me, collaborators: <Collaborator>[]);
+      }
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] getTaskCollaborators error: $e');
+      }
+      return null;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] getTaskCollaborators error: $e');
@@ -1932,9 +1955,14 @@ class AccountabilityService {
   Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
+      // Scope the query to the current user (as creator) so it satisfies the
+      // accountability_tasks read rule — an unscoped challengeId-only query is
+      // rejected with permission-denied.
       final snap = await _db
           .collection('accountability_tasks')
           .where('challengeId', isEqualTo: challengeId)
+          .where('assignedByUid', isEqualTo: uid)
           .limit(1)
           .get();
       if (snap.docs.isEmpty) return null;
