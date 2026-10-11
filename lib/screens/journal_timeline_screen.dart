@@ -263,7 +263,11 @@ class _TimelineCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            '${DateFormat('MMM d, yyyy').format(item.date)} · ${DateFormat('h:mm a').format(entry.createdAt)}',
+                            [
+                              DateFormat('MMM d, yyyy').format(item.date),
+                              if (!entry.id.startsWith('legacy-'))
+                                DateFormat('h:mm a').format(entry.createdAt),
+                            ].join(' · '),
                             style: GoogleFonts.inter(
                               color: scheme.onSurfaceVariant,
                               fontSize: 12,

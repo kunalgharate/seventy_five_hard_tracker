@@ -238,6 +238,16 @@ class _TronPolishButtonState extends State<TronPolishButton> {
         );
         return;
       }
+      if (widget.controller.text.trim() != text) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Text changed while polishing — result discarded.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
       widget.controller.value = TextEditingValue(
         text: res.text,
         selection: TextSelection.collapsed(offset: res.text.length),

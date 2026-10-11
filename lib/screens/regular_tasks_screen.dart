@@ -402,7 +402,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'Could not find the linked review task. Pull to refresh and try again.'),
+              'Could not find the linked review task. Please try again later.'),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),

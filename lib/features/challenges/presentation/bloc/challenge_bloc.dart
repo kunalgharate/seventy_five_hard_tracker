@@ -37,6 +37,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   bool _isCheckingMissedDays = false;
   bool _hasCheckedMissedDays = false;
 
+  Future<void> _journalLock = Future.value();
+
   DatabaseRepository get repository => _repository;
 
   // ── ACCOUNTABILITY SCORING INTEGRATION POINT ────────────────────────────────
@@ -492,18 +494,26 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   Future<void> _mutateJournalEntries(
     DateTime date,
     List<JournalEntry> Function(List<JournalEntry>) transform,
-  ) async {
-    final dailyProgress = await _progressForDate(date);
-    if (dailyProgress == null) return;
-    final current = JournalEntry.decode(
-      dailyProgress.journalNote,
-      fallbackDate: dailyProgress.date,
-    );
-    final updated = transform(current);
-    await _repository.saveDailyProgress(
-      dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
-    );
-    add(LoadChallengeData());
+  ) {
+    return _serializeJournal(() async {
+      final dailyProgress = await _progressForDate(date);
+      if (dailyProgress == null) return;
+      final current = JournalEntry.decode(
+        dailyProgress.journalNote,
+        fallbackDate: dailyProgress.date,
+      );
+      final updated = transform(current);
+      await _repository.saveDailyProgress(
+        dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
+      );
+      add(LoadChallengeData());
+    });
+  }
+
+  Future<T> _serializeJournal<T>(Future<T> Function() action) {
+    final result = _journalLock.then((_) => action());
+    _journalLock = result.then((_) {}, onError: (_) {});
+    return result;
   }
 
   Future<void> _onAddJournalEntry(

@@ -44,27 +44,32 @@ class _JournalScreenState extends State<JournalScreen> {
     if (text.isEmpty && (mood ?? '').isEmpty && proud.isEmpty) return;
 
     setState(() => _saving = true);
-    context.read<ChallengeBloc>().add(
-          AddJournalEntry(
-            date: DateTime.now(),
-            entry: JournalEntry.now(mood: mood, text: text, proud: proud),
-          ),
-        );
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _selectedMood = null;
-      _reflectionCtrl.clear();
-      _proudCtrl.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Journal entry added!'),
-        backgroundColor: Color(0xFF49AE71),
+    final bloc = context.read<ChallengeBloc>();
+    bloc.add(
+      AddJournalEntry(
+        date: DateTime.now(),
+        entry: JournalEntry.now(mood: mood, text: text, proud: proud),
       ),
     );
+
+    final saved = await _awaitJournalWrite(bloc);
+    if (!mounted) return;
+    if (saved) {
+      setState(() {
+        _saving = false;
+        _selectedMood = null;
+        _reflectionCtrl.clear();
+        _proudCtrl.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Journal entry added!'),
+          backgroundColor: Color(0xFF49AE71),
+        ),
+      );
+    } else {
+      setState(() => _saving = false);
+    }
   }
 
   @override
@@ -497,18 +502,26 @@ class _EntryEditorSheetState extends State<_EntryEditorSheet> {
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
-    context.read<ChallengeBloc>().add(
-          UpdateJournalEntry(
-            date: widget.day,
-            entry: widget.entry.copyWith(
-              mood: _mood,
-              text: _textCtrl.text.trim(),
-              proud: _proudCtrl.text.trim(),
-            ),
-          ),
-        );
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (mounted) Navigator.pop(context, true);
+    final bloc = context.read<ChallengeBloc>();
+    bloc.add(
+      UpdateJournalEntry(
+        date: widget.day,
+        entry: JournalEntry(
+          id: widget.entry.id,
+          createdAt: widget.entry.createdAt,
+          mood: _mood,
+          text: _textCtrl.text.trim(),
+          proud: _proudCtrl.text.trim(),
+        ),
+      ),
+    );
+    final saved = await _awaitJournalWrite(bloc);
+    if (!mounted) return;
+    if (saved) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() => _saving = false);
+    }
   }
 
   @override
@@ -664,5 +677,16 @@ class _JournalField extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+Future<bool> _awaitJournalWrite(ChallengeBloc bloc) async {
+  try {
+    final state = await bloc.stream
+        .firstWhere((s) => s is ChallengeLoaded || s is ChallengeError)
+        .timeout(const Duration(seconds: 4));
+    return state is ChallengeLoaded;
+  } catch (_) {
+    return false;
   }
 }

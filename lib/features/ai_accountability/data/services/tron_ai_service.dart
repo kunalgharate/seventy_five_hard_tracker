@@ -49,7 +49,7 @@ class TronAiService {
               body: jsonEncode({
                 'model': ApiConstants.tronModel,
                 'temperature': 0.2,
-                'max_tokens': 800,
+                'max_tokens': 1500,
                 'messages': [
                   {
                     'role': 'system',
@@ -70,15 +70,24 @@ class TronAiService {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           final choices = data['choices'];
           String? content;
+          String? finishReason;
           if (choices is List && choices.isNotEmpty) {
             final first = choices[0];
             if (first is Map) {
+              final finish = first['finish_reason'];
+              if (finish is String) finishReason = finish;
               final message = first['message'];
               if (message is Map) {
                 final c = message['content'];
                 if (c is String) content = c;
               }
             }
+          }
+          if (finishReason != null && finishReason.toLowerCase() == 'length') {
+            return const TronAiResponse(
+              text: 'Text too long for Tron AI to polish — try shortening it.',
+              isError: true,
+            );
           }
           if (content != null && content.trim().isNotEmpty) {
             return TronAiResponse(text: content.trim());

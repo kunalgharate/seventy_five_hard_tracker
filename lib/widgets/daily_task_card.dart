@@ -911,11 +911,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       // For creator with pending accepted task and proof required, show upload prompt
       if (accStatus == AccountabilityTaskStatus.pending &&
           (_hasAccountabilityConnection || _hasAccountabilityTask) &&
+          !widget.isReviewOnly &&
           (proofStatus == null || proofStatus == ProofStatus.notRequired)) {
-        final myUid = FirebaseAuth.instance.currentUser?.uid;
-        if (_isAssigner(myUid)) {
-          return 'Proof required — upload photo';
-        }
+        return 'Proof required — upload photo';
       }
 
       switch (accStatus) {

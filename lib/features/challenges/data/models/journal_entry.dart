@@ -79,6 +79,8 @@ class JournalEntry {
       {required DateTime fallbackDate}) {
     if (note == null || note.trim().isEmpty) return [];
     if (!note.contains(sep)) {
+      final single = _parseSingle(note);
+      if (single != null) return single.isEmpty ? [] : [single];
       final legacy = _parseLegacy(note);
       final legacyEmpty = legacy.text.trim().isEmpty &&
           (legacy.mood ?? '').isEmpty &&
@@ -114,6 +116,17 @@ class JournalEntry {
     final kept = entries.where((e) => !e.isEmpty).toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return kept.map((e) => jsonEncode(e.toJson())).join(sep);
+  }
+
+  /// Parse a standalone JSON-encoded entry, or null if [note] isn't one.
+  static JournalEntry? _parseSingle(String note) {
+    try {
+      final map = jsonDecode(note);
+      if (map is! Map<String, dynamic> || !map.containsKey('id')) return null;
+      return JournalEntry.fromJson(map);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Parse the legacy `mood|text` + optional `␟proud` format.

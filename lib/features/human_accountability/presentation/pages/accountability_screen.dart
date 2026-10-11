@@ -1586,11 +1586,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                             // Tasks needing MY review live in the
                             // "My Responsibilities" section above — skip them
                             // here so each task shows exactly once.
-                            !(t.assignedByUid != myUid &&
-                                (t.status ==
-                                        AccountabilityTaskStatus
-                                            .pendingReview ||
-                                    t.proofStatus == ProofStatus.submitted)),
+                            !(t.partnerUid == myUid &&
+                                t.status ==
+                                    AccountabilityTaskStatus.pendingReview),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
