@@ -27,6 +27,11 @@ class DailyTaskCard extends StatefulWidget {
   final String? accountablePartnerUid;
   final String? partnerName;
   final AccountabilityTaskStatus? accountabilityStatus;
+
+  /// True when the current user is only the REVIEWER of this task (a partner
+  /// assigned it). The owner completes it and uploads proof; the reviewer
+  /// must not see a completion checkbox here.
+  final bool isReviewOnly;
   final ProofStatus? proofStatus;
   final VoidCallback? onSubmitProof;
   final VoidCallback? onReviewProof;
@@ -49,6 +54,7 @@ class DailyTaskCard extends StatefulWidget {
     this.accountablePartnerUid,
     this.partnerName,
     this.accountabilityStatus,
+    this.isReviewOnly = false,
     this.proofStatus,
     this.onSubmitProof,
     this.onReviewProof,
@@ -134,6 +140,23 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   /// open proof upload instead of toggling. Also intercepts rejected tasks
   /// to allow proof resubmission. Otherwise, normal toggle.
   void _handleToggle(bool newValue) {
+    // Reviewer role: the owner completes this task and uploads proof.
+    if (widget.isReviewOnly) return;
+    // The reviewer hasn't accepted the task yet — a proof cannot be reviewed
+    // until they do, so block the upload instead of opening the sheet.
+    if (newValue && _isRequestedAndUnaccepted()) {
+      final reviewer = _collaborators.isNotEmpty
+          ? _collaborators.first.name
+          : 'your partner';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Waiting for $reviewer to accept this task first'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (newValue && _hasReviewers && widget.onProofRequired != null) {
       // User is trying to complete → require proof upload
       widget.onProofRequired!();
@@ -199,17 +222,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([_completionController, _pulseController]),
-      builder: (context, child) {
-        return Transform.scale(
-          scale: widget.isCompleted
-              ? _scaleAnimation.value
-              : (widget.isEditable ? _pulseAnimation.value : 1.0),
-          child: _buildCard(),
-        );
-      },
-    );
+    return _buildCard();
   }
 
   // Helper method to extract display time from reminder data
@@ -238,6 +251,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           // Alarm badge above the card to avoid overlap
@@ -288,7 +302,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           _buildCleanCard(context),
         ],
       ),
-    ).animate().slideX(delay: ((widget.dayNumber ?? 0) * 100).ms);
+    );
   }
 
   /// Consistent corner radius used across all task cards.
@@ -332,13 +346,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(kCardRadius),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Per-task / status colored left accent bar.
-            Container(width: 4, color: accent),
-            Expanded(child: _buildCardContent()),
-          ],
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(width: 4, color: accent)),
+          ),
+          child: _buildCardContent(),
         ),
       ),
     );
@@ -383,6 +395,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             size: 36,
             onTap: (widget.isEditable &&
                     _isOwner(myUid) &&
+                    !widget.isReviewOnly &&
                     !_isRequestedAndUnaccepted())
                 ? () => _handleToggle(!widget.isCompleted)
                 : null,
@@ -484,7 +497,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       ));
     }
 
-    if (widget.isEditable && _hasAccountabilityConnection) {
+    if (widget.isEditable &&
+        (_hasAccountabilityConnection ||
+            widget.isReviewOnly ||
+            widget.accountabilityStatus ==
+                AccountabilityTaskStatus.pendingReview ||
+            widget.proofStatus == ProofStatus.submitted)) {
       actions.add(_buildProofButton());
     }
 
@@ -556,6 +574,50 @@ class _DailyTaskCardState extends State<DailyTaskCard>
   }
 
   Widget _buildCompletionWidget() {
+    // Task assigned to ME for REVIEW (a partner owns it). The owner completes
+    // it and uploads proof; I review the proof. Show a real checkbox (not an
+    // eye icon) so the review task is visible inline — tapping it opens the
+    // proof review when proof is submitted, otherwise explains the wait.
+    // Once approved, the checkbox reflects checked on BOTH sides.
+    if (widget.isReviewOnly) {
+      final checked = widget.isCompleted ||
+          widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
+          widget.accountabilityStatus ==
+              AccountabilityTaskStatus.completed ||
+          widget.proofStatus == ProofStatus.approved;
+      final hasProofToReview =
+          widget.accountabilityStatus ==
+                  AccountabilityTaskStatus.pendingReview ||
+              widget.proofStatus == ProofStatus.submitted;
+      final tip = widget.partnerName != null && widget.partnerName!.isNotEmpty
+          ? '${widget.partnerName} completes this — tap checkbox to review the proof'
+          : 'Your partner completes this — tap checkbox to review the proof';
+      return Tooltip(
+        message: tip,
+        child: AppleCheckbox(
+          isChecked: checked,
+          isEnabled: widget.isEditable,
+          onChanged: (_) {
+            if (hasProofToReview && widget.onReviewProof != null) {
+              widget.onReviewProof!();
+            } else if (checked) {
+              // Already approved — nothing to do, checkbox reflects both sides.
+              return;
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Waiting for the owner to submit proof — only the owner can add proof.'),
+                  backgroundColor: Colors.orange,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+        ),
+      );
+    }
+
     // Show pending review indicator when waiting for partner
     if (widget.accountabilityStatus == AccountabilityTaskStatus.pendingReview) {
       return Container(
@@ -762,8 +824,33 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       );
     }
 
+    // ── REVIEWER view (task assigned to me for review) ──
+    // Owner adds proof; I only review. Never show an upload button here.
+    if (widget.isReviewOnly) {
+      if (status == ProofStatus.submitted ||
+          widget.accountabilityStatus ==
+              AccountabilityTaskStatus.pendingReview) {
+        return iconBtn(Icons.rate_review_outlined, Colors.orange[600]!,
+            widget.onReviewProof, 'Review Photo Proof');
+      }
+      if (status == ProofStatus.approved ||
+          widget.accountabilityStatus ==
+              AccountabilityTaskStatus.approved) {
+        return iconBtn(Icons.check_circle, Colors.green[600]!,
+            widget.onViewProof, 'View Approved Proof');
+      }
+      // Waiting for owner to submit proof — no upload action for reviewer.
+      return iconBtn(Icons.hourglass_empty, Colors.grey[400]!, null,
+          'Waiting for owner to submit proof');
+    }
+
     // ── CREATOR (assigned this task to a collaborator) ──
     if (isCreator) {
+      // Reviewer hasn't accepted yet — nothing to upload against.
+      if (_isRequestedAndUnaccepted()) {
+        return iconBtn(Icons.lock_outline, Colors.orange[600]!, null,
+            'Waiting for reviewer to accept');
+      }
       if (status == null || status == ProofStatus.notRequired) {
         return iconBtn(Icons.camera_alt_outlined, Colors.grey[500]!,
             widget.onSubmitProof, 'Upload Photo Proof');

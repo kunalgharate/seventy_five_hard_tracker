@@ -156,6 +156,10 @@ class AccountabilityTask extends Equatable {
   /// Firebase UID of the assigned reviewing partner
   final String? partnerUid;
 
+  /// Email the task is addressed to when the assignee has not joined yet.
+  /// The task is claimed (assignedUid filled in) once that email signs in.
+  final String? accountableEmail;
+
   // ── Multi-reviewer approval fields (GitHub PR model) ──
   /// Number of approvals required to auto-complete the task. Default 1.
   final int requiredApprovals;
@@ -198,6 +202,7 @@ class AccountabilityTask extends Equatable {
     this.reviewDecision,
     this.reviewComment,
     this.partnerUid,
+    this.accountableEmail,
     this.requiredApprovals = 1,
     this.reviewerEmails = const [],
     this.approvals = const [],
@@ -256,6 +261,7 @@ class AccountabilityTask extends Equatable {
     String? reviewDecision,
     String? reviewComment,
     String? partnerUid,
+    String? accountableEmail,
     int? requiredApprovals,
     List<String>? reviewerEmails,
     List<Map<String, dynamic>>? approvals,
@@ -288,6 +294,7 @@ class AccountabilityTask extends Equatable {
         reviewDecision: reviewDecision ?? this.reviewDecision,
         reviewComment: reviewComment ?? this.reviewComment,
         partnerUid: partnerUid ?? this.partnerUid,
+        accountableEmail: accountableEmail ?? this.accountableEmail,
         requiredApprovals: requiredApprovals ?? this.requiredApprovals,
         reviewerEmails: reviewerEmails ?? this.reviewerEmails,
         approvals: approvals ?? this.approvals,
@@ -339,6 +346,7 @@ class AccountabilityTask extends Equatable {
         reviewDecision: d['reviewDecision'] as String?,
         reviewComment: d['reviewComment'] as String?,
         partnerUid: d['partnerUid'] as String?,
+        accountableEmail: d['accountableEmail'] as String?,
         requiredApprovals: (d['requiredApprovals'] as int?) ?? 1,
         reviewerEmails:
             (d['reviewerEmails'] as List<dynamic>?)?.cast<String>() ?? const [],
@@ -388,6 +396,7 @@ class AccountabilityTask extends Equatable {
         'reviewDecision': reviewDecision,
         'reviewComment': reviewComment,
         'partnerUid': partnerUid,
+        'accountableEmail': accountableEmail,
         'requiredApprovals': requiredApprovals,
         'reviewerEmails': reviewerEmails,
         'approvals': approvals,

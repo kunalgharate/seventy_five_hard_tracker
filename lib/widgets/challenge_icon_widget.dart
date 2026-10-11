@@ -25,15 +25,8 @@ class ChallengeIconWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget iconWidget = _buildIconContent();
 
-    if (showAnimation) {
-      iconWidget = iconWidget
-          .animate()
-          .scale(
-            duration: 300.ms,
-            curve: Curves.elasticOut,
-          )
-          .fadeIn(duration: 200.ms);
-    }
+    // Animations disabled — flutter_animate scale/fadeIn wrappers cause
+    // layout assertions when used inside SingleChildScrollView.
 
     return GestureDetector(
       onTap: onTap,
@@ -251,21 +244,10 @@ class _AnimatedChallengeIconState extends State<AnimatedChallengeIcon>
         _controller.forward(from: 0);
         widget.onTap?.call();
       },
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _scaleAnimation.value,
-            child: Transform.rotate(
-              angle: _rotationAnimation.value,
-              child: ChallengeIconWidget(
-                challenge: widget.challenge,
-                size: widget.size,
-                showAnimation: false,
-              ),
-            ),
-          );
-        },
+      child: ChallengeIconWidget(
+        challenge: widget.challenge,
+        size: widget.size,
+        showAnimation: false,
       ),
     );
   }

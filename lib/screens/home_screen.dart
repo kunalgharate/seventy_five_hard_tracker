@@ -2,14 +2,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:seventy_five_hard_tracker/widgets/greeting_header.dart';
 import 'package:seventy_five_hard_tracker/widgets/challenge_hero_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/review_notification_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/motivation_banner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:seventy_five_hard_tracker/services/quotes_service.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
@@ -49,13 +47,26 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+
+  /// challengeId -> true when the current user is only the REVIEWER of the
+  /// linked accountability task (a partner assigned it). Such cards must not
+  /// offer completion — the owner completes and uploads proof.
+  final Map<String, bool> _reviewOnlyChallenges = {};
   final ScrollController _scrollController = ScrollController();
-  final Map<String, GlobalKey> _taskKeys = {};
+
+  /// Live Firestore subscriptions so an approval on the reviewer's device
+  /// reflects on the owner's Today screen (and vice versa) without a restart.
+  StreamSubscription<List<AccountabilityTask>>? _assignedByMeSub;
+  StreamSubscription<List<AccountabilityTask>>? _myTasksSub;
 
   /// Tracks the session for which accountability statuses were last loaded.
   /// Prevents re-fetching from Firestore on every task-toggle rebuild —
   /// we only reload on initial load or when the active session changes.
   String? _accountabilityLoadedSessionId;
+
+  /// Last successfully loaded state, kept so a transient error emission
+  /// (e.g. a denied task toggle) never blanks the Today screen.
+  ChallengeLoaded? _lastLoadedState;
 
   /// Recent review notifications for inline display.
   List<Map<String, String>> _recentNotifications = [];
@@ -76,6 +87,66 @@ class _HomeScreenState extends State<HomeScreen> {
     context.read<ChallengeBloc>().add(LoadChallengeData());
     _loadRecentNotifications();
     _loadDailyQuote();
+    _subscribeToAccountabilityStreams();
+  }
+
+  /// Listens to both directions of the review flow so approval reflects on
+  /// BOTH sides in real time: owner sees the checkbox check itself when the
+  /// reviewer approves, reviewer sees the updated proof status immediately.
+  void _subscribeToAccountabilityStreams() {
+    try {
+      final svc = AccountabilityService();
+      _assignedByMeSub?.cancel();
+      _myTasksSub?.cancel();
+      _assignedByMeSub = svc.assignedByMeStream().listen((tasks) {
+        if (!mounted) return;
+        _applyTaskStreamUpdate(tasks);
+      }, onError: (_) {});
+      _myTasksSub = svc.myTasksStream().listen((tasks) {
+        if (!mounted) return;
+        _applyTaskStreamUpdate(tasks);
+      }, onError: (_) {});
+    } catch (_) {}
+  }
+
+  /// Merges a Firestore task update into the local status maps. When a task
+  /// lands in approved/completed, the owner's local daily progress is marked
+  /// complete too — so both sides show the same checked state.
+  void _applyTaskStreamUpdate(List<AccountabilityTask> tasks) {
+    if (!mounted) return;
+    final state = context.read<ChallengeBloc>().state;
+    if (state is! ChallengeLoaded || !state.hasActiveSession) return;
+    final challengeIds =
+        state.activeSession!.challenges.map((c) => c.id).toSet();
+    var changed = false;
+    for (final task in tasks) {
+      final cid = task.challengeId;
+      if (cid == null || !challengeIds.contains(cid)) continue;
+      final myUid = AccountabilityService().currentUid;
+      final reviewOnly = myUid != null &&
+          task.accountableUid == myUid &&
+          task.assignedByUid != myUid;
+      if (_accountabilityStatuses[cid] != task.status ||
+          _proofStatuses[cid] != task.proofStatus ||
+          _reviewOnlyChallenges[cid] != reviewOnly) {
+        _accountabilityStatuses[cid] = task.status;
+        _proofStatuses[cid] = task.proofStatus;
+        _reviewOnlyChallenges[cid] = reviewOnly;
+        changed = true;
+      }
+      final approved = task.status == AccountabilityTaskStatus.approved ||
+          task.status == AccountabilityTaskStatus.completed;
+      if (approved && !reviewOnly) {
+        context.read<ChallengeBloc>().add(
+              UpdateDailyProgress(
+                date: _selectedDay,
+                challengeId: cid,
+                isCompleted: true,
+              ),
+            );
+      }
+    }
+    if (changed && mounted) setState(() {});
   }
 
   Future<void> _loadRecentNotifications() async {
@@ -117,6 +188,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _assignedByMeSub?.cancel();
+    _myTasksSub?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -207,6 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (!mounted) return; // Safety check
 
             if (state is ChallengeLoaded && state.hasActiveSession) {
+              _lastLoadedState = state;
               // Reset selected day to today when a new session becomes active
               // (e.g. after restarting from history)
               final today = DateTime.now();
@@ -254,47 +328,14 @@ class _HomeScreenState extends State<HomeScreen> {
             return _buildActiveSession(state);
           }
 
-          return _buildNoActiveSession();
-        },
-      ),
-      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is ChallengeLoaded) {
-            if (!state.hasActiveSession) {
-              return const SizedBox.shrink();
-            }
-            // Journal FAB for active session
-            final selectedProgress = state.currentProgress
-                .where((p) => _isSameDay(p.date, _selectedDay))
-                .firstOrNull;
-            final hasNote = selectedProgress?.journalNote != null &&
-                selectedProgress!.journalNote!.isNotEmpty;
-
-            return FloatingActionButton.extended(
-              heroTag: 'journal',
-              onPressed: () => _showJournalBottomSheet(
-                context,
-                state,
-                selectedProgress,
-              ),
-              icon: Icon(
-                hasNote ? Icons.book : Icons.book_outlined,
-                size: 20,
-              ),
-              label: Text(
-                hasNote ? 'View Journal' : 'Add Journal',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              backgroundColor: Colors.orange,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            );
+          // Error / loading / initial — keep showing the last good screen so
+          // a failed action never makes every task vanish.
+          final cached = _lastLoadedState;
+          if (cached != null && cached.hasActiveSession) {
+            return _buildActiveSession(cached);
           }
-          return const SizedBox.shrink();
+
+          return _buildNoActiveSession();
         },
       ),
     );
@@ -360,284 +401,148 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    return Column(
-      children: [
-        // Everything scrolls together so no section gets clipped and the
-        // task list is always reachable.
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            physics: const ClampingScrollPhysics(),
-            child: Column(
-              children: [
-                // Greeting header (design: "Welcome, {name}")
-                const GreetingHeader(),
-
-                // Challenge hero card (design: gradient with circular %)
-                ChallengeHeroCard(
-                  currentDay: currentDay,
-                  totalDays: session.totalDaysTarget,
-                  currentStreak: _computeCurrentStreak(state.currentProgress),
-                  bestStreak: _computeBestStreak(state.currentProgress),
-                ),
-                const SizedBox(height: 8),
-
-                // Review notification cards
-                ..._recentNotifications.take(3).map((n) =>
-                    ReviewNotificationCard(
-                      reviewerName: n['reviewer'] ?? '',
-                      taskName: n['task'] ?? '',
-                      action: n['action'] ?? 'approved',
-                      comment: n['comment'],
-                      onDismiss: () {
-                        setState(() => _recentNotifications.remove(n));
-                      },
-                    )),
-
-                // Daily Tasks for Selected Day — shown right under the hero
-                // (Figma "Today's focus") so tasks are immediately visible.
-                _buildDailyTasks(session, state.currentProgress),
-
-                // Progress Stats
-                ProgressStats(
-                  currentDay: currentDay,
-                  totalDays: 75,
-                  session: session,
-                  progress: state.currentProgress,
-                ),
-
-                Card(
-                  margin: const EdgeInsets.all(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Select Date',
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFFFFA726),
-                                  ),
-                        ),
-                        const SizedBox(height: 12),
-                        HorizontalDatePicker(
-                          selectedDate: _selectedDay,
-                          startDate: session.startDate,
-                          endDate:
-                              session.startDate.add(const Duration(days: 74)),
-                          onDateSelected: (selectedDate) {
-                            setState(() {
-                              _selectedDay = selectedDate;
-                            });
-                          },
-                          completedDates: state.currentProgress
-                              .where((p) => p.isCompleted)
-                              .map((p) => p.date)
-                              .toList(),
-                          incompleteDates: state.currentProgress
-                              .where((p) => !p.isCompleted)
-                              .map((p) => p.date)
-                              .toList(),
-                        ),
-                        const SizedBox(height: 16),
-                        // Progress indicator for selected date
-                        _buildDateProgressIndicator(state, session),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDailyTasks(
-      ChallengeSession session, List<DailyProgress> allProgress) {
-    // Clamp selected day to the session date range to avoid stale date state.
+    // --- Compute task data once ---
     if (_selectedDay.isBefore(session.startDate)) {
       _selectedDay = session.startDate;
     }
+    final allProgress = state.currentProgress;
     final selectedProgress =
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
-
     final isToday = _isSameDay(_selectedDay, DateTime.now());
     final isFutureDate =
         _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
     final isBeforeStart = _normalizeDate(_selectedDay)
         .isBefore(_normalizeDate(session.startDate));
+    final nonRegularChallenges =
+        session.challenges.where((c) => c.taskType != 'regular').toList();
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    // --- Build a flat list of widgets ---
+    final List<Widget> items = [
+      // 1. Greeting
+      const GreetingHeader(),
+
+      // 2. Hero card
+      ChallengeHeroCard(
+        currentDay: currentDay,
+        totalDays: session.totalDaysTarget,
+        currentStreak: _computeCurrentStreak(allProgress),
+        bestStreak: _computeBestStreak(allProgress),
+      ),
+      const SizedBox(height: 8),
+
+      // 3. Review notifications
+      ..._recentNotifications.take(3).map((n) => ReviewNotificationCard(
+            reviewerName: n['reviewer'] ?? '',
+            taskName: n['task'] ?? '',
+            action: n['action'] ?? 'approved',
+            comment: n['comment'],
+            onDismiss: () {
+              setState(() => _recentNotifications.remove(n));
+            },
+          )),
+
+      // 4. "Today's Tasks" section header
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    DateFormat('EEEE, MMM d').format(_selectedDay),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (selectedProgress?.isCompleted == true)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child:
-                        Icon(Icons.check_circle, color: Colors.green, size: 32),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            if (isBeforeStart)
-              const Text(
-                'Challenge hasn\'t started yet',
-                style: TextStyle(color: Colors.grey),
-              ).animate().fadeIn(duration: 400.ms)
-            else if (isFutureDate)
-              const Text(
-                'Future date - complete today\'s tasks first!',
-                style: TextStyle(color: Colors.grey),
-              ).animate().fadeIn(duration: 400.ms)
-            else
-              // Animated task cards with staggered entrance
-              ...session.challenges
-                  .where((c) => c.taskType != 'regular')
-                  .toList()
-                  .asMap()
-                  .entries
-                  .map((entry) {
-                final index = entry.key;
-                final challenge = entry.value;
-                final isCompleted =
-                    selectedProgress?.challengeCompletions[challenge.id] ??
-                        false;
-                final totalNonRegular = session.challenges
-                    .where((c) => c.taskType != 'regular')
-                    .length;
-                return AnimationConfiguration.staggeredList(
-                  position: index,
-                  duration: const Duration(milliseconds: 500),
-                  child: SlideAnimation(
-                    verticalOffset: 50.0,
-                    child: FadeInAnimation(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          bottom: index == totalNonRegular - 1 ? 0 : 8,
-                        ),
-                        child: RepaintBoundary(
-                          key: _taskKeys.putIfAbsent(
-                              challenge.id, () => GlobalKey()),
-                          child: _isWaterChallenge(challenge)
-                              ? _buildWaterTracker(
-                                  challenge, isToday, selectedProgress)
-                              : DailyTaskCard(
-                                  challenge: challenge,
-                                  isCompleted: isCompleted,
-                                  isEditable: isToday,
-                                  onToggle: (completed) {
-                                    context.read<ChallengeBloc>().add(
-                                          UpdateDailyProgress(
-                                            date: _selectedDay,
-                                            challengeId: challenge.id,
-                                            isCompleted: completed,
-                                          ),
-                                        );
-                                  },
-                                  onReminderUpdate: (updatedChallenge) {
-                                    context.read<ChallengeBloc>().add(
-                                          UpdateChallenge(updatedChallenge),
-                                        );
-                                  },
-                                  onRemove: () {
-                                    _handleRemoveTask(session, challenge);
-                                  },
-                                  onEdit: () => _showTaskSheet(
-                                    context,
-                                    challenge,
-                                  ),
-                                  proofStatus: _proofStatuses[challenge.id],
-                                  accountabilityStatus:
-                                      _accountabilityStatuses[challenge.id],
-                                  onSubmitProof: () => _submitProof(challenge),
-                                  onReviewProof: () => _reviewProof(challenge),
-                                  onViewProof: () => _viewProof(challenge),
-                                  onProofRequired: () =>
-                                      _handleProofRequired(challenge),
-                                ),
-                        ),
-                      ),
+            Flexible(
+              child: Text(
+                DateFormat('EEEE, MMM d').format(_selectedDay),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                  ),
-                );
-              }),
-
-            const SizedBox(height: 12),
-
-            if (isToday &&
-                session.challenges.any((c) => c.taskType != 'regular'))
-              _buildAddTaskButton(),
-
-            // Motivational quote banner (design: inline at bottom)
-            MotivationBanner(quote: _dailyQuote),
-
-            const SizedBox(
-                height: 120), // Space for FAB to avoid covering content
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (selectedProgress?.isCompleted == true)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Icon(Icons.check_circle, color: Colors.green, size: 28),
+              ),
           ],
         ),
       ),
+
+      // 5. Task cards (or placeholder text)
+      if (isBeforeStart)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text('Challenge hasn\'t started yet',
+              style: TextStyle(color: Colors.grey)),
+        )
+      else if (isFutureDate)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text('Future date - complete today\'s tasks first!',
+              style: TextStyle(color: Colors.grey)),
+        )
+      else
+        ...nonRegularChallenges.map((challenge) {
+          final isCompleted =
+              selectedProgress?.challengeCompletions[challenge.id] ?? false;
+          final child = _isWaterChallenge(challenge)
+              ? _buildWaterTracker(challenge, isToday, selectedProgress)
+              : DailyTaskCard(
+                  challenge: challenge,
+                  isCompleted: isCompleted,
+                  isEditable: isToday,
+                  onToggle: (completed) {
+                    context.read<ChallengeBloc>().add(
+                          UpdateDailyProgress(
+                            date: _selectedDay,
+                            challengeId: challenge.id,
+                            isCompleted: completed,
+                          ),
+                        );
+                  },
+                  onReminderUpdate: (updatedChallenge) {
+                    context.read<ChallengeBloc>().add(
+                          UpdateChallenge(updatedChallenge),
+                        );
+                  },
+                  onRemove: () => _handleRemoveTask(session, challenge),
+                  onEdit: () => _showTaskSheet(context, challenge),
+                  proofStatus: _proofStatuses[challenge.id],
+                  accountabilityStatus: _accountabilityStatuses[challenge.id],
+                  isReviewOnly: _reviewOnlyChallenges[challenge.id] ?? false,
+                  onSubmitProof: () => _submitProof(challenge),
+                  onReviewProof: () => _reviewProof(challenge),
+                  onViewProof: () => _viewProof(challenge),
+                  onProofRequired: () => _handleProofRequired(challenge),
+                );
+          return Padding(
+            key: ValueKey(challenge.id),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: child,
+          );
+        }),
+
+      // 7. Motivation banner
+      MotivationBanner(quote: _dailyQuote),
+
+      // Bottom spacing for FAB
+      const SizedBox(height: 120),
+    ];
+
+    return ListView.builder(
+      controller: _scrollController,
+      physics: const ClampingScrollPhysics(),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        try {
+          return items[index];
+        } catch (e) {
+          debugPrint('HomeScreen item $index error: $e');
+          return const SizedBox.shrink();
+        }
+      },
     );
   }
 
-  Widget _buildAddTaskButton() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: InkWell(
-        onTap: _showAddTaskSheet,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFA726),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add, color: Colors.white, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Add Task',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  
 
-  void _showAddTaskSheet() {
-    final state = context.read<ChallengeBloc>().state;
-    if (state is! ChallengeLoaded || state.activeSession == null) return;
-    _showTaskSheet(context, null);
-  }
-
+  
   void _showTaskSheet(
     BuildContext context,
     Challenge? challenge,
@@ -836,7 +741,7 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       }
     }
-    final key = target == null ? null : _taskKeys[target.id];
+    final GlobalKey? key = null; // GlobalKeys removed to fix layout assertion
     final context2 = key?.currentContext;
     if (context2 != null) {
       Scrollable.ensureVisible(
@@ -861,6 +766,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Called on initial session load so DailyTaskCard shows correct review states.
   Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
     final svc = AccountabilityService();
+    final myUid = svc.currentUid;
 
     for (final challenge in challenges) {
       try {
@@ -868,10 +774,32 @@ class _HomeScreenState extends State<HomeScreen> {
         // fetchTaskIdByChallengeId + fetchTaskById round-trip.
         final task = await svc.fetchTaskByChallengeId(challenge.id);
         if (task != null && mounted) {
+          // A partner assigned this to me for review — I don't complete it.
+          final reviewOnly = myUid != null &&
+              task.accountableUid == myUid &&
+              task.assignedByUid != myUid;
+
+          // Partner approved my proof → the task is complete; mirror it onto
+          // my local challenge so the Today card shows the checkmark.
+          final partnerApproved =
+              task.status == AccountabilityTaskStatus.completed ||
+                  task.status == AccountabilityTaskStatus.approved;
+
           setState(() {
             _accountabilityStatuses[challenge.id] = task.status;
             _proofStatuses[challenge.id] = task.proofStatus;
+            _reviewOnlyChallenges[challenge.id] = reviewOnly;
           });
+
+          if (partnerApproved && !reviewOnly && mounted) {
+            context.read<ChallengeBloc>().add(
+                  UpdateDailyProgress(
+                    date: _selectedDay,
+                    challengeId: challenge.id,
+                    isCompleted: true,
+                  ),
+                );
+          }
         }
       } catch (_) {
         // Non-critical — card will just show default state
@@ -882,7 +810,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Called when user tries to toggle a task that has reviewers.
   /// Opens proof upload sheet instead of completing the task directly.
   /// On successful upload, submits for review via the AccountabilityBloc.
+  /// OWNER-ONLY: reviewers get an explanatory message instead of the sheet.
   Future<void> _handleProofRequired(Challenge challenge) async {
+    // Reviewer side: only the owner can add proof — never open the sheet.
+    if (_reviewOnlyChallenges[challenge.id] == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the task owner can add proof — you review it.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final svc = AccountabilityService();
 
     // Find or get the accountability task for this challenge
@@ -891,6 +832,20 @@ class _HomeScreenState extends State<HomeScreen> {
     if (taskId == null) {
       // No accountability task — fall back to normal proof submission
       _submitProof(challenge);
+      return;
+    }
+
+    // Extra guard: only the owner (assigner) may submit proof.
+    final myUid = svc.currentUid;
+    if (task != null && myUid != null && task.assignedByUid != myUid) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the task owner can add proof — you review it.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
@@ -924,6 +879,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _submitProof(Challenge challenge) async {
+    // Owner-only: reviewers must not upload proof.
+    if (_reviewOnlyChallenges[challenge.id] == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the task owner can add proof — you review it.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
     if (taskId == null) return;
@@ -946,6 +913,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final svc = AccountabilityService();
     final task = await svc.fetchTaskByChallengeId(challenge.id);
     if (task == null) return;
+    // Reviewer-only: the owner cannot approve their own proof.
+    final myUid = svc.currentUid;
+    final iAmReviewer = myUid != null &&
+        task.assignedByUid != myUid &&
+        (task.accountableUid == myUid ||
+            task.accountableUserIds.contains(myUid) ||
+            task.partnerUid == myUid);
+    if (!iAmReviewer) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the assigned reviewer can review this proof.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
     final result = await ProofReviewDialog.show(context, task);

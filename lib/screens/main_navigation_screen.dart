@@ -7,6 +7,8 @@ import 'regular_tasks_screen.dart';
 import 'journal_screen.dart';
 import 'insights_screen.dart';
 import 'profile_screen.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -44,10 +46,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           if (index == 1) {
             context.read<RegularTaskBloc>().add(LoadRegularTasks());
           }
+          if (index == 4) {
+            // Squad tab: refresh so a just-signed-in user (e.g. an invited
+            // partner) sees fresh data instead of the last cached payload.
+            context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+          }
           setState(() => _currentIndex = index);
         },
         selectedItemColor: const Color(0xFFFF5449),
-        unselectedItemColor: isDark ? Colors.grey[500] : const Color(0xFFA59DA2),
+        unselectedItemColor:
+            isDark ? Colors.grey[500] : const Color(0xFFA59DA2),
         backgroundColor: isDark ? const Color(0xFF1A1618) : Colors.white,
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,

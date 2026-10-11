@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
-import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
@@ -39,6 +37,8 @@ class AccountabilityBloc
     on<LoadAccountabilityData>(_onLoad);
     on<InvitePartner>(_onInvitePartner);
     on<AcceptInvite>(_onAcceptInvite);
+    on<AcceptIncomingRequest>(_onAcceptIncomingRequest);
+    on<RejectIncomingRequest>(_onRejectIncomingRequest);
     on<RemovePartner>(_onRemovePartner);
     on<RejectInvite>(_onRejectInvite);
     on<SubmitReview>(_onSubmitReview);
@@ -80,92 +80,98 @@ class AccountabilityBloc
     return super.close();
   }
 
+  /// True while a [_onLoad] fetch is running. The default bloc event
+  /// transformer runs handlers concurrently, so Firestore stream events
+  /// (which fire often) would otherwise stack several overlapping loads —
+  /// each one flashing the Squad screen back to the spinner.
+  bool _loadInFlight = false;
+  bool _loadQueued = false;
+
   Future<void> _onLoad(
     LoadAccountabilityData event,
     Emitter<AccountabilityState> emit,
   ) async {
-    emit(AccountabilityLoading());
+    // Coalesce: run one load at a time, and re-run once at the end if more
+    // events arrived while this one was in flight.
+    if (_loadInFlight) {
+      _loadQueued = true;
+      return;
+    }
+    _loadInFlight = true;
     try {
-      final results = await Future.wait([
-        _service.fetchMyPartnerships(),
-        _service.fetchMyReviews(),
-        _service.fetchIncomingRequests(),
-        _service.fetchMyInvitations(),
-        _service.fetchIncomingTaskRequests(),
-      ]);
-      if (isClosed) return;
-      emit(AccountabilityLoaded(
-        partners: results[0] as List<AccountabilityPartner>,
-        myReviews: results[1] as List<PartnerReview>,
-        incomingRequests: results[2] as List<AccountabilityPartner>,
-        emailInvitations: results[3] as List<AccountabilityInvitation>,
-        taskRequests: results[4] as List<AccountabilityTask>,
-      ));
-      unawaited(_syncMissingChallenges());
-    } catch (e) {
-      if (kDebugMode) debugPrint('[AccountabilityBloc] load error: $e');
-      emit(const AccountabilityError('Failed to load accountability data'));
+      // Only show the full-screen spinner when there is nothing on screen yet.
+      // Reloading with data already visible keeps the current UI in place.
+      if (state is! AccountabilityLoaded) {
+        emit(AccountabilityLoading());
+      }
+      try {
+        // Keep my `users` doc fresh so partners can find me by email, and
+        // claim any tasks a coach/manager assigned to my email before I joined.
+        unawaited(_service.registerUser());
+        await _service.claimTasksAssignedToMyEmail();
+        final results = await Future.wait([
+          _service.fetchMyPartnerships(),
+          _service.fetchMyReviews(),
+          _service.fetchIncomingRequests(),
+          _service.fetchMyInvitations(),
+          _service.fetchIncomingTaskRequests(),
+        ]);
+        if (isClosed) return;
+        // An email invite pre-creates BOTH an invitations doc and a pending
+        // partnerships doc. The invitee must see one card, not two — keep the
+        // email-invite card (its accept flow claims both docs atomically).
+        final invitations = results[3] as List<AccountabilityInvitation>;
+        final linkedPartnershipIds =
+            invitations.map((i) => i.partnershipId).toSet();
+        final requests = (results[2] as List<AccountabilityPartner>)
+            .where((p) => !linkedPartnershipIds.contains(p.id))
+            .toList();
+        emit(AccountabilityLoaded(
+          partners: results[0] as List<AccountabilityPartner>,
+          myReviews: results[1] as List<PartnerReview>,
+          incomingRequests: requests,
+          emailInvitations: invitations,
+          taskRequests: results[4] as List<AccountabilityTask>,
+        ));
+        unawaited(_syncMissingChallenges());
+      } catch (e) {
+        if (kDebugMode) debugPrint('[AccountabilityBloc] load error: $e');
+        if (isClosed) return;
+        emit(const AccountabilityError('Failed to load accountability data'));
+      }
+    } finally {
+      _loadInFlight = false;
+      if (_loadQueued && !isClosed) {
+        _loadQueued = false;
+        add(LoadAccountabilityData());
+      }
     }
   }
 
+  /// Removes challenges that were copied into my session only because a
+  /// partner assigned me their task for review. Under the owner-completes
+  /// model those challenges belong to the partner's session, not mine —
+  /// leaving them here blocked my day (they can never be completed by me).
   Future<void> _syncMissingChallenges() async {
     try {
       final activeSession = await _repository.getActiveSession();
-      if (activeSession == null) {
-        debugPrint(
-            '[AccountabilityBloc] _syncMissingChallenges: no active session');
-        return;
-      }
-      final tasks = await _service.fetchTasksAssignedToMe();
+      if (activeSession == null) return;
+      final myUid = _service.currentUid;
+      if (myUid == null) return;
+      final strayIds = await _service.fetchReviewerChallengeIds();
+      if (strayIds.isEmpty) return;
+      final kept = activeSession.challenges
+          .where((c) => !strayIds.contains(c.id))
+          .toList();
+      if (kept.length == activeSession.challenges.length) return;
+      await _repository.saveSession(
+        activeSession.copyWith(challenges: kept),
+      );
       debugPrint(
-          '[AccountabilityBloc] _syncMissingChallenges: ${tasks.length} tasks, '
-          'session has ${activeSession.challenges.length} challenges');
-      var changed = false;
-      for (final task in tasks) {
-        if (task.challengeId == null || task.challengeId!.isEmpty) continue;
-        final cid = task.challengeId!;
-        if (activeSession.challenges.any((c) => c.id == cid)) continue;
-        debugPrint(
-            '[AccountabilityBloc] _syncMissingChallenges: creating local challenge cid=$cid title="${task.title}"');
-        final challenge = Challenge(
-          id: cid,
-          title: task.title,
-          taskType: 'hard',
-          category: 'general',
-        );
-        final updatedChallenges = [...activeSession.challenges, challenge];
-        final updatedSession =
-            activeSession.copyWith(challenges: updatedChallenges);
-        await _repository.saveSession(updatedSession);
-        activeSession.challenges.add(challenge);
-
-        final today = DateTime.now();
-        var todayProgress = _repository.getDailyProgress(today);
-        if (todayProgress != null) {
-          final updatedCompletions =
-              Map<String, bool>.from(todayProgress.challengeCompletions);
-          updatedCompletions[cid] = false;
-          todayProgress = todayProgress.copyWith(
-            challengeCompletions: updatedCompletions,
-          );
-        } else {
-          final challengeCompletions = <String, bool>{};
-          for (final c in updatedChallenges) {
-            challengeCompletions[c.id] = false;
-          }
-          todayProgress = DailyProgress(
-            date: today,
-            challengeCompletions: challengeCompletions,
-            isCompleted: false,
-          );
-        }
-        await _repository.saveDailyProgress(todayProgress);
-        changed = true;
-      }
-      debugPrint(
-          '[AccountabilityBloc] _syncMissingChallenges: done, changed=$changed');
+          '[AccountabilityBloc] removed ${activeSession.challenges.length - kept.length} '
+          'reviewer-only challenges from session');
     } catch (e) {
-      debugPrint('[AccountabilityBloc] _syncMissingChallenges error: $e');
+      debugPrint('[AccountabilityBloc] reviewer cleanup error: $e');
     }
   }
 
@@ -217,6 +223,41 @@ class AccountabilityBloc
       emit(AccountabilityError(msg));
     } catch (e) {
       emit(AccountabilityError('Accept invite failed: $e'));
+    }
+  }
+
+  Future<void> _onAcceptIncomingRequest(
+    AcceptIncomingRequest event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    emit(AccountabilityLoading());
+    try {
+      final partner = await _service.acceptPartnerRequest(event.partner);
+      if (isClosed) return;
+      if (partner != null) {
+        emit(InviteAccepted(partner));
+        add(LoadAccountabilityData());
+      } else {
+        emit(const AccountabilityError('Failed to accept the request.'));
+      }
+    } on Exception catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      emit(AccountabilityError(msg));
+    } catch (e) {
+      emit(AccountabilityError('Accept request failed: $e'));
+    }
+  }
+
+  Future<void> _onRejectIncomingRequest(
+    RejectIncomingRequest event,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    try {
+      await _service.rejectPartnerRequest(event.partner);
+      emit(const InviteRejected());
+      add(LoadAccountabilityData());
+    } catch (e) {
+      emit(AccountabilityError('Reject request failed: $e'));
     }
   }
 

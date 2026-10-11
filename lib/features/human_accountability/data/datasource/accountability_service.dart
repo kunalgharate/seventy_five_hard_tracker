@@ -24,6 +24,9 @@ class AccountabilityService {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
 
+  /// Ensures [registerUser] writes the `users` doc at most once per session.
+  bool _registered = false;
+
   // ── Readiness ────────────────────────────────────────────────────
 
   bool get _isReady {
@@ -36,6 +39,9 @@ class AccountabilityService {
   }
 
   String? get currentUid => _auth.currentUser?.uid;
+
+  /// Lower-cased email of the signed-in user, or '' when unavailable.
+  String get _myEmail => (_auth.currentUser?.email ?? '').toLowerCase();
 
   /// Display name or email of the signed-in user, used as reviewer name.
   String get currentUserDisplayName {
@@ -68,22 +74,123 @@ class AccountabilityService {
   /// Parse an [AccountabilityPartner] from a Firestore document snapshot,
   /// handling Timestamp fields correctly.
   AccountabilityPartner _partnerFromDoc(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    // Tolerate missing fields — one malformed doc must never throw and
+    // empty the entire partner list for the user.
+    final data = doc.data() as Map<String, dynamic>? ?? {};
     return AccountabilityPartner(
       id: data['id'] as String? ?? doc.id,
-      ownerUid: data['ownerUid'] as String,
+      ownerUid: data['ownerUid'] as String? ?? '',
       partnerUid: data['partnerUid'] as String?,
-      partnerName: data['partnerName'] as String,
+      partnerName: data['partnerName'] as String? ?? '',
+      ownerName: data['ownerName'] as String?,
       partnerEmail: data['partnerEmail'] as String?,
+      ownerEmail: data['ownerEmail'] as String?,
       role:
           PartnerRoleExtension.fromString(data['role'] as String? ?? 'friend'),
       status: PartnershipStatusExtension.fromString(
           data['status'] as String? ?? 'pending'),
       inviteCode: data['inviteCode'] as String? ?? '',
+      inviteType: data['inviteType'] as String? ?? 'code',
+      invitationId: data['invitationId'] as String?,
       createdAt: _parseDate(data['createdAt']),
       acceptedAt:
           data['acceptedAt'] != null ? _parseDate(data['acceptedAt']) : null,
     );
+  }
+
+  /// Reads a display name from the `users` collection. Used for partnership
+  /// docs written before the `ownerName` field existed.
+  Future<String?> _fetchUserDisplayName(String uid) async {
+    try {
+      final snap = await _db.collection('users').doc(uid).get();
+      final data = snap.data();
+      if (data == null) return null;
+      final name = data['displayName'] as String?;
+      if (name != null && name.isNotEmpty) return name;
+      final email = data['email'] as String?;
+      if (email != null && email.isNotEmpty) return email.split('@').first;
+    } catch (_) {
+      // Name resolution is cosmetic — never fail the caller over it.
+    }
+    return null;
+  }
+
+  /// A partnership doc is shared by both users and `partnerName` always
+  /// holds the *invitee's* name.
+  ///
+  /// • Owner side (I created the invite): `partnerName` is the other person
+  ///   — leave it alone.
+  /// • Invitee side (they invited me): `partnerName` is my own name, so it
+  ///   is swapped for `ownerName` (the inviter) — the UI then always shows
+  ///   the other person.
+  Future<AccountabilityPartner> _resolvePartnerName(
+    AccountabilityPartner partner,
+  ) async {
+    final myUid = currentUid;
+    // I'm the inviter (or signed out) — nothing to correct.
+    if (myUid == null || partner.ownerUid == myUid) return partner;
+    var ownerName = partner.ownerName;
+    if (ownerName == null || ownerName.isEmpty) {
+      ownerName = await _fetchUserDisplayName(partner.ownerUid);
+    }
+    // The inviter's email is needed so the invitee sees the partner's
+    // address, not their own (`partnerEmail` is always the invitee's).
+    var ownerEmail = partner.ownerEmail;
+    if (ownerEmail == null || ownerEmail.isEmpty) {
+      ownerEmail = await _fetchUserEmail(partner.ownerUid);
+    }
+    if (ownerEmail == null || ownerEmail.isEmpty) {
+      ownerEmail = await _fetchInvitationSenderEmail(partner.invitationId);
+    }
+    if ((ownerName == null || ownerName.isEmpty) &&
+        (ownerEmail == null || ownerEmail.isEmpty)) {
+      return partner;
+    }
+    return partner.copyWith(
+      partnerName: (ownerName != null && ownerName.isNotEmpty)
+          ? ownerName
+          : partner.partnerName,
+      ownerName: (ownerName != null && ownerName.isNotEmpty)
+          ? ownerName
+          : partner.ownerName,
+      partnerEmail: (ownerEmail != null && ownerEmail.isNotEmpty)
+          ? ownerEmail
+          : partner.partnerEmail,
+      ownerEmail: (ownerEmail != null && ownerEmail.isNotEmpty)
+          ? ownerEmail
+          : partner.ownerEmail,
+    );
+  }
+
+  /// Reads an email from the `users` collection. Best-effort.
+  Future<String?> _fetchUserEmail(String uid) async {
+    try {
+      final snap = await _db.collection('users').doc(uid).get();
+      final email = snap.data()?['email'] as String?;
+      if (email != null && email.isNotEmpty) return email;
+    } catch (_) {
+      // Cosmetic — never fail the caller over it.
+    }
+    return null;
+  }
+
+  /// Reads the sender's email from a linked invitation doc. Best-effort.
+  Future<String?> _fetchInvitationSenderEmail(String? invitationId) async {
+    if (invitationId == null || invitationId.isEmpty) return null;
+    try {
+      final snap = await _db.collection('invitations').doc(invitationId).get();
+      final email = snap.data()?['fromEmail'] as String?;
+      if (email != null && email.isNotEmpty) return email;
+    } catch (_) {
+      // Cosmetic — never fail the caller over it.
+    }
+    return null;
+  }
+
+  Future<List<AccountabilityPartner>> _resolveAll(
+    Iterable<AccountabilityPartner> partners,
+  ) {
+    return Future.wait(partners.map(_resolvePartnerName));
   }
 
   // ── Partner management ───────────────────────────────────────────
@@ -125,7 +232,9 @@ class AccountabilityService {
         'ownerUid': uid,
         'partnerUid': null,
         'partnerName': partnerName,
+        'ownerName': currentUserDisplayName,
         'partnerEmail': partnerEmail,
+        'ownerEmail': _myEmail,
         'role': role.name,
         'status': 'pending',
         'inviteCode': code,
@@ -170,6 +279,12 @@ class AccountabilityService {
     try {
       final uid = currentUid!;
       final upperCode = code.trim().toUpperCase();
+      if (upperCode.isEmpty) {
+        // Email invitations carry no code — calling invite_codes.doc('') would
+        // throw "document path must be a non-empty string".
+        throw Exception(
+            'This is an email invitation, not a code invite. Accept it from the invitation card.');
+      }
 
       if (kDebugMode) {
         debugPrint(
@@ -222,10 +337,12 @@ class AccountabilityService {
             'acceptedAt': FieldValue.serverTimestamp(),
           });
 
-          return existing.copyWith(
-            partnerUid: uid,
-            status: PartnershipStatus.accepted,
-            acceptedAt: DateTime.now(),
+          return _resolvePartnerName(
+            existing.copyWith(
+              partnerUid: uid,
+              status: PartnershipStatus.accepted,
+              acceptedAt: DateTime.now(),
+            ),
           );
         },
       );
@@ -249,6 +366,54 @@ class AccountabilityService {
       throw Exception(
           'Could not look up the invite code. This is usually a Firestore permissions issue. '
           'Make sure invite_codes allows read by any signed-in user.\n\nDetails: $e');
+    }
+  }
+
+  /// Accepts an incoming partner request regardless of how it was created.
+  ///
+  /// Code-based invites carry a 6-character [AccountabilityPartner.inviteCode];
+  /// email invites have no code and are accepted through the linked
+  /// `invitations` document instead.
+  Future<AccountabilityPartner?> acceptPartnerRequest(
+    AccountabilityPartner partner,
+  ) async {
+    if (partner.inviteCode.isNotEmpty) {
+      return acceptInvite(partner.inviteCode);
+    }
+    var invitationId = partner.invitationId;
+    if (invitationId == null || invitationId.isEmpty) {
+      // Older email invites were written without an invitationId on the
+      // partnership — look it up so they still work.
+      invitationId = await _findInvitationIdForPartnership(partner.id);
+    }
+    if (invitationId == null) {
+      throw Exception(
+          'This invitation is no longer valid. Ask your partner to send a new one.');
+    }
+    return acceptEmailInvite(invitationId);
+  }
+
+  /// Rejects an incoming partner request (code or email based).
+  Future<bool> rejectPartnerRequest(AccountabilityPartner partner) {
+    return rejectInvite(partner.id);
+  }
+
+  Future<String?> _findInvitationIdForPartnership(String partnershipId) async {
+    if (!_isReady) return null;
+    try {
+      final snap = await _db
+          .collection('invitations')
+          .where('partnershipId', isEqualTo: partnershipId)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return snap.docs.first.id;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] _findInvitationIdForPartnership error: $e');
+      }
+      return null;
     }
   }
 
@@ -288,8 +453,23 @@ class AccountabilityService {
           .where('partnerUid', isEqualTo: uid)
           .where('status', isEqualTo: 'pending')
           .get();
-      return snap.docs.map(_partnerFromDoc).toList()
+      final partners = await _resolveAll(snap.docs.map(_partnerFromDoc));
+      // A self-invite (I emailed myself) is not a request from someone else.
+      partners.removeWhere((p) => p.ownerUid == uid);
+      // Two pending docs from the same person must not show twice.
+      final byOwner = <String, AccountabilityPartner>{};
+      for (final p in partners) {
+        final key = p.ownerUid.isNotEmpty
+            ? p.ownerUid
+            : p.partnerName.trim().toLowerCase();
+        final existing = byOwner[key];
+        if (existing == null || _preferPartnership(p, existing)) {
+          byOwner[key] = p;
+        }
+      }
+      final deduped = byOwner.values.toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return deduped;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchIncomingRequests error: $e');
@@ -342,27 +522,57 @@ class AccountabilityService {
           .where('partnerUid', isEqualTo: uid)
           .get();
 
-      // Merge and deduplicate by doc ID
-      final seen = <String>{};
-      final results = <AccountabilityPartner>[];
+      // Merge and deduplicate by doc ID, then by the other user — two docs
+      // for the same pair (double invite, old data) must not show the same
+      // person twice. Prefer accepted > pending > declined, then newest.
+      final seenDocs = <String>{};
+      final byPartner = <String, AccountabilityPartner>{};
       for (final doc in [...ownerQuery.docs, ...partnerQuery.docs]) {
-        if (seen.add(doc.id)) {
-          results.add(_partnerFromDoc(doc));
+        if (!seenDocs.add(doc.id)) continue;
+        final p = _partnerFromDoc(doc);
+        final otherUid = p.ownerUid == uid ? (p.partnerUid ?? '') : p.ownerUid;
+        final key =
+            otherUid.isNotEmpty ? otherUid : p.partnerName.trim().toLowerCase();
+        final existing = byPartner[key];
+        if (existing == null || _preferPartnership(p, existing)) {
+          byPartner[key] = p;
         }
       }
-      results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final resolved = await _resolveAll(byPartner.values.toList());
+      resolved.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       if (kDebugMode) {
         debugPrint(
-            '[AccountabilityService] fetchMyPartnerships: found ${results.length}');
+            '[AccountabilityService] fetchMyPartnerships: found ${resolved.length}');
       }
-      return results;
+      return resolved;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchMyPartnerships error: $e');
       }
       return [];
     }
+  }
+
+  /// Status ranking used when two partnership docs describe the same pair.
+  static int _partnershipRank(PartnershipStatus s) {
+    switch (s) {
+      case PartnershipStatus.accepted:
+        return 3;
+      case PartnershipStatus.pending:
+        return 2;
+      case PartnershipStatus.declined:
+        return 1;
+    }
+  }
+
+  /// True when [candidate] should replace [current] for the same partner.
+  static bool _preferPartnership(
+      AccountabilityPartner candidate, AccountabilityPartner current) {
+    final rc = _partnershipRank(candidate.status);
+    final rr = _partnershipRank(current.status);
+    if (rc != rr) return rc > rr;
+    return candidate.createdAt.isAfter(current.createdAt);
   }
 
   /// Returns the UIDs of the current user's ACCEPTED partners (the other
@@ -408,6 +618,33 @@ class AccountabilityService {
     }
   }
 
+  /// Finds a partnership I own that was sent to [email] (any status except
+  /// declined). Single-field query on `partnerEmail`, filtered client-side.
+  Future<AccountabilityPartner?> _findMyPartnershipByEmail(String email) async {
+    if (!_isReady) return null;
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('partnerships')
+          .where('partnerEmail', isEqualTo: email)
+          .get();
+      AccountabilityPartner? best;
+      for (final doc in snap.docs) {
+        final p = _partnerFromDoc(doc);
+        if (p.ownerUid != uid) continue;
+        if (p.status == PartnershipStatus.declined) continue;
+        if (best == null || _preferPartnership(p, best)) best = p;
+      }
+      return best;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] _findMyPartnershipByEmail error: $e');
+      }
+      return null;
+    }
+  }
+
   /// Finds an accepted partnership between the current user and [otherUid].
   /// Returns the partnership if found and accepted, otherwise null.
   Future<AccountabilityPartner?> findAcceptedPartnership(
@@ -423,7 +660,9 @@ class AccountabilityService {
           .where('status', isEqualTo: 'accepted')
           .limit(1)
           .get();
-      if (q1.docs.isNotEmpty) return _partnerFromDoc(q1.docs.first);
+      if (q1.docs.isNotEmpty) {
+        return _resolvePartnerName(_partnerFromDoc(q1.docs.first));
+      }
 
       // Query where they're the owner and I'm the partner
       final q2 = await _db
@@ -433,12 +672,49 @@ class AccountabilityService {
           .where('status', isEqualTo: 'accepted')
           .limit(1)
           .get();
-      if (q2.docs.isNotEmpty) return _partnerFromDoc(q2.docs.first);
+      if (q2.docs.isNotEmpty) {
+        return _resolvePartnerName(_partnerFromDoc(q2.docs.first));
+      }
 
       return null;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] findAcceptedPartnership error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Finds ANY non-declined partnership with [otherUid], either direction.
+  /// Used to avoid creating a second doc for a pair that already has one
+  /// (a duplicate doc makes the same person appear twice in the Squad).
+  Future<AccountabilityPartner?> findAnyPartnership(String otherUid) async {
+    if (!_isReady) return null;
+    try {
+      final myUid = currentUid!;
+      final docs = <DocumentSnapshot>[];
+      final q1 = await _db
+          .collection('partnerships')
+          .where('ownerUid', isEqualTo: myUid)
+          .where('partnerUid', isEqualTo: otherUid)
+          .get();
+      final q2 = await _db
+          .collection('partnerships')
+          .where('ownerUid', isEqualTo: otherUid)
+          .where('partnerUid', isEqualTo: myUid)
+          .get();
+      docs.addAll(q1.docs);
+      docs.addAll(q2.docs);
+      AccountabilityPartner? best;
+      for (final doc in docs) {
+        final p = _partnerFromDoc(doc);
+        if (p.status == PartnershipStatus.declined) continue;
+        if (best == null || _preferPartnership(p, best)) best = p;
+      }
+      return best == null ? null : _resolvePartnerName(best);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] findAnyPartnership error: $e');
       }
       return null;
     }
@@ -450,11 +726,30 @@ class AccountabilityService {
       {String? type}) async {
     if (!_isReady) return null;
     try {
-      final existing = await findAcceptedPartnership(otherUid);
+      // Never create a second doc for a pair that already has one — that is
+      // what made the same partner show up twice in the Squad list.
+      final existing = await findAnyPartnership(otherUid);
       if (existing != null) {
+        if (existing.status == PartnershipStatus.accepted) {
+          if (kDebugMode) {
+            debugPrint(
+                '[AccountabilityService] ensurePartnership: existing partnership ${existing.id}');
+          }
+          return existing.id;
+        }
+        // A pending partnership already links us — upgrade it to accepted
+        // instead of creating a duplicate.
+        final now = DateTime.now();
+        await _db.collection('partnerships').doc(existing.id).update({
+          'status': 'accepted',
+          'acceptedAt': now.toIso8601String(),
+          'partnerName': otherName,
+          'ownerName': currentUserDisplayName,
+          'ownerEmail': _myEmail,
+        });
         if (kDebugMode) {
           debugPrint(
-              '[AccountabilityService] ensurePartnership: existing partnership ${existing.id}');
+              '[AccountabilityService] ensurePartnership: upgraded pending ${existing.id}');
         }
         return existing.id;
       }
@@ -474,6 +769,8 @@ class AccountabilityService {
         'ownerUid': myUid,
         'partnerUid': otherUid,
         'partnerName': otherName,
+        'ownerName': currentUserDisplayName,
+        'ownerEmail': _myEmail,
         'role': PartnerRole.friend.name,
         'status': 'accepted',
         'inviteCode': code,
@@ -738,7 +1035,7 @@ class AccountabilityService {
         .collection('partnerships')
         .where('ownerUid', isEqualTo: uid)
         .snapshots()
-        .map((snap) => snap.docs.map(_partnerFromDoc).toList());
+        .asyncMap((snap) => _resolveAll(snap.docs.map(_partnerFromDoc)));
   }
 
   /// Stream of reviews for the current user.
@@ -784,8 +1081,20 @@ class AccountabilityService {
     DateTime? dueDate,
     String? challengeId,
     List<String>? accountableUserIds,
+    String? accountableEmail,
   }) async {
     if (!_isReady) return null;
+    // An empty accountableUid makes the task invisible to everyone — unless
+    // it is addressed by email, in which case it is claimed when that email
+    // signs in (see claimTasksAssignedToMyEmail).
+    if (accountableUid.isEmpty &&
+        (accountableEmail == null || accountableEmail.isEmpty)) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] createTask: refusing task with empty accountableUid (title="$title")');
+      }
+      return null;
+    }
     try {
       final ref = _db.collection('accountability_tasks').doc();
       final task = AccountabilityTask(
@@ -801,7 +1110,10 @@ class AccountabilityService {
         status: AccountabilityTaskStatus.requested,
         dueDate: dueDate,
         assignedAt: DateTime.now(),
-        accountableUserIds: accountableUserIds ?? [accountableUid],
+        accountableUserIds: accountableUid.isEmpty
+            ? const []
+            : (accountableUserIds ?? [accountableUid]),
+        accountableEmail: accountableEmail,
       );
       await ref.set(task.toFirestore());
       if (kDebugMode) {
@@ -950,6 +1262,36 @@ class AccountabilityService {
     }
   }
 
+  /// Challenge IDs of tasks a partner assigned TO me (I am the reviewer).
+  ///
+  /// Under the owner-completes model those challenges belong to the owner's
+  /// session only; this is used to strip local copies from my session.
+  Future<Set<String>> fetchReviewerChallengeIds() async {
+    if (!_isReady) return {};
+    try {
+      final uid = currentUid!;
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableUid', isEqualTo: uid)
+          .get();
+      final ids = <String>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        // Tasks I assigned to myself are mine to complete.
+        if ((data['assignedByUid'] as String?) == uid) continue;
+        final cid = data['challengeId'] as String?;
+        if (cid != null && cid.isNotEmpty) ids.add(cid);
+      }
+      return ids;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] fetchReviewerChallengeIds error: $e');
+      }
+      return {};
+    }
+  }
+
   /// Fetches a single accountability task by its Firestore document ID.
   Future<AccountabilityTask?> fetchTaskById(String taskId) async {
     if (!_isReady) return null;
@@ -966,10 +1308,57 @@ class AccountabilityService {
 
   /// Fetches incoming task requests for the current user
   /// (tasks where accountableUid == myUid && status is requested or pending).
+  /// Claim tasks that were addressed to my email before I had an account.
+  ///
+  /// When a coach/manager assigns a task to an email that has not joined yet,
+  /// the task is written with an empty accountableUid but the target email in
+  /// accountableEmail. Once that email signs in, this claims the tasks so the
+  /// partner sees the "X invited you to review this task" card.
+  Future<void> claimTasksAssignedToMyEmail() async {
+    if (!_isReady) return;
+    final email = _auth.currentUser?.email?.toLowerCase();
+    if (email == null || email.isEmpty) return;
+    final uid = currentUid!;
+    try {
+      final snap = await _db
+          .collection('accountability_tasks')
+          .where('accountableEmail', isEqualTo: email)
+          .get();
+      final docs = snap.docs.where((d) {
+        final data = d.data();
+        final addr = (data['accountableUid'] as String?) ?? '';
+        final status = (data['status'] as String?) ?? '';
+        return (addr.isEmpty || addr == uid) &&
+            status != AccountabilityTaskStatus.declined.name;
+      }).toList();
+      for (final doc in docs) {
+        final data = doc.data();
+        final ids =
+            (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
+                [];
+        if (!ids.contains(uid)) ids.add(uid);
+        await doc.reference.update({
+          'accountableUid': uid,
+          'accountableUserIds': ids,
+        });
+        if (kDebugMode) {
+          debugPrint('[AccountabilityService] claimed task ${doc.id} by email');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[AccountabilityService] claimTasksAssignedToMyEmail error: $e');
+      }
+    }
+  }
+
+  /// Fetch task requests addressed to my uid OR to my email (not yet claimed).
   Future<List<AccountabilityTask>> fetchIncomingTaskRequests() async {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
+      final email = _auth.currentUser?.email?.toLowerCase();
       final snap = await _db
           .collection('accountability_tasks')
           .where('accountableUid', isEqualTo: uid)
@@ -978,6 +1367,20 @@ class AccountabilityService {
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
           .where((t) => t.status == AccountabilityTaskStatus.requested)
           .toList();
+      if (email != null && email.isNotEmpty) {
+        final emailed = await _db
+            .collection('accountability_tasks')
+            .where('accountableEmail', isEqualTo: email)
+            .get();
+        for (final d in emailed.docs) {
+          if (tasks.any((t) => t.id == d.id)) continue;
+          final t = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+          if (t.status == AccountabilityTaskStatus.requested &&
+              (t.accountableUid.isEmpty || t.accountableUid == uid)) {
+            tasks.add(t);
+          }
+        }
+      }
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
       if (kDebugMode) {
         debugPrint(
@@ -1001,8 +1404,22 @@ class AccountabilityService {
       final ref = _db.collection('accountability_tasks').doc(taskId);
       final doc = await ref.get();
       if (!doc.exists) return false;
-      if (doc.data()!['accountableUid'] != currentUid) return false;
-      await ref.update({'status': AccountabilityTaskStatus.pending.name});
+      final data = doc.data()!;
+      final uid = currentUid!;
+      final email = _auth.currentUser?.email?.toLowerCase();
+      final isMine = data['accountableUid'] == uid ||
+          ((email != null && email.isNotEmpty) &&
+              (data['accountableEmail'] as String?)?.toLowerCase() == email);
+      if (!isMine) return false;
+      // Accepting also claims the task if it was addressed by email only.
+      final ids =
+          (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
+      if (!ids.contains(uid)) ids.add(uid);
+      await ref.update({
+        'status': AccountabilityTaskStatus.pending.name,
+        'accountableUid': uid,
+        'accountableUserIds': ids,
+      });
       if (kDebugMode) {
         debugPrint('[AccountabilityService] acceptTaskRequest: $taskId');
       }
@@ -1211,8 +1628,16 @@ class AccountabilityService {
       }
 
       final tasks = allDeduped.where((t) {
+        // Both owner and reviewer must see the same lifecycle: pending,
+        // completed, and every review state (pendingReview/approved/rejected/
+        // expired). Hiding pendingReview is what made approvals invisible
+        // on one side.
         if (t.status == AccountabilityTaskStatus.pending ||
-            t.status == AccountabilityTaskStatus.completed) {
+            t.status == AccountabilityTaskStatus.completed ||
+            t.status == AccountabilityTaskStatus.pendingReview ||
+            t.status == AccountabilityTaskStatus.approved ||
+            t.status == AccountabilityTaskStatus.rejected ||
+            t.status == AccountabilityTaskStatus.expired) {
           return true;
         }
         // Show requested tasks the current user assigned (waiting for partner to accept)
@@ -1260,7 +1685,7 @@ class AccountabilityService {
   /// Safe to call even if the collection doesn't exist yet — Firestore
   /// creates it on the first write.
   Future<void> registerUser() async {
-    if (!_isReady) return;
+    if (!_isReady || _registered) return;
     try {
       final user = _auth.currentUser!;
       final displayName = user.displayName?.isNotEmpty == true
@@ -1276,6 +1701,7 @@ class AccountabilityService {
         // Only set createdAt if the doc doesn't already exist
       }, SetOptions(merge: true));
 
+      _registered = true;
       if (kDebugMode) {
         debugPrint('[AccountabilityService] registerUser: ${user.uid}');
       }
@@ -1285,6 +1711,40 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] registerUser error: $e');
       }
     }
+  }
+
+  /// Finds an already-added partner by email.
+  ///
+  /// Checks my partnerships first: the invite flow stores the partner's email
+  /// on the partnership doc, so a friend I already added resolves even when
+  /// their `users` doc is missing (deleted profile, not re-signed-in yet).
+  /// Falls back to the `users` collection lookup.
+  Future<AppUser?> findPartnerByEmail(String email) async {
+    if (!_isReady) return null;
+    final trimmed = email.trim().toLowerCase();
+    if (trimmed.isEmpty || !_isReady) return null;
+    try {
+      final partners = await fetchMyPartnerships();
+      for (final p in partners) {
+        if (p.status == PartnershipStatus.declined) continue;
+        if ((p.emailOf(currentUid) ?? '').toLowerCase() != trimmed) continue;
+        final uid = p.uidOf(currentUid) ?? '';
+        if (uid.isEmpty) continue;
+        return AppUser(
+          uid: uid,
+          email: trimmed,
+          displayName: p.partnerName.isNotEmpty
+              ? p.partnerName
+              : trimmed.split('@').first,
+          createdAt: p.acceptedAt ?? p.createdAt,
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] findPartnerByEmail error: $e');
+      }
+    }
+    return findUserByEmail(trimmed);
   }
 
   /// Looks up a registered user by email address.
@@ -1300,7 +1760,27 @@ class AccountabilityService {
           .get();
 
       if (snap.docs.isEmpty) return null;
-      return AppUser.fromFirestore(snap.docs.first.data());
+      final doc = snap.docs.first;
+      final data = doc.data();
+      final user = AppUser.fromFirestore(data);
+      // Legacy user docs (written by CloudSyncService) stored the uid under
+      // `id` and the name under `name`. Without these fallbacks the invite
+      // flow stored partnerUid: '' / partnerName: '' on the partnership,
+      // which security rules reject as "not claimable".
+      final uid = user.uid.isNotEmpty ? user.uid : doc.id;
+      final legacyName = data['name'] as String?;
+      final displayName = user.displayName.isNotEmpty
+          ? user.displayName
+          : ((legacyName?.isNotEmpty ?? false)
+              ? legacyName!
+              : user.email.split('@').first);
+      return AppUser(
+        uid: uid,
+        email: user.email,
+        displayName: displayName,
+        photoUrl: user.photoUrl,
+        createdAt: user.createdAt,
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] findUserByEmail error: $e');
@@ -1337,16 +1817,84 @@ class AccountabilityService {
       throw Exception('You cannot invite yourself.');
     }
 
-    // Look up recipient in users collection (may be null)
-    final recipient = await findUserByEmail(recipientEmail);
+    // Look up recipient: partnerships first (an already-added friend resolves
+    // even if their `users` doc is missing), then the users collection.
+    final recipient = await findPartnerByEmail(recipientEmail);
 
-    // Pre-create the partnership doc (same structure as existing invitePartner)
+    // Never create a second partnership for a person I already added — that
+    // is what made the same partner show up twice in the Squad.
+    final existing = await _findMyPartnershipByEmail(recipientEmail);
+    if (existing != null) {
+      if (existing.status == PartnershipStatus.accepted) {
+        return AccountabilityInvitation(
+          id: existing.invitationId ?? existing.id,
+          fromUid: uid,
+          fromName: senderName,
+          fromEmail: senderEmail,
+          toEmail: recipientEmail,
+          toUid: existing.partnerUid,
+          partnershipId: existing.id,
+          role: existing.role,
+          status: InvitationStatus.accepted,
+          createdAt: existing.createdAt,
+          respondedAt: existing.acceptedAt,
+        );
+      }
+      if (existing.invitationId != null && existing.invitationId!.isNotEmpty) {
+        // A pending email invite already exists for this pair — return it.
+        return AccountabilityInvitation(
+          id: existing.invitationId!,
+          fromUid: uid,
+          fromName: senderName,
+          fromEmail: senderEmail,
+          toEmail: recipientEmail,
+          toUid: existing.partnerUid,
+          partnershipId: existing.id,
+          role: existing.role,
+          status: InvitationStatus.pending,
+          createdAt: existing.createdAt,
+        );
+      }
+      // Pending code-invite: upgrade it into an email invite in place.
+      final upgradeRef = _db.collection('invitations').doc();
+      await _db.collection('partnerships').doc(existing.id).update({
+        'partnerEmail': recipientEmail,
+        'partnerUid': recipient?.uid,
+        'partnerName': (recipient?.displayName.isNotEmpty ?? false)
+            ? recipient!.displayName
+            : recipientEmail.split('@').first,
+        'inviteType': 'email',
+        'invitationId': upgradeRef.id,
+      });
+      final upgraded = AccountabilityInvitation(
+        id: upgradeRef.id,
+        fromUid: uid,
+        fromName: senderName,
+        fromEmail: senderEmail,
+        toEmail: recipientEmail,
+        toUid: recipient?.uid,
+        partnershipId: existing.id,
+        role: role,
+        status: InvitationStatus.pending,
+        createdAt: DateTime.now(),
+      );
+      await upgradeRef.set(upgraded.toFirestore());
+      return upgraded;
+    }
+
+    // Pre-create the partnership doc (same structure as existing code-based flow)
     final partnershipRef = _db.collection('partnerships').doc();
     final inviteRef = _db.collection('invitations').doc();
     final now = DateTime.now();
 
-    final partnerName =
-        recipient?.displayName ?? recipientEmail.split('@').first;
+    // Never write empty strings for uid/name: security rules treat
+    // partnerUid == '' as "claimed by another account", which made the
+    // invitee's accept attempt fail with permission-denied.
+    final String? recipientUid =
+        (recipient?.uid.isNotEmpty ?? false) ? recipient!.uid : null;
+    final partnerName = (recipient?.displayName.isNotEmpty ?? false)
+        ? recipient!.displayName
+        : recipientEmail.split('@').first;
 
     final batch = _db.batch();
 
@@ -1354,13 +1902,16 @@ class AccountabilityService {
     batch.set(partnershipRef, {
       'id': partnershipRef.id,
       'ownerUid': uid,
-      'partnerUid': recipient?.uid, // null if not yet registered
+      'partnerUid': recipientUid, // null if not yet registered
       'partnerName': partnerName,
+      'ownerName': senderName,
       'partnerEmail': recipientEmail,
+      'ownerEmail': senderEmail,
       'role': role.name,
       'status': 'pending',
       'inviteCode': '', // empty — not code-based
       'inviteType': 'email', // distinguishes from code-based invites
+      'invitationId': inviteRef.id, // so the invitee can accept without a code
       'createdAt': FieldValue.serverTimestamp(),
       'acceptedAt': null,
     });
@@ -1372,7 +1923,7 @@ class AccountabilityService {
       fromName: senderName,
       fromEmail: senderEmail,
       toEmail: recipientEmail,
-      toUid: recipient?.uid,
+      toUid: recipientUid,
       partnershipId: partnershipRef.id,
       role: role,
       status: InvitationStatus.pending,
@@ -1501,20 +2052,26 @@ class AccountabilityService {
       final partnershipRef =
           _db.collection('partnerships').doc(invitation.partnershipId);
 
+      // Update-only claim (no pre-read): a pending partnership is NOT
+      // readable by the invitee, so a transaction read would itself be
+      // denied. The rules allow claiming when partnerUid is null/'' and
+      // status becomes 'accepted'.
       final batch = _db.batch();
 
-      // Update invitation status
       batch.update(inviteRef, {
         'status': 'accepted',
-        'toUid': uid, // ensure uid is recorded
+        'toUid': uid,
         'respondedAt': FieldValue.serverTimestamp(),
       });
 
-      // Update partnership — same fields as code-based acceptInvite
       batch.update(partnershipRef, {
         'partnerUid': uid,
         'status': 'accepted',
         'acceptedAt': FieldValue.serverTimestamp(),
+        // Self-heal docs that were created with empty name strings.
+        'partnerName': currentUserDisplayName,
+        if (invitation.fromName.isNotEmpty) 'ownerName': invitation.fromName,
+        if (invitation.fromEmail.isNotEmpty) 'ownerEmail': invitation.fromEmail,
       });
 
       await batch.commit();
@@ -1530,7 +2087,15 @@ class AccountabilityService {
         debugPrint(
             '[AccountabilityService] acceptEmailInvite: $invitationId accepted');
       }
-      return partner;
+      return _resolvePartnerName(partner);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw Exception(
+            'Firestore permission denied while accepting this invitation. '
+            'This usually means the deployed security rules are out of date — '
+            'run: firebase deploy --only firestore:rules');
+      }
+      rethrow;
     } on Exception {
       rethrow;
     } catch (e) {
@@ -1795,7 +2360,7 @@ class AccountabilityService {
   // ── Photo Proof ─────────────────────────────────────────────────────────
 
   /// Submit photo proof for a task. Sets proofStatus → submitted.
-  /// Only the accountableUid can submit.
+  /// Only the OWNER (assignedByUid) can submit — reviewers cannot.
   Future<bool> submitTaskProof({
     required String taskId,
     required String proofUrl,
@@ -1812,6 +2377,18 @@ class AccountabilityService {
           '[AccountabilityService] submitTaskProof: taskId=$taskId proofUrl=$proofUrl');
     }
     try {
+      final doc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!doc.exists) return false;
+      final data = doc.data()!;
+      // Owner-only: the task owner (assigner) submits proof, never the reviewer.
+      if (data['assignedByUid'] != currentUid) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] submitTaskProof: denied — only the owner can submit proof');
+        }
+        return false;
+      }
       final now = DateTime.now();
       await _db.collection('accountability_tasks').doc(taskId).update({
         'proofStatus': ProofStatus.submitted.toWire,
@@ -1834,7 +2411,8 @@ class AccountabilityService {
   }
 
   /// Review (approve/reject) a submitted proof.
-  /// Only the assigner (assignedByUid) can review.
+  /// Only a REVIEWER (accountableUid / accountableUserIds / partnerUid)
+  /// can review — the owner cannot approve their own proof.
   Future<bool> reviewTaskProof({
     required String taskId,
     required bool approved,
@@ -1842,9 +2420,19 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return false;
     try {
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final doc = await ref.get();
+      if (!doc.exists) return false;
+      final data = doc.data()!;
+      if (!_isReviewerOf(data, currentUid!)) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] reviewTaskProof: denied — only the reviewer can review proof');
+        }
+        return false;
+      }
       final now = DateTime.now();
       final batch = _db.batch();
-      final ref = _db.collection('accountability_tasks').doc(taskId);
 
       if (approved) {
         batch.update(ref, {
@@ -2446,14 +3034,42 @@ class AccountabilityService {
     }
   }
 
+  /// True when [uid] is a designated reviewer of the task described by
+  /// raw Firestore [data] — i.e. listed in accountableUserIds/accountableUid
+  /// or as partnerUid, and NOT the owner. The owner can never review
+  /// their own proof.
+  bool _isReviewerOf(Map<String, dynamic> data, String uid) {
+    if (data['assignedByUid'] == uid) return false;
+    if (data['partnerUid'] == uid) return true;
+    if (data['accountableUid'] == uid) return true;
+    final ids =
+        (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
+    return ids.contains(uid);
+  }
+
+  /// True when [uid] is the task owner (the assigner who must submit proof).
+  bool _isOwnerOf(Map<String, dynamic> data, String uid) =>
+      data['assignedByUid'] == uid;
+
   /// Submit proof and move task to pendingReview status.
   /// Called when the owner toggles a task that has reviewers.
+  /// OWNER-ONLY: reviewers cannot submit proof for a task they review.
   Future<AccountabilityTask?> submitProofForReview({
     required String taskId,
     required String proofUrl,
   }) async {
     if (!_isReady) return null;
     try {
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final existing = await ref.get();
+      if (!existing.exists) return null;
+      if (!_isOwnerOf(existing.data()!, currentUid!)) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] submitProofForReview: denied — only the owner can submit proof');
+        }
+        return null;
+      }
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
       await _db.collection('accountability_tasks').doc(taskId).update({
@@ -2477,6 +3093,7 @@ class AccountabilityService {
   }
 
   /// Reviewer approves a proof. Adds to the approvals array.
+  /// REVIEWER-ONLY: the owner cannot approve their own proof.
   /// Returns the updated task (with hasEnoughApprovals check).
   Future<AccountabilityTask?> approveProof({
     required String taskId,
@@ -2485,6 +3102,20 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
+      final preDoc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!preDoc.exists) return null;
+      if (!_isReviewerOf(preDoc.data()!, uid)) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] approveProof: denied — only the reviewer can approve');
+        }
+        return null;
+      }
+      // Prevent double-voting by the same reviewer.
+      final preTask =
+          AccountabilityTask.fromFirestore(preDoc.data()!, id: preDoc.id);
+      if (preTask.hasApprovedBy(uid)) return preTask;
       final name = currentUserDisplayName;
       final now = DateTime.now();
 
@@ -2533,6 +3164,7 @@ class AccountabilityService {
   }
 
   /// Reviewer rejects a proof. Adds to rejections, reverts to pending.
+  /// REVIEWER-ONLY: the owner cannot reject their own proof.
   Future<AccountabilityTask?> rejectProof({
     required String taskId,
     required String comment,
@@ -2540,6 +3172,16 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
+      final preDoc =
+          await _db.collection('accountability_tasks').doc(taskId).get();
+      if (!preDoc.exists) return null;
+      if (!_isReviewerOf(preDoc.data()!, uid)) {
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] rejectProof: denied — only the reviewer can reject');
+        }
+        return null;
+      }
       final name = currentUserDisplayName;
       final now = DateTime.now();
 

@@ -386,22 +386,8 @@ class _ProofReviewCard extends StatelessWidget {
                   ),
                   if (task.proofUrl != null) ...[
                     const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        task.proofUrl!,
-                        height: 150,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 80,
-                          color: Colors.grey[200],
-                          child: const Center(
-                            child: Icon(Icons.broken_image, color: Colors.grey),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Shared tappable image — tap opens full screen.
+                    _ProofImage(url: task.proofUrl!, height: 150),
                   ],
                 ],
               ),
@@ -542,59 +528,119 @@ class _MyPendingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reviewers = task.accountableUserIds
+        .where((uid) => uid != task.assignedByUid)
+        .toList();
     return Card(
       elevation: 1,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.purple.withValues(alpha: 0.15),
-              child: const Icon(Icons.hourglass_top,
-                  size: 20, color: Colors.purple),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Waiting for reviewer approval...',
-                    style: TextStyle(fontSize: 12, color: Colors.purple[400]),
-                  ),
-                  if (task.proofUrl != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          Icon(Icons.camera_alt,
-                              size: 12, color: Colors.grey[400]),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Proof submitted',
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.grey[400]),
-                          ),
-                        ],
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.purple.withValues(alpha: 0.15),
+                  child: const Icon(Icons.hourglass_top,
+                      size: 20, color: Colors.purple),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                      const SizedBox(height: 2),
+                      Text(
+                        reviewers.isEmpty
+                            ? 'Waiting for reviewer approval...'
+                            : 'Waiting for ${task.accountableName} to review',
+                        style:
+                            TextStyle(fontSize: 12, color: Colors.purple[400]),
+                      ),
+                    ],
+                  ),
+                ),
+                if (task.expiresAt != null)
+                  _ExpiryBadge(expiresAt: task.expiresAt!),
+              ],
             ),
-            if (task.expiresAt != null)
-              _ExpiryBadge(expiresAt: task.expiresAt!),
+            if (task.proofUrl != null) ...[
+              const SizedBox(height: 10),
+              // Both sides see the submitted photo — tap to view full screen.
+              _ProofImage(url: task.proofUrl!, height: 130),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tappable proof photo (shared by owner + reviewer cards) ──────────────────
+
+class _ProofImage extends StatelessWidget {
+  final String url;
+  final double height;
+  const _ProofImage({required this.url, this.height = 150});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: const EdgeInsets.all(12),
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Icon(Icons.broken_image,
+                        color: Colors.white54, size: 48),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          height: height,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            height: 80,
+            color: Colors.grey[200],
+            child: const Center(
+              child: Icon(Icons.broken_image, color: Colors.grey),
+            ),
+          ),
         ),
       ),
     );

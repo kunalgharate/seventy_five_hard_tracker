@@ -19,15 +19,16 @@ class PhotoSyncService {
   final _picker = ImagePicker();
 
   /// Pick a photo from camera or gallery.
+  ///
+  /// The full-resolution original is returned on purpose: downscaling here
+  /// (maxWidth/imageQuality) would throw away detail *before* the lossless-ish
+  /// compression step in [_compressImage].
   Future<File?> pickPhoto({bool fromCamera = true}) async {
     if (kDebugMode) {
       debugPrint('[PhotoSyncService] pickPhoto: fromCamera=$fromCamera');
     }
     final picked = await _picker.pickImage(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 80,
     );
     if (picked == null) {
       if (kDebugMode) {
@@ -87,6 +88,12 @@ class PhotoSyncService {
     }
   }
 
+  /// Compresses for upload while keeping the photo visually identical.
+  ///
+  /// quality 92 + max 1920px is the practical "no visible loss" point for
+  /// phone photos — file size drops 5-10x with no perceivable difference.
+  /// If compression somehow produces a larger file than the original, the
+  /// original is uploaded untouched.
   Future<File> _compressImage(File imageFile) async {
     try {
       final targetPath =
@@ -95,9 +102,10 @@ class PhotoSyncService {
       final compressedXFile = await FlutterImageCompress.compressAndGetFile(
         imageFile.absolute.path,
         targetPath,
-        quality: 80,
-        minWidth: 1080,
-        minHeight: 1080,
+        quality: 92,
+        minWidth: 1920,
+        minHeight: 1920,
+        keepExif: true,
       );
 
       if (compressedXFile != null) {
@@ -111,7 +119,12 @@ class PhotoSyncService {
             debugPrint(
                 'Compressed: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
           }
-          return compressedFile;
+          // Never upload a "compressed" file that is bigger than the source.
+          if (compressedSize < originalSize) return compressedFile;
+          if (kDebugMode) {
+            debugPrint('[PhotoSyncService] compression grew the file — '
+                'uploading the original instead');
+          }
         }
       }
 

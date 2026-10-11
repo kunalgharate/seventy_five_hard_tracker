@@ -45,6 +45,18 @@ service cloud.firestore {
                       || (resource.data.partnerUid == null
                           && request.resource.data.partnerUid == request.auth.uid
                           && request.resource.data.status == 'accepted')
+                      // Legacy docs stored partnerUid as '' instead of null
+                      // for "not claimed yet" — treat '' the same as null.
+                      || (resource.data.partnerUid == ''
+                          && request.resource.data.partnerUid == request.auth.uid
+                          && request.resource.data.status == 'accepted')
+                      // The invited email holder may accept or decline a still-
+                      // pending invite addressed to them. Covers docs whose
+                      // partnerUid points at a stale/empty uid.
+                      || (resource.data.status == 'pending'
+                          && resource.data.partnerEmail == request.auth.token.email
+                          && (request.resource.data.status == 'accepted'
+                              || request.resource.data.status == 'declined'))
                     );
     }
 
@@ -174,14 +186,23 @@ service cloud.firestore {
                       || resource.data.accountableUid == request.auth.uid
                       || resource.data.partnerUid == request.auth.uid
                       || (resource.data.accountableUserIds != null
-                          && request.auth.uid in resource.data.accountableUserIds));
+                          && request.auth.uid in resource.data.accountableUserIds)
+                      // Task addressed to my email before I had an account
+                      || (resource.data.accountableEmail is string
+                          && resource.data.accountableEmail == request.auth.token.email));
       allow create: if request.auth != null
                     && request.resource.data.assignedByUid == request.auth.uid;
       allow update: if request.auth != null
                     && (resource.data.accountableUid == request.auth.uid
                         || resource.data.assignedByUid == request.auth.uid
                         || resource.data.partnerUid == request.auth.uid
-                        || (request.auth.uid in resource.data.accountableUserIds));
+                        || (request.auth.uid in resource.data.accountableUserIds)
+                        // Claim: only fills in my own uid, addressed to my email
+                        || (resource.data.accountableEmail is string
+                            && resource.data.accountableEmail == request.auth.token.email
+                            && request.resource.data.accountableUid == request.auth.uid
+                            && request.resource.data.assignedByUid == resource.data.assignedByUid
+                            && request.resource.data.accountableEmail == resource.data.accountableEmail));
       allow delete: if request.auth != null
                     && resource.data.assignedByUid == request.auth.uid;
     }

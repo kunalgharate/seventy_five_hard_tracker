@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/app_user.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
@@ -37,7 +42,64 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   String? _emailError;
   String? _titleError;
 
+  /// Recipient is not registered yet — assign the task by email and send
+  /// them a partnership invitation in the same step.
+  bool _emailInviteOnly = false;
+  String? _emailInfo;
+
+  /// Existing partners, shown first so a task can be assigned to a friend
+  /// without typing anything.
+  List<AccountabilityPartner> _partners = [];
+  bool _loadingPartners = true;
+
   final _svc = AccountabilityService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPartners();
+  }
+
+  Future<void> _loadPartners() async {
+    try {
+      final all = await _svc.fetchMyPartnerships();
+      if (!mounted) return;
+      setState(() {
+        // Accepted partners first, then pending invites (still assignable —
+        // the task waits for them to accept). Declined are hidden.
+        _partners = all
+            .where((p) =>
+                p.status != PartnershipStatus.declined &&
+                (p.uidOf(_svc.currentUid) ?? '').isNotEmpty)
+            .toList()
+          ..sort((a, b) {
+            final ra = a.status == PartnershipStatus.accepted ? 0 : 1;
+            final rb = b.status == PartnershipStatus.accepted ? 0 : 1;
+            if (ra != rb) return ra - rb;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+        _loadingPartners = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPartners = false);
+    }
+  }
+
+  void _selectPartner(AccountabilityPartner p) {
+    final uid = p.uidOf(_svc.currentUid) ?? '';
+    if (uid.isEmpty) return;
+    setState(() {
+      _selectedReviewer = AppUser(
+        uid: uid,
+        email: p.emailOf(_svc.currentUid) ?? '',
+        displayName: p.displayName,
+        createdAt: p.acceptedAt ?? p.createdAt,
+      );
+      _emailInviteOnly = false;
+      _emailInfo = null;
+      _emailError = null;
+    });
+  }
 
   @override
   void dispose() {
@@ -60,18 +122,25 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
     setState(() {
       _lookingUp = true;
       _emailError = null;
+      _emailInfo = null;
+      _emailInviteOnly = false;
     });
     try {
-      final user = await _svc.findUserByEmail(email);
+      // Partners I already added resolve from my partnerships even when their
+      // `users` doc is missing; unknown emails fall back to the users lookup.
+      final user = await _svc.findPartnerByEmail(email);
       if (!mounted) return;
       if (user == null) {
         setState(() {
           _lookingUp = false;
-          _emailError = 'No user found. They need to join DailyMettle first.';
+          _emailInviteOnly = true;
+          _emailInfo = 'Not on DailyMettle yet — we\'ll invite them and assign '
+              'this task to that email. They\'ll see it after they join.';
         });
       } else {
         setState(() {
           _lookingUp = false;
+          _emailInviteOnly = false;
           _selectedReviewer = user;
         });
       }
@@ -86,9 +155,10 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Future<void> _create() async {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty || title.length < 3) {
-      setState(() => _titleError = 'Task name must be at least 3 characters');
+    final title = sanitizeTaskName(_titleCtrl.text);
+    final validationError = validateTaskName(title);
+    if (validationError != null) {
+      setState(() => _titleError = validationError);
       return;
     }
     setState(() {
@@ -100,6 +170,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       String? partnershipId;
       String accountableUid = _svc.currentUid ?? '';
       String accountableName = _svc.currentUserDisplayName;
+      String? accountableEmail;
 
       // If reviewer selected, create partnership + task with reviewer
       if (_selectedReviewer != null) {
@@ -109,6 +180,26 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         );
         accountableUid = _selectedReviewer!.uid;
         accountableName = _selectedReviewer!.displayName;
+      } else if (_emailInviteOnly) {
+        // ── Direct assignment by email (teacher / manager / coach) ──
+        // Invite them and address the task to that email in one step. They
+        // will see "invited you to review this task" once they join.
+        final email = _emailCtrl.text.trim().toLowerCase();
+        if (!email.contains('@')) {
+          setState(() {
+            _creating = false;
+            _emailError = 'Enter a valid email';
+          });
+          return;
+        }
+        final invite = await _svc.sendEmailInvite(
+          toEmail: email,
+          role: PartnerRole.mentorCoach,
+        );
+        partnershipId = invite.partnershipId;
+        accountableUid = '';
+        accountableName = email;
+        accountableEmail = email;
       }
 
       // ── Routine tasks must appear in the Habits tab ──
@@ -128,17 +219,58 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         }
       }
 
-      // Create an accountability task when the task is a 75 Hard task OR a
-      // reviewer was chosen (so the partner gets something to review).
-      // A plain routine task with no reviewer only needs the RegularTask above.
+      // ── 75 Hard tasks must appear on Today's screen ──
+      // Register the task as a real challenge in the active session so it
+      // shows up immediately on the home screen (and on the partner's side
+      // once the accountability task is accepted).
+      String? challengeId;
+      if (_taskType == 'hard') {
+        if (!mounted) return;
+        // Check the repository directly: AddChallengeToSession silently does
+        // nothing when there is no active session, and the bloc's state may
+        // not have loaded yet even though a session exists.
+        final session =
+            await context.read<ChallengeBloc>().repository.getActiveSession();
+        if (!mounted) return;
+        if (session == null) {
+          setState(() => _creating = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Start your 75 Hard challenge first, then add the task.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+        challengeId = DateTime.now().millisecondsSinceEpoch.toString();
+        context.read<ChallengeBloc>().add(
+              AddChallengeToSession(
+                Challenge(
+                  id: challengeId,
+                  title: title,
+                  taskType: 'hard',
+                  category: 'general',
+                ),
+              ),
+            );
+      }
+
+      // Create an accountability task only when a reviewer was chosen.
+      // A self-assigned task is invisible in the Squad and would show up
+      // as a bogus "request for you", so a plain personal task is just the
+      // challenge (75 Hard) or the habit (Routine) created above.
       bool ok = true;
-      if (_taskType == 'hard' || _selectedReviewer != null) {
+      final hasReviewer = _selectedReviewer != null || _emailInviteOnly;
+      if (hasReviewer) {
         final created = await _svc.createAccountabilityTask(
           accountableUid: accountableUid,
           accountableName: accountableName,
+          accountableEmail: accountableEmail,
           partnershipId: partnershipId ?? '',
           title: title,
           description: _descCtrl.text.trim(),
+          challengeId: challengeId,
         );
         ok = created != null;
       }
@@ -149,12 +281,15 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_selectedReviewer != null
-                ? 'Task created! ${_selectedReviewer!.displayName} '
-                    'will be asked to review.'
-                : _taskType == 'regular'
-                    ? 'Routine task added to your Habits!'
-                    : 'Task created!'),
+            content: Text(_emailInviteOnly
+                ? 'Task assigned to ${_emailCtrl.text.trim()} — '
+                    'they\'ll accept it after they join.'
+                : _selectedReviewer != null
+                    ? 'Task created! ${_selectedReviewer!.displayName} '
+                        'will be asked to review.'
+                    : _taskType == 'regular'
+                        ? 'Routine task added to your Habits!'
+                        : 'Task added to today\'s challenge!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -301,7 +436,54 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
 
             if (_selectedReviewer != null)
               _buildSelectedReviewer()
-            else
+            else ...[
+              // ── Existing partners first ──
+              if (!_loadingPartners && _partners.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.group_outlined,
+                          size: 16, color: Colors.grey[400]),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'No partners yet — invite one below, or share your '
+                          'invite code from the Squad screen.',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[400]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (!_loadingPartners && _partners.isNotEmpty) ...[
+                Text(
+                  'Your partners',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[500],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ..._partners.map(_buildPartnerTile),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'or invite someone new',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -321,8 +503,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                       style: TextStyle(color: textColor, fontSize: 14),
                       onSubmitted: (_) => _lookupReviewer(),
                       onChanged: (_) {
-                        if (_emailError != null) {
-                          setState(() => _emailError = null);
+                        if (_emailError != null || _emailInviteOnly) {
+                          setState(() {
+                            _emailError = null;
+                            _emailInfo = null;
+                            _emailInviteOnly = false;
+                          });
                         }
                       },
                     ),
@@ -353,6 +539,35 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   ),
                 ],
               ),
+            ],
+            if (_emailInviteOnly && _emailInfo != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                      Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.mail_lock_outlined,
+                        size: 16, color: Colors.orange[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _emailInfo!,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // ── Create button ──
@@ -378,7 +593,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                         ),
                       )
                     : Text(
-                        _selectedReviewer != null
+                        _emailInviteOnly
                             ? 'Create & Invite Reviewer'
                             : 'Create Task',
                         style: const TextStyle(
@@ -478,6 +693,76 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
             color: Colors.grey[400],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPartnerTile(AccountabilityPartner p) {
+    final name = p.displayName;
+    final email = p.emailOf(_svc.currentUid) ?? '';
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _selectPartner(p),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.blue.withValues(alpha: 0.12),
+              child: Text(
+                name[0].toUpperCase(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  if (email.isNotEmpty)
+                    Text(
+                      email,
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            if (p.status == PartnershipStatus.pending)
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Pending',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange[800],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+          ],
+        ),
       ),
     );
   }

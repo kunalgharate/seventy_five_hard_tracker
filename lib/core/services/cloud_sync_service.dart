@@ -146,21 +146,24 @@ class CloudSyncService {
   Future<void> _upsertUserProfile(User user) async {
     final ref = _firestore.collection('users').doc(user.uid);
     final snap = await ref.get();
+    // Write both the legacy keys (`id`, `name`) and the ones the partner
+    // lookup reads (`uid`, `displayName`). Writing only `id`/`name` made
+    // AppUser.fromFirestore produce uid: '' / displayName: '', which then
+    // got stored on partnership docs as partnerUid: '' — and security rules
+    // treat '' as "claimed by someone else", so the invitee was denied.
+    final data = <String, dynamic>{
+      'uid': user.uid,
+      'id': user.uid,
+      'name': user.displayName ?? '',
+      'displayName': user.displayName ?? '',
+      'email': user.email ?? '',
+      'photoUrl': user.photoURL ?? '',
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    };
     if (!snap.exists) {
-      await ref.set({
-        'id': user.uid,
-        'name': user.displayName ?? '',
-        'email': user.email ?? '',
-        'photoUrl': user.photoURL ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLoginAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await ref.set(
-        {'lastLoginAt': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
-      );
+      data['createdAt'] = FieldValue.serverTimestamp();
     }
+    await ref.set(data, SetOptions(merge: true));
   }
 
   // ── Consent ──────────────────────────────────────────────────────────────

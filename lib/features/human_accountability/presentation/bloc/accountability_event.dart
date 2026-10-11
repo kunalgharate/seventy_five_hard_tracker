@@ -131,6 +131,25 @@ class AcceptEmailInvite extends AccountabilityEvent {
   List<Object> get props => [invitationId];
 }
 
+/// Accept an incoming partner request — works for both code-based invites
+/// and email invitations (the latter have no invite code).
+class AcceptIncomingRequest extends AccountabilityEvent {
+  final AccountabilityPartner partner;
+  const AcceptIncomingRequest(this.partner);
+
+  @override
+  List<Object> get props => [partner];
+}
+
+/// Reject an incoming partner request (code or email based).
+class RejectIncomingRequest extends AccountabilityEvent {
+  final AccountabilityPartner partner;
+  const RejectIncomingRequest(this.partner);
+
+  @override
+  List<Object> get props => [partner];
+}
+
 /// Reject an email-based invitation by its Firestore document ID.
 class RejectEmailInvite extends AccountabilityEvent {
   final String invitationId;

@@ -317,23 +317,26 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   ) async {
     try {
       // ── Partner permission check ──
-      // If this challenge has an accountability partner assigned,
-      // only that partner can toggle completion.
+      // Model: the task OWNER completes the challenge on their own Today
+      // screen and uploads photo proof. The partner is only a reviewer —
+      // they must never toggle the owner's challenge.
       final svc = AccountabilityService();
       final assignedMap = await svc.fetchAssignedChallengeMap();
       final accountableForMap = await svc.fetchAccountableForMap();
-      final partnerUid = assignedMap[event.challengeId];
-      final iAmPartner = accountableForMap.containsKey(event.challengeId);
+      final iAssignedIt = assignedMap.containsKey(event.challengeId);
+      final iAmReviewerOnly =
+          accountableForMap.containsKey(event.challengeId) && !iAssignedIt;
 
-      if (partnerUid != null && partnerUid.isNotEmpty) {
-        // Task has an assigned partner — only they can toggle
-        if (svc.currentUid != partnerUid) {
-          emit(const ChallengeError(
-              'Only your accountability partner can mark this task as complete.'));
-          return;
+      if (iAmReviewerOnly) {
+        // I'm the reviewer for this task — the owner completes it, not me.
+        // Never emit ChallengeError here: that replaces the whole Today
+        // screen with the "no active session" page and hides every task.
+        if (kDebugMode) {
+          debugPrint(
+              '[ChallengeBloc] toggle denied: challenge ${event.challengeId} '
+              'is a partner task — only the owner completes it');
         }
-      } else if (iAmPartner) {
-        // I am the accountable partner — allowed, continue
+        return;
       }
 
       final activeSession = await _repository.getActiveSession();

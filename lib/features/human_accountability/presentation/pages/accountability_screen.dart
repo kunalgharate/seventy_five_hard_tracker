@@ -47,10 +47,21 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
   int _reviewBadgeCount = 0;
 
+  /// Last successfully loaded payload. The bloc emits transient action
+  /// states (EmailInviteSent, TaskRequestAccepted, Loading, …) between
+  /// reloads — without this cache the Squad body would rebuild empty and
+  /// make the partner list appear to vanish / blink.
+  AccountabilityLoaded? _lastLoaded;
+
+  /// Whether the live Firestore task streams are attached. They can only be
+  /// attached while signed in, so they are (re)attached once auth succeeds.
+  bool _streamsAttached = false;
+
   @override
   void initState() {
     super.initState();
     context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+    context.read<AccountabilityBloc>().add(LoadMyResponsibilities());
     _subscribeToTaskStream();
     _loadReviewBadge();
   }
@@ -63,6 +74,14 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   void _subscribeToTaskStream() {
     _tasksStreamSub?.cancel();
     _assignedByMeStreamSub?.cancel();
+    _tasksStreamSub = null;
+    _assignedByMeStreamSub = null;
+    _streamsAttached = false;
+
+    // Streams require an authenticated user — otherwise they resolve to an
+    // empty stream and we'd wrongly consider them attached.
+    if (!CloudSyncService().isSignedIn) return;
+
     _tasksStreamSub = AccountabilityService().myTasksStream().listen((_) {
       if (!mounted) return;
       context.read<AccountabilityBloc>().add(LoadAccountabilityData());
@@ -72,6 +91,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       if (!mounted) return;
       context.read<AccountabilityBloc>().add(LoadAccountabilityData());
     }, onError: (_) {});
+    _streamsAttached = true;
   }
 
   @override
@@ -123,19 +143,33 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       body: BlocConsumer<AccountabilityBloc, AccountabilityState>(
         listener: _handleStateChange,
         builder: (context, state) {
-          if (state is AccountabilityLoading ||
-              state is AccountabilityInitial) {
+          // Not signed in (e.g. a partner who hasn't logged in yet) — the
+          // Firestore reads all return empty, so ask them to sign in instead
+          // of pretending the squad is empty.
+          if (!CloudSyncService().isSignedIn) {
+            return _buildSignInPrompt();
+          }
+
+          // Remember the freshest data so transient states (Loading,
+          // EmailInviteSent, TaskRequestAccepted, …) never blank the screen.
+          if (state is AccountabilityLoaded) {
+            _lastLoaded = state;
+          }
+
+          final loaded = _lastLoaded;
+          if (loaded == null) {
+            // Nothing loaded yet — only now is a spinner/error correct.
+            if (state is AccountabilityError) {
+              return _buildError(state.message);
+            }
             return const Center(child: CircularProgressIndicator());
           }
-          if (state is AccountabilityError) {
-            return _buildError(state.message);
-          }
-          final loaded = state is AccountabilityLoaded ? state : null;
+
           return _PartnersTab(
-            partners: loaded?.partners ?? [],
-            incomingRequests: loaded?.incomingRequests ?? [],
-            emailInvitations: loaded?.emailInvitations ?? [],
-            taskRequests: loaded?.taskRequests ?? [],
+            partners: loaded.partners,
+            incomingRequests: loaded.incomingRequests,
+            emailInvitations: loaded.emailInvitations,
+            taskRequests: loaded.taskRequests,
           );
         },
       ),
@@ -223,6 +257,43 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
     ).then((_) => _loadReviewBadge());
   }
 
+  Widget _buildSignInPrompt() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.people_outline, size: 56, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              'Sign in to see your squad',
+              style: Theme.of(context).textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Your partners, invites and shared tasks appear here once you '
+              'are signed in.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => widget.onGoToProfile?.call(),
+              icon: const Icon(Icons.person),
+              label: const Text('Go to Profile to Sign In'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildError(String message) {
     return Center(
       child: Padding(
@@ -251,8 +322,18 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   }
 
   void _handleStateChange(BuildContext context, AccountabilityState state) {
-    // Refresh the review badge count on any state change
-    _loadReviewBadge();
+    // Refresh the review badge once per successful load (not on every
+    // transient state — that caused extra Firestore reads and rebuilds).
+    if (state is AccountabilityLoaded) {
+      _loadReviewBadge();
+      // Attach the live streams once the user has signed in (they can't be
+      // attached before auth — this covers a partner signing in later).
+      if (!_streamsAttached) _subscribeToTaskStream();
+      // Responsibilities are shown in a separate BlocBuilder; kick off a
+      // refresh whenever fresh squad data lands (instead of dispatching
+      // events from inside build()).
+      context.read<AccountabilityBloc>().add(LoadMyResponsibilities());
+    }
     if (state is PartnerInvited) {
       _showInviteCodeDialog(context, state.partner);
     } else if (state is InviteAccepted) {
@@ -570,13 +651,12 @@ class _PartnerActivityCardState extends State<_PartnerActivityCard> {
 
   Future<void> _load() async {
     final myUid = AccountabilityService().currentUid;
-    final uid = widget.partner.ownerUid == myUid
-        ? widget.partner.partnerUid
-        : widget.partner.ownerUid;
+    final uid = widget.partner.uidOf(myUid);
     if (uid == null) {
       setState(() => _loading = false);
       return;
     }
+
     final data = await AccountabilityService().fetchPartnerWeeklyProgress(uid);
     if (mounted) {
       setState(() {
@@ -786,8 +866,9 @@ class _PartnersTab extends StatelessWidget {
         BlocBuilder<AccountabilityBloc, AccountabilityState>(
           buildWhen: (_, state) => state is MyResponsibilitiesLoaded,
           builder: (context, state) {
+            // Data is requested by the screen (initState + on every
+            // AccountabilityLoaded) — never dispatch events from build().
             if (state is! MyResponsibilitiesLoaded) {
-              context.read<AccountabilityBloc>().add(LoadMyResponsibilities());
               return const SizedBox.shrink();
             }
             if (state.pendingReviews.isEmpty &&
@@ -914,8 +995,8 @@ class _SquadBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? FigmaTokens.darkCard : Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: isDark ? FigmaTokens.darkLine : FigmaTokens.line),
+        border:
+            Border.all(color: isDark ? FigmaTokens.darkLine : FigmaTokens.line),
       ),
       child: Row(
         children: [
@@ -1066,8 +1147,7 @@ class _SquadLeaderboard extends StatelessWidget {
                         children: [
                           Text(m.name,
                               style: FigmaTokens.body(11,
-                                  weight: FontWeight.w700,
-                                  color: Colors.white),
+                                  weight: FontWeight.w700, color: Colors.white),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 2),
@@ -1102,7 +1182,9 @@ class _SquadLeaderboard extends StatelessWidget {
     if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
-    return name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase();
+    return name.length >= 2
+        ? name.substring(0, 2).toUpperCase()
+        : name.toUpperCase();
   }
 }
 
@@ -1204,9 +1286,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     if (_loaded && !forceRefresh) return;
     final myUid = AccountabilityService().currentUid;
     // Resolve the other person's UID for progress/challenge name fetches
-    final otherUid = widget.partner.ownerUid == myUid
-        ? widget.partner.partnerUid
-        : widget.partner.ownerUid;
+    final otherUid = widget.partner.uidOf(myUid);
 
     debugPrint(
       '[PartnerCard] loading tasks for partnershipId=${widget.partner.id} otherUid=$otherUid',
@@ -1500,7 +1580,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         (t) =>
                             t.partnershipId == widget.partner.id &&
                             (t.assignedByUid == myUid ||
-                                t.accountableUid == myUid),
+                                t.accountableUid == myUid ||
+                                t.accountableUserIds.contains(myUid) ||
+                                t.partnerUid == myUid),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
@@ -1533,9 +1615,19 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     ];
                   }
                   return visibleTasks.map((task) {
+                    // Approved counts as done on BOTH sides — owner and
+                    // reviewer see the same checked checkbox.
                     final isCompleted =
-                        task.status == AccountabilityTaskStatus.completed;
+                        task.status == AccountabilityTaskStatus.completed ||
+                            task.status == AccountabilityTaskStatus.approved ||
+                            task.proofStatus == ProofStatus.approved;
                     final proofStatus = task.proofStatus;
+                    final myUid = AccountabilityService().currentUid;
+                    final iAmOwner = task.assignedByUid == myUid;
+                    final iAmReviewer = !iAmOwner &&
+                        (task.accountableUid == myUid ||
+                            task.accountableUserIds.contains(myUid) ||
+                            task.partnerUid == myUid);
                     return Container(
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(
@@ -1558,15 +1650,24 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         children: [
                           Row(
                             children: [
-                              Icon(
-                                isCompleted
-                                    ? Icons.check_circle_rounded
-                                    : Icons.radio_button_unchecked,
-                                size: 18,
-                                color:
-                                    isCompleted ? Colors.green : Colors.orange,
+                              // Checkbox for every review task — owner taps to
+                              // submit proof, reviewer taps to review. Once
+                              // approved it stays checked on both sides.
+                              Checkbox(
+                                value: isCompleted,
+                                activeColor: Colors.green,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onChanged: isCompleted
+                                    ? null
+                                    : (_) => _onTaskCheckboxTapped(
+                                          context,
+                                          task,
+                                          iAmOwner: iAmOwner,
+                                          iAmReviewer: iAmReviewer,
+                                        ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 2),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1621,19 +1722,62 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     ProofStatus? proofStatus,
     AccountabilityTaskStatus status,
   ) {
-    if (isCompleted || status == AccountabilityTaskStatus.completed) {
+    if (isCompleted ||
+        status == AccountabilityTaskStatus.completed ||
+        status == AccountabilityTaskStatus.approved) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.green.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
         ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
+            const SizedBox(width: 3),
+            Text(
+              status == AccountabilityTaskStatus.approved ? 'Approved' : 'Completed',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.green[700],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (status == AccountabilityTaskStatus.pendingReview) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
         child: Text(
-          'Completed',
+          'Awaiting Review',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: Colors.green[700],
+            color: Colors.orange[700],
+          ),
+        ),
+      );
+    }
+    if (status == AccountabilityTaskStatus.rejected) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          'Rejected',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.red[700],
           ),
         ),
       );
@@ -1864,11 +2008,94 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     );
   }
 
+  /// Checkbox tap routing: owner → submit proof, reviewer → review proof.
+  /// Proof can ONLY be added by the owner, never by the reviewer.
+  Future<void> _onTaskCheckboxTapped(
+    BuildContext context,
+    AccountabilityTask task, {
+    required bool iAmOwner,
+    required bool iAmReviewer,
+  }) async {
+    if (iAmOwner) {
+      if (task.proofStatus == ProofStatus.submitted ||
+          task.status == AccountabilityTaskStatus.pendingReview) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Proof submitted — waiting for reviewer approval.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      final bloc = context.read<AccountabilityBloc>();
+      final ok = await PhotoProofSheet.show(
+        context: context,
+        taskId: task.id,
+        taskName: task.title,
+        date: DateTime.now(),
+      );
+      if (ok == true && mounted) {
+        // PhotoProofSheet calls submitTaskProof (owner-only). Now move the
+        // task into pendingReview so the reviewer is notified — same two-step
+        // as the Today screen checkbox flow.
+        final svc = AccountabilityService();
+        final updated = await svc.fetchTaskById(task.id);
+        if (updated?.proofUrl != null && mounted) {
+          try {
+            bloc.add(SubmitProofForReview(
+              taskId: task.id,
+              challengeId: task.challengeId ?? '',
+              proofUrl: updated!.proofUrl!,
+            ));
+          } catch (_) {}
+        }
+        bloc.add(LoadAccountabilityData());
+        _loadTasks(forceRefresh: true);
+      }
+      return;
+    }
+    if (iAmReviewer) {
+      if (task.proofStatus == ProofStatus.submitted ||
+          task.status == AccountabilityTaskStatus.pendingReview) {
+        final bloc = context.read<AccountabilityBloc>();
+        final ok = await ProofReviewDialog.show(context, task);
+        if (ok == true && mounted) {
+          bloc.add(LoadAccountabilityData());
+          _loadTasks(forceRefresh: true);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Waiting for the owner to submit proof — only the owner can add proof.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Only the task owner or reviewer can act on this task.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Widget _buildPartnerTaskAction(AccountabilityTask task) {
     final myUid = AccountabilityService().currentUid;
-    final iAmAssignee = task.accountableUid == myUid;
+    // Owner = assigner (submits proof). Reviewer = accountable/partner side
+    // (reviews proof). This matches the Reviews tab + Today screen model.
+    final iAmOwner = task.assignedByUid == myUid;
+    final iAmReviewer = !iAmOwner &&
+        (task.accountableUid == myUid ||
+            task.accountableUserIds.contains(myUid) ||
+            task.partnerUid == myUid);
 
-    if (!iAmAssignee && task.proofStatus == ProofStatus.submitted) {
+    // ── REVIEWER: approve / reject submitted proof ──
+    if (iAmReviewer && task.proofStatus == ProofStatus.submitted) {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
@@ -1892,8 +2119,10 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       );
     }
 
-    if (iAmAssignee) {
-      if (task.proofStatus == ProofStatus.submitted) {
+    // ── OWNER: submit / resubmit proof, or wait for review ──
+    if (iAmOwner) {
+      if (task.proofStatus == ProofStatus.submitted ||
+          task.status == AccountabilityTaskStatus.pendingReview) {
         return SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
@@ -1927,13 +2156,13 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           icon: Icon(
             task.proofStatus == ProofStatus.rejected
                 ? Icons.refresh
-                : Icons.check,
+                : Icons.camera_alt_outlined,
             size: 16,
           ),
           label: Text(
             task.proofStatus == ProofStatus.rejected
-                ? 'Resubmit'
-                : 'Mark Complete',
+                ? 'Resubmit Proof'
+                : 'Submit Proof',
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
@@ -2117,8 +2346,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   void _showAddTaskInline(BuildContext context) {
     final partner = widget.partner;
-    final partnerUid = partner.partnerUid;
-    if (partnerUid == null) return;
+    final partnerUid = partner.uidOf(AccountabilityService().currentUid);
+    if (partnerUid == null || partnerUid.isEmpty) return;
 
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -2272,7 +2501,10 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         );
         break;
       case 'review':
-        if (widget.partner.partnerUid == null) return;
+        if ((widget.partner.uidOf(AccountabilityService().currentUid) ?? '')
+            .isEmpty) {
+          return;
+        }
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -2484,93 +2716,105 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.blue.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _RoleAvatar(role: widget.partner.role, size: 42),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.partner.partnerName,
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+    // Re-enable the buttons once the bloc settles — a failed accept/decline
+    // otherwise leaves this card permanently disabled.
+    return BlocListener<AccountabilityBloc, AccountabilityState>(
+      listener: (_, state) {
+        if (_acting &&
+            (state is AccountabilityLoaded || state is AccountabilityError)) {
+          if (mounted) setState(() => _acting = false);
+        }
+      },
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.blue.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _RoleAvatar(role: widget.partner.role, size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.partner.partnerName,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                      Text(
-                        '${widget.partner.role.emoji} ${widget.partner.role.label}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Wants you as their accountability partner',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.blue[700],
-                          fontStyle: FontStyle.italic,
+                        Text(
+                          '${widget.partner.role.emoji} ${widget.partner.role.label}',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600]),
                         ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Wants you as their accountability partner',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue[700],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _acting ? null : _reject,
+                      icon:
+                          const Icon(Icons.close, size: 16, color: Colors.red),
+                      label: const Text(
+                        'Decline',
+                        style: TextStyle(color: Colors.red),
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _acting ? null : _reject,
-                    icon: const Icon(Icons.close, size: 16, color: Colors.red),
-                    label: const Text(
-                      'Decline',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _acting ? null : _accept,
-                    icon: _acting
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.check, size: 16),
-                    label: const Text('Accept'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _acting ? null : _accept,
+                      icon: _acting
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check, size: 16),
+                      label: const Text('Accept'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2578,15 +2822,18 @@ class _IncomingRequestCardState extends State<_IncomingRequestCard> {
 
   void _accept() {
     setState(() => _acting = true);
-    // Accept via invite code stored in the partnership
-    context.read<AccountabilityBloc>().add(
-          AcceptInvite(widget.partner.inviteCode),
-        );
+    // Handles both code-based invites and email invitations — email invites
+    // have no invite code, so they cannot go through AcceptInvite.
+    context
+        .read<AccountabilityBloc>()
+        .add(AcceptIncomingRequest(widget.partner));
   }
 
   void _reject() {
     setState(() => _acting = true);
-    context.read<AccountabilityBloc>().add(RejectInvite(widget.partner.id));
+    context
+        .read<AccountabilityBloc>()
+        .add(RejectIncomingRequest(widget.partner));
   }
 }
 
@@ -3255,140 +3502,151 @@ class _EmailInvitationCardState extends State<_EmailInvitationCard> {
   @override
   Widget build(BuildContext context) {
     final inv = widget.invitation;
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.email_outlined,
-                      color: Colors.blue,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        inv.fromName,
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        inv.fromEmail,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Text(
-                            inv.role.emoji,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            inv.role.label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    'Invite',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.blue,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (_loading)
-              const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
+    // Reset the local spinner when the bloc settles (success or failure) —
+    // otherwise a failed accept/decline leaves this card spinning forever.
+    return BlocListener<AccountabilityBloc, AccountabilityState>(
+      listener: (_, state) {
+        if (_loading &&
+            (state is AccountabilityLoaded || state is AccountabilityError)) {
+          if (mounted) setState(() => _loading = false);
+        }
+      },
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        setState(() => _loading = true);
-                        context.read<AccountabilityBloc>().add(
-                              RejectEmailInvite(inv.id),
-                            );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey[700],
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.email_outlined,
+                        color: Colors.blue,
+                        size: 22,
                       ),
-                      child: const Text('Decline'),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() => _loading = true);
-                        context.read<AccountabilityBloc>().add(
-                              AcceptEmailInvite(inv.id),
-                            );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          inv.fromName,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
+                        Text(
+                          inv.fromEmail,
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              inv.role.emoji,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              inv.role.label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'Invite',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w600,
                       ),
-                      child: const Text('Accept'),
                     ),
                   ),
                 ],
               ),
-          ],
+              const SizedBox(height: 14),
+              if (_loading)
+                const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() => _loading = true);
+                          context.read<AccountabilityBloc>().add(
+                                RejectEmailInvite(inv.id),
+                              );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey[700],
+                          side: BorderSide(color: Colors.grey[300]!),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Decline'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() => _loading = true);
+                          context.read<AccountabilityBloc>().add(
+                                AcceptEmailInvite(inv.id),
+                              );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Accept'),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -3777,117 +4035,128 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.task_alt_outlined,
-                      color: Colors.teal,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        task.title,
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        'From: ${task.assignedByName}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                      if (task.description != null &&
-                          task.description!.isNotEmpty)
-                        Text(
-                          task.description!,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                _buildStatusChip(task),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (_loading)
-              const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else if (task.status == AccountabilityTaskStatus.pending)
-              _buildPendingActions(task)
-            else
+    // Reset the local spinner when the bloc settles (success or failure) so
+    // a failed accept/decline doesn't leave this card spinning forever.
+    return BlocListener<AccountabilityBloc, AccountabilityState>(
+      listener: (_, state) {
+        if (_loading &&
+            (state is AccountabilityLoaded || state is AccountabilityError)) {
+          if (mounted) setState(() => _loading = false);
+        }
+      },
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        setState(() => _loading = true);
-                        context.read<AccountabilityBloc>().add(
-                              DeclineTaskRequest(task.id),
-                            );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey[700],
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.task_alt_outlined,
+                        color: Colors.teal,
+                        size: 22,
                       ),
-                      child: const Text('Decline'),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() => _loading = true);
-                        context.read<AccountabilityBloc>().add(
-                              AcceptTaskRequest(task.id),
-                            );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                      child: const Text('Accept'),
+                        Text(
+                          'From: ${task.assignedByName}',
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        if (task.description != null &&
+                            task.description!.isNotEmpty)
+                          Text(
+                            task.description!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                  _buildStatusChip(task),
                 ],
               ),
-          ],
+              const SizedBox(height: 14),
+              if (_loading)
+                const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else if (task.status == AccountabilityTaskStatus.pending)
+                _buildPendingActions(task)
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() => _loading = true);
+                          context.read<AccountabilityBloc>().add(
+                                DeclineTaskRequest(task.id),
+                              );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey[700],
+                          side: BorderSide(color: Colors.grey[300]!),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Decline'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() => _loading = true);
+                          context.read<AccountabilityBloc>().add(
+                                AcceptTaskRequest(task.id),
+                              );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Accept'),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
