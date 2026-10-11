@@ -192,9 +192,7 @@ class MyApp extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(FigmaTokens.rCard),
           side: BorderSide(
-            color: isDark
-                ? const Color(0xFF3A3335)
-                : const Color(0xFFEEE9E7),
+            color: isDark ? const Color(0xFF3A3335) : const Color(0xFFEEE9E7),
           ),
         ),
       ),
@@ -445,7 +443,8 @@ class _InitialScreenState extends State<InitialScreen>
     // Awaiting this would freeze the splash behind the system permission
     // dialog until the user responds; instead we fire-and-forget so DB init
     // and navigation proceed normally.
-    unawaited(SmartNotificationService().requestPermissions().catchError((_) {}));
+    unawaited(
+        SmartNotificationService().requestPermissions().catchError((_) {}));
 
     await bloc.repository.init();
     await taskRepo.init();

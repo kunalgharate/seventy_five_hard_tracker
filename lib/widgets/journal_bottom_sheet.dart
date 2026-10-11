@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:seventy_five_hard_tracker/widgets/voice_input.dart';
 
 class JournalBottomSheet extends StatefulWidget {
   final DateTime date;
@@ -129,12 +130,30 @@ class _JournalBottomSheetState extends State<JournalBottomSheet> {
                 ],
               ),
               const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _controller.text.isEmpty
+                          ? 'Write or dictate your thoughts…'
+                          : 'Edit your entry',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  TronPolishButton(controller: _controller),
+                  MicDictationButton(controller: _controller),
+                ],
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _controller,
                 maxLines: 8,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  hintText: 'How was your day? Write your thoughts...',
+                  hintText: 'How was your day? Write or dictate…',
                   border: OutlineInputBorder(),
                 ),
               ),

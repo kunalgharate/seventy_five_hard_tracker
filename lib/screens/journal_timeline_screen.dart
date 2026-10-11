@@ -8,13 +8,25 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/journal_entry.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
 
+/// One journal entry card on the timeline.
+class _TimelineItem {
+  final DateTime date;
+  final JournalEntry entry;
+  final bool completed;
+  const _TimelineItem({
+    required this.date,
+    required this.entry,
+    required this.completed,
+  });
+}
+
 class JournalTimelineScreen extends StatelessWidget {
   const JournalTimelineScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -36,18 +48,32 @@ class JournalTimelineScreen extends StatelessWidget {
               allProgress.addAll(sessionProgress);
             }
 
-            final entries = allProgress
-                .where((p) =>
-                    p.journalNote != null && p.journalNote!.trim().isNotEmpty)
-                .toList()
-              ..sort((a, b) => b.date.compareTo(a.date)); // Newest first
+            // Expand every day's entries into individual cards (a day can
+            // hold many entries), newest first.
+            final items = <_TimelineItem>[];
+            for (final p in allProgress) {
+              if (p.journalNote == null || p.journalNote!.trim().isEmpty) {
+                continue;
+              }
+              for (final e in JournalEntry.decode(p.journalNote!,
+                  fallbackDate: p.date)) {
+                items.add(_TimelineItem(
+                    date: p.date, entry: e, completed: p.isCompleted));
+              }
+            }
+            items.sort((a, b) {
+              final c = b.date.compareTo(a.date);
+              return c != 0
+                  ? c
+                  : b.entry.createdAt.compareTo(a.entry.createdAt);
+            });
 
-            if (entries.isEmpty) {
+            if (items.isEmpty) {
               return _buildEmptyState(context);
             }
 
             return _buildTimeline(
-                context, state.activeSession, state.allSessions, entries);
+                context, state.activeSession, state.allSessions, items);
           }
           return _buildEmptyState(context);
         },
@@ -90,16 +116,16 @@ class JournalTimelineScreen extends StatelessWidget {
   }
 
   Widget _buildTimeline(BuildContext context, ChallengeSession? activeSession,
-      List<ChallengeSession> allSessions, List<DailyProgress> entries) {
+      List<ChallengeSession> allSessions, List<_TimelineItem> items) {
     return AnimationLimiter(
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        itemCount: entries.length,
+        itemCount: items.length,
         itemBuilder: (context, index) {
-          final progress = entries[index];
+          final item = items[index];
           // Normalize to date-only to avoid time-of-day drift in day calculation
-          final progressDate = DateTime(
-              progress.date.year, progress.date.month, progress.date.day);
+          final progressDate =
+              DateTime(item.date.year, item.date.month, item.date.day);
 
           // Find the session this entry belongs to
           int dayNumber = index + 1;
@@ -120,10 +146,10 @@ class JournalTimelineScreen extends StatelessWidget {
               verticalOffset: 50.0,
               child: FadeInAnimation(
                 child: _TimelineCard(
-                  progress: progress,
+                  item: item,
                   dayNumber: dayNumber,
                   isFirst: index == 0,
-                  isLast: index == entries.length - 1,
+                  isLast: index == items.length - 1,
                 ),
               ),
             ),
@@ -135,13 +161,13 @@ class JournalTimelineScreen extends StatelessWidget {
 }
 
 class _TimelineCard extends StatelessWidget {
-  final DailyProgress progress;
+  final _TimelineItem item;
   final int dayNumber;
   final bool isFirst;
   final bool isLast;
 
   const _TimelineCard({
-    required this.progress,
+    required this.item,
     required this.dayNumber,
     required this.isFirst,
     required this.isLast,
@@ -149,6 +175,8 @@ class _TimelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final entry = item.entry;
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,7 +227,7 @@ class _TimelineCard extends StatelessWidget {
               padding: const EdgeInsets.only(left: 12, bottom: 24),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: scheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -208,7 +236,7 @@ class _TimelineCard extends StatelessWidget {
                       offset: const Offset(0, 4),
                     ),
                   ],
-                  border: Border.all(color: Colors.grey[100]!),
+                  border: Border.all(color: scheme.outlineVariant),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -235,27 +263,47 @@ class _TimelineCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            DateFormat('MMM d, yyyy').format(progress.date),
+                            '${DateFormat('MMM d, yyyy').format(item.date)} · ${DateFormat('h:mm a').format(entry.createdAt)}',
                             style: GoogleFonts.inter(
-                              color: Colors.grey[500],
+                              color: scheme.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        progress.journalNote!,
-                        style: GoogleFonts.inter(
-                          fontSize: 15,
-                          height: 1.6,
-                          color: Colors.black87,
+                      const SizedBox(height: 12),
+                      if (entry.mood != null && entry.mood!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            entry.mood!,
+                            style: const TextStyle(fontSize: 22),
+                          ),
                         ),
-                      ),
+                      if (entry.text.isNotEmpty)
+                        Text(
+                          entry.text,
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            height: 1.6,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      if (entry.proud.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '🏆 ${entry.proud}',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ],
 
                       // Extra flair if day was fully completed
-                      if (progress.isCompleted) ...[
+                      if (item.completed) ...[
                         const SizedBox(height: 16),
                         Row(
                           children: [

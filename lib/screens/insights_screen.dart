@@ -165,7 +165,8 @@ class _InsightsBody extends StatelessWidget {
                         ),
                         const SizedBox(height: 7),
                         Text('$weekPct%',
-                            style: FigmaTokens.heading(32, color: Colors.white)),
+                            style:
+                                FigmaTokens.heading(32, color: Colors.white)),
                         Text('completion rate',
                             style: FigmaTokens.body(10,
                                 color: const Color(0xFFCABDC2))),
@@ -173,8 +174,8 @@ class _InsightsBody extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 9, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
                     decoration: BoxDecoration(
                       color: const Color(0xFF64CB88).withValues(alpha: 0.13),
                       borderRadius: BorderRadius.circular(FigmaTokens.rChip),
@@ -206,7 +207,10 @@ class _InsightsBody extends StatelessWidget {
                                 gradient: LinearGradient(
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
-                                  colors: [FigmaTokens.orange, FigmaTokens.pink],
+                                  colors: [
+                                    FigmaTokens.orange,
+                                    FigmaTokens.pink
+                                  ],
                                 ),
                                 borderRadius: BorderRadius.vertical(
                                   top: Radius.circular(5),

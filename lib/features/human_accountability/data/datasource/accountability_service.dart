@@ -2570,9 +2570,14 @@ class AccountabilityService {
   Future<String?> fetchTaskIdByChallengeId(String challengeId) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
+      // Scope the query to the current user (as creator) so it satisfies the
+      // accountability_tasks read rule — an unscoped challengeId-only query is
+      // rejected with permission-denied (same as fetchTaskByChallengeId).
       final snap = await _db
           .collection('accountability_tasks')
           .where('challengeId', isEqualTo: challengeId)
+          .where('assignedByUid', isEqualTo: uid)
           .limit(1)
           .get();
       if (snap.docs.isEmpty) return null;

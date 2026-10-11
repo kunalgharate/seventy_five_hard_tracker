@@ -211,8 +211,8 @@ class _StreakStat extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(value,
-                style:
-                    FigmaTokens.body(10, weight: FontWeight.w700, color: Colors.white)),
+                style: FigmaTokens.body(10,
+                    weight: FontWeight.w700, color: Colors.white)),
             Text(label,
                 style: FigmaTokens.body(8,
                     color: Colors.white.withValues(alpha: 0.8))),

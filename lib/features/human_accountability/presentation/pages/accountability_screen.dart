@@ -1582,7 +1582,15 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                             (t.assignedByUid == myUid ||
                                 t.accountableUid == myUid ||
                                 t.accountableUserIds.contains(myUid) ||
-                                t.partnerUid == myUid),
+                                t.partnerUid == myUid) &&
+                            // Tasks needing MY review live in the
+                            // "My Responsibilities" section above — skip them
+                            // here so each task shows exactly once.
+                            !(t.assignedByUid != myUid &&
+                                (t.status ==
+                                        AccountabilityTaskStatus
+                                            .pendingReview ||
+                                    t.proofStatus == ProofStatus.submitted)),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
@@ -1737,7 +1745,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
             const SizedBox(width: 3),
             Text(
-              status == AccountabilityTaskStatus.approved ? 'Approved' : 'Completed',
+              status == AccountabilityTaskStatus.approved
+                  ? 'Approved'
+                  : 'Completed',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
@@ -201,8 +200,6 @@ class AnimatedChallengeIcon extends StatefulWidget {
 class _AnimatedChallengeIconState extends State<AnimatedChallengeIcon>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _rotationAnimation;
 
   @override
   void initState() {
@@ -211,22 +208,6 @@ class _AnimatedChallengeIconState extends State<AnimatedChallengeIcon>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.elasticOut,
-    ));
-
-    _rotationAnimation = Tween<double>(
-      begin: 0.0,
-      end: 0.1,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
 
     _controller.forward();
   }

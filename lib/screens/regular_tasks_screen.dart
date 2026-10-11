@@ -396,8 +396,20 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   Future<void> _submitProof(RegularTask task) async {
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(task.id);
-    if (taskId == null || !mounted) return;
-
+    if (taskId == null) {
+      // Never fail silently — the camera button must always give feedback.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find the linked review task. Pull to refresh and try again.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
     final result = await PhotoProofSheet.show(
       context: context,
       taskId: taskId,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/task_detail_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -70,8 +69,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     with TickerProviderStateMixin {
   late AnimationController _completionController;
   late AnimationController _pulseController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _pulseAnimation;
   OverlayEntry? _activeOverlayEntry;
   List<Collaborator> _collaborators = [];
 
@@ -87,22 +84,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.02,
-    ).animate(CurvedAnimation(
-      parent: _completionController,
-      curve: Curves.elasticOut,
-    ));
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
 
     if (widget.isCompleted) {
       _completionController.forward();
@@ -123,6 +104,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   /// Whether this task has collaborator reviewers assigned.
   bool get _hasReviewers => _collaborators.isNotEmpty;
+
+  /// Whether this challenge is linked to a Squad accountability task
+  /// (reviewer assigned via partnership, not via the collaborator dialog).
+  /// The Today screen doesn't pass partner props, so the collaborator list
+  /// stays empty for these tasks — the accountability status is the signal.
+  bool get _hasAccountabilityTask => widget.accountabilityStatus != null;
 
   /// Opens the task detail bottom sheet.
   void _openTaskDetail() {
@@ -157,7 +144,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       );
       return;
     }
-    if (newValue && _hasReviewers && widget.onProofRequired != null) {
+    if (newValue &&
+        (_hasReviewers || _hasAccountabilityTask) &&
+        widget.onProofRequired != null) {
       // User is trying to complete → require proof upload
       widget.onProofRequired!();
     } else if (newValue &&
@@ -278,20 +267,24 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                         size: 12,
                       ),
                       const SizedBox(width: 3),
-                      Text(
-                        () {
-                          final displayTime =
-                              _getDisplayTime(widget.challenge.reminderTime!);
-                          final timeParts = displayTime.split(':');
-                          final hour = int.parse(timeParts[0]);
-                          final minute = int.parse(timeParts[1]);
-                          return DateFormat('h:mm a')
-                              .format(DateTime(2024, 1, 1, hour, minute));
-                        }(),
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: Colors.orange[800],
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          () {
+                            final displayTime =
+                                _getDisplayTime(widget.challenge.reminderTime!);
+                            final timeParts = displayTime.split(':');
+                            final hour = int.parse(timeParts[0]);
+                            final minute = int.parse(timeParts[1]);
+                            return DateFormat('h:mm a')
+                                .format(DateTime(2024, 1, 1, hour, minute));
+                          }(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: Colors.orange[800],
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -499,6 +492,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (widget.isEditable &&
         (_hasAccountabilityConnection ||
+            _hasAccountabilityTask ||
             widget.isReviewOnly ||
             widget.accountabilityStatus ==
                 AccountabilityTaskStatus.pendingReview ||
@@ -532,14 +526,21 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (actions.isEmpty) return const SizedBox.shrink();
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: actions
-          .map((w) => Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: w,
-              ))
-          .toList(),
+    // Wrap (instead of Row) so the buttons flow onto a second line on narrow
+    // screens instead of overflowing the card with a RenderFlex stripe.
+    // Flexible bounds the width to the space left by the title; on normal
+    // widths this renders exactly like the old single-line Row.
+    return Flexible(
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: actions
+            .map((w) => Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: w,
+                ))
+            .toList(),
+      ),
     );
   }
 
@@ -582,13 +583,11 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     if (widget.isReviewOnly) {
       final checked = widget.isCompleted ||
           widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
-          widget.accountabilityStatus ==
-              AccountabilityTaskStatus.completed ||
+          widget.accountabilityStatus == AccountabilityTaskStatus.completed ||
           widget.proofStatus == ProofStatus.approved;
-      final hasProofToReview =
-          widget.accountabilityStatus ==
-                  AccountabilityTaskStatus.pendingReview ||
-              widget.proofStatus == ProofStatus.submitted;
+      final hasProofToReview = widget.accountabilityStatus ==
+              AccountabilityTaskStatus.pendingReview ||
+          widget.proofStatus == ProofStatus.submitted;
       final tip = widget.partnerName != null && widget.partnerName!.isNotEmpty
           ? '${widget.partnerName} completes this — tap checkbox to review the proof'
           : 'Your partner completes this — tap checkbox to review the proof';
@@ -834,8 +833,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             widget.onReviewProof, 'Review Photo Proof');
       }
       if (status == ProofStatus.approved ||
-          widget.accountabilityStatus ==
-              AccountabilityTaskStatus.approved) {
+          widget.accountabilityStatus == AccountabilityTaskStatus.approved) {
         return iconBtn(Icons.check_circle, Colors.green[600]!,
             widget.onViewProof, 'View Approved Proof');
       }
@@ -845,7 +843,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
 
     // ── CREATOR (assigned this task to a collaborator) ──
-    if (isCreator) {
+    // Also covers the owner side of a Squad accountability task: the Today
+    // screen doesn't pass creator props, so fall back to the accountability
+    // status (not review-only + a linked task = I'm the one who proves it).
+    if (isCreator || (!widget.isReviewOnly && _hasAccountabilityTask)) {
       // Reviewer hasn't accepted yet — nothing to upload against.
       if (_isRequestedAndUnaccepted()) {
         return iconBtn(Icons.lock_outline, Colors.orange[600]!, null,
@@ -909,7 +910,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     if (accStatus != null) {
       // For creator with pending accepted task and proof required, show upload prompt
       if (accStatus == AccountabilityTaskStatus.pending &&
-          _hasAccountabilityConnection &&
+          (_hasAccountabilityConnection || _hasAccountabilityTask) &&
           (proofStatus == null || proofStatus == ProofStatus.notRequired)) {
         final myUid = FirebaseAuth.instance.currentUser?.uid;
         if (_isAssigner(myUid)) {

@@ -23,10 +23,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import '../widgets/daily_task_card.dart';
 import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
-import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/horizontal_date_picker.dart';
-import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
@@ -540,9 +537,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  
-
-  
   void _showTaskSheet(
     BuildContext context,
     Challenge? challenge,
@@ -654,115 +648,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
-  Widget _buildDateProgressIndicator(
-      ChallengeLoaded state, ChallengeSession session) {
-    final progress = state.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-
-    if (progress == null) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'No data for this date',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: progress.isCompleted
-            ? null
-            : () => _scrollToFirstIncompleteTask(session),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                progress.isCompleted ? Icons.check_circle : Icons.cancel,
-                color:
-                    progress.isCompleted ? Colors.green[600] : Colors.red[600],
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  progress.isCompleted
-                      ? 'All tasks completed!'
-                      : 'Some tasks are incomplete',
-                  style: TextStyle(
-                    color: progress.isCompleted
-                        ? Colors.green[700]
-                        : Colors.red[700],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (!progress.isCompleted)
-                Icon(Icons.keyboard_arrow_down, color: Colors.red[700]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _scrollToFirstIncompleteTask(ChallengeSession session) {
-    Challenge? target;
-    for (final c in session.challenges.where((c) => c.taskType != 'regular')) {
-      final isCompleted = _taskCompletionFor(c);
-      if (!isCompleted) {
-        target = c;
-        break;
-      }
-    }
-    final GlobalKey? key = null; // GlobalKeys removed to fix layout assertion
-    final context2 = key?.currentContext;
-    if (context2 != null) {
-      Scrollable.ensureVisible(
-        context2,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        alignment: 0.2,
-      );
-    }
-  }
-
-  bool _taskCompletionFor(Challenge challenge) {
-    final allProgress = context.read<ChallengeBloc>().state;
-    if (allProgress is! ChallengeLoaded) return false;
-    final progress = allProgress.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-    return progress?.challengeCompletions[challenge.id] ?? false;
-  }
-
-  /// Loads the current accountability task status for each challenge from Firestore.
   /// Called on initial session load so DailyTaskCard shows correct review states.
   Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
     final svc = AccountabilityService();
@@ -893,8 +778,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
-    if (taskId == null) return;
-
+    if (taskId == null) {
+      // Never fail silently — the camera button must always give feedback.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find the linked review task. Pull to refresh and try again.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
     final result = await PhotoProofSheet.show(
       context: context,
@@ -1091,34 +987,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Thank You!'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showJournalBottomSheet(
-    BuildContext context,
-    ChallengeLoaded state,
-    DailyProgress? selectedProgress,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => JournalBottomSheet(
-        date: _selectedDay,
-        existingNote: selectedProgress?.journalNote,
-        onSave: (note) {
-          context.read<ChallengeBloc>().add(
-                AddJournalNote(date: _selectedDay, note: note),
-              );
-        },
-        onDelete: selectedProgress?.journalNote != null
-            ? () {
-                context.read<ChallengeBloc>().add(
-                      AddJournalNote(date: _selectedDay, note: ''),
-                    );
-              }
-            : null,
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/journal_entry.dart';
 
 abstract class ChallengeEvent extends Equatable {
   const ChallengeEvent();
@@ -34,17 +35,46 @@ class UpdateDailyProgress extends ChallengeEvent {
   List<Object> get props => [date, challengeId, isCompleted];
 }
 
-class AddJournalNote extends ChallengeEvent {
+/// Append a journal entry to the day (a day holds many entries).
+class AddJournalEntry extends ChallengeEvent {
   final DateTime date;
-  final String note;
+  final JournalEntry entry;
 
-  const AddJournalNote({
+  const AddJournalEntry({
     required this.date,
-    required this.note,
+    required this.entry,
   });
 
   @override
-  List<Object> get props => [date, note];
+  List<Object> get props => [date, entry];
+}
+
+/// Update one journal entry of the day (matched by entry id).
+class UpdateJournalEntry extends ChallengeEvent {
+  final DateTime date;
+  final JournalEntry entry;
+
+  const UpdateJournalEntry({
+    required this.date,
+    required this.entry,
+  });
+
+  @override
+  List<Object> get props => [date, entry];
+}
+
+/// Delete one journal entry of the day (matched by entry id).
+class DeleteJournalEntry extends ChallengeEvent {
+  final DateTime date;
+  final String entryId;
+
+  const DeleteJournalEntry({
+    required this.date,
+    required this.entryId,
+  });
+
+  @override
+  List<Object> get props => [date, entryId];
 }
 
 class AddTaskNote extends ChallengeEvent {

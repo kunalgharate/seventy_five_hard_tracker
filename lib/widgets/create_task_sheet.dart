@@ -317,9 +317,13 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? Colors.grey[850]! : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+    // All colors come from the active Theme so the sheet stays readable in
+    // both light and dark mode — never hard-code white/black text here.
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final cardBg = scheme.surface;
+    final textColor = scheme.onSurface;
+    final fieldFill = theme.inputDecorationTheme.fillColor ?? scheme.surface;
 
     return Container(
       decoration: BoxDecoration(
@@ -343,7 +347,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -360,7 +364,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
             const SizedBox(height: 4),
             Text(
               'Add a new task to your challenge. Reviewer is optional.',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
 
@@ -370,7 +374,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
@@ -391,6 +395,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 hintText: 'e.g. 45 minute workout',
                 errorText: _titleError,
                 prefixIcon: const Icon(Icons.task_alt),
+                filled: true,
+                fillColor: fieldFill,
+                labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                hintStyle: TextStyle(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                prefixIconColor: scheme.onSurfaceVariant,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -410,6 +420,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 labelText: 'Description (optional)',
                 hintText: 'What does this task involve?',
                 prefixIcon: const Icon(Icons.description_outlined),
+                filled: true,
+                fillColor: fieldFill,
+                labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                hintStyle: TextStyle(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                prefixIconColor: scheme.onSurfaceVariant,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -424,13 +440,13 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Tasks without a reviewer complete normally.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
 
@@ -444,14 +460,14 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   child: Row(
                     children: [
                       Icon(Icons.group_outlined,
-                          size: 16, color: Colors.grey[400]),
+                          size: 16, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'No partners yet — invite one below, or share your '
                           'invite code from the Squad screen.',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[400]),
+                          style: TextStyle(
+                              fontSize: 12, color: scheme.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -463,7 +479,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[500],
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -471,15 +487,16 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Expanded(child: Divider(color: scheme.outline)),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         'or invite someone new',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                        style: TextStyle(
+                            fontSize: 11, color: scheme.onSurfaceVariant),
                       ),
                     ),
-                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Expanded(child: Divider(color: scheme.outline)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -494,6 +511,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                         hintText: 'reviewer@email.com',
                         errorText: _emailError,
                         prefixIcon: const Icon(Icons.email_outlined),
+                        filled: true,
+                        fillColor: fieldFill,
+                        hintStyle: TextStyle(
+                            color:
+                                scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                        prefixIconColor: scheme.onSurfaceVariant,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -561,7 +584,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                     Expanded(
                       child: Text(
                         _emailInfo!,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
                       ),
                     ),
                   ],
@@ -611,6 +634,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildTypeChip(String type, String label, Color color) {
+    final scheme = Theme.of(context).colorScheme;
     final selected = _taskType == type;
     return Expanded(
       child: GestureDetector(
@@ -623,7 +647,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 selected ? color.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? color : Colors.grey[300]!,
+              color: selected ? color : scheme.outline,
               width: selected ? 2 : 1,
             ),
           ),
@@ -633,7 +657,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: selected ? color : Colors.grey[500],
+                color: selected ? color : scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -643,6 +667,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildSelectedReviewer() {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -679,7 +704,8 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 ),
                 Text(
                   _selectedReviewer!.email,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  style:
+                      TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -690,7 +716,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               _emailCtrl.clear();
             }),
             icon: const Icon(Icons.close, size: 18),
-            color: Colors.grey[400],
+            color: scheme.onSurfaceVariant,
           ),
         ],
       ),
@@ -698,6 +724,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildPartnerTile(AccountabilityPartner p) {
+    final scheme = Theme.of(context).colorScheme;
     final name = p.displayName;
     final email = p.emailOf(_svc.currentUid) ?? '';
     return InkWell(
@@ -708,7 +735,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: scheme.outline),
         ),
         child: Row(
           children: [
@@ -737,7 +764,8 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   if (email.isNotEmpty)
                     Text(
                       email,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      style: TextStyle(
+                          fontSize: 11, color: scheme.onSurfaceVariant),
                       overflow: TextOverflow.ellipsis,
                     ),
                 ],
@@ -760,7 +788,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   ),
                 ),
               ),
-            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+            Icon(Icons.chevron_right, color: scheme.onSurfaceVariant, size: 20),
           ],
         ),
       ),
