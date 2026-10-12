@@ -36,19 +36,8 @@ class ApiConstants {
   static const String geminiBaseUrl =
       'https://generativelanguage.googleapis.com/v1/models';
 
-  // ── Tron AI (NVIDIA NIM, OpenAI-compatible) ────────────────────
-
-  /// Tron AI API key — supply via --dart-define=NVIDIA_API_KEY=your_key
-  /// (get one at build.nvidia.com). Empty means Tron AI is unavailable and
-  /// the UI falls back to raw dictation text.
-  static const String tronApiKey = String.fromEnvironment(
-    'NVIDIA_API_KEY',
-    defaultValue: '',
-  );
-
-  /// Tron AI model id (any chat model on integrate.api.nvidia.com)
-  static const String tronModel = 'meta/llama-3.1-8b-instruct';
-
-  /// Tron AI base URL (OpenAI-compatible)
-  static const String tronBaseUrl = 'https://integrate.api.nvidia.com/v1';
+  // ── Tron AI (proxied through the `polishDictation` Cloud Function) ──
+  // The NVIDIA key lives server-side as a functions secret — it must never
+  // appear in client code or --dart-define flags. See functions/index.js.
+  // Model: meta/llama-3.1-8b-instruct (owned by the function).
 }
