@@ -6,6 +6,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/services/quotes_service.dart';
 import '../widgets/custom_app_bar.dart';
+import '../widgets/notification_prefs_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -41,6 +42,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        const NotificationPrefsCard(),
+
+        const SizedBox(height: 16),
+
         // Motivational Quotes Section
         Card(
           child: Padding(
@@ -118,6 +123,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        const NotificationPrefsCard(),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

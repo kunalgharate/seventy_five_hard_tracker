@@ -164,7 +164,10 @@ class _HomeScreenState extends State<HomeScreen> {
           .get();
       if (!mounted) return;
       setState(() {
-        _recentNotifications = snap.docs.map((d) {
+        // Docs the user muted via notification prefs stay out of the cards.
+        _recentNotifications = snap.docs
+            .where((d) => d.data()['suppressedByPrefs'] != true)
+            .map((d) {
           final data = d.data();
           final type = data['type'] as String? ?? '';
           String action = 'feedback';

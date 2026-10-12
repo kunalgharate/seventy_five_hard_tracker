@@ -5,6 +5,33 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+// Preference categories, mirroring NotificationPreferences (Flutter).
+// Absent/unknown → allowed (fail-open).
+function prefsAllow(prefs, type) {
+  const byCategory = {
+    reviews: [
+      'taskNeedsReview',
+      'reviewApproved',
+      'reviewRejected',
+      'reviewReminder20h',
+      'reviewExpired',
+    ],
+    tasks: ['taskAssigned'],
+    invitations: [
+      'invitationReceived',
+      'invitationAccepted',
+      'invitationDeclined',
+    ],
+    messages: ['partnerMessage'],
+  };
+  for (const [category, types] of Object.entries(byCategory)) {
+    if (types.includes(type)) {
+      return prefs[category] !== false;
+    }
+  }
+  return true;
+}
+
 // ── Push delivery ─────────────────────────────────────────────
 // Fires for every fcm_notifications doc the app writes (task review,
 // proof submitted/approved/rejected, invitation, chat message, …) and
@@ -28,6 +55,12 @@ exports.sendPushOnNotificationCreate = onDocumentCreated(
       ? userSnap.get('fcmTokens') || []
       : [];
     if (!tokens.length) return;
+
+    // Honor the recipient's notification prefs (users/{uid}.notifPrefs).
+    // Categories mirror NotificationPreferences.categoryForType (Flutter).
+    if (!prefsAllow(userSnap.get('notifPrefs') || {}, (n.type || '').toString())) {
+      return;
+    }
 
     const data = {};
     const raw = n.data || {};

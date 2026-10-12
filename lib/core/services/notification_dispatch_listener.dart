@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'fcm_service.dart';
+import 'notification_preferences.dart';
 
 /// Client-side delivery half of the notification pipeline documented in
 /// [AccountabilityNotificationService] (Cloud Functions are unavailable):
@@ -43,6 +44,7 @@ class NotificationDispatchListener {
     _sub?.cancel();
     _sub = null;
     _uid = uid;
+    NotificationPreferences.instance.invalidateCache();
     if (uid == null) return;
     _sub = FirebaseFirestore.instance
         .collection('fcm_notifications')
@@ -73,22 +75,29 @@ class NotificationDispatchListener {
       final notifData =
           (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       final channel = data['channel'] as String? ?? doc.id;
+      // The snake_case data type drives navigation; fall back to the
+      // enum name for docs written before `data.type` existed.
+      final type = notifData['type'] ?? data['type'] ?? '';
+      // Prefs are keyed on the top-level enum name (e.g. 'taskNeedsReview').
+      final enabled = await NotificationPreferences.instance
+          .isTypeEnabled((data['type'] ?? '').toString());
       final payload = <String, dynamic>{
         ...notifData,
-        // The snake_case data type drives navigation; fall back to the
-        // enum name for docs written before `data.type` existed.
-        'type': notifData['type'] ?? data['type'] ?? '',
+        'type': type,
         'channel': channel,
       };
-      await FcmService.instance.showTrackedNotification(
-        tag: channel,
-        title: data['title'] as String? ?? '75 Hard Challenge',
-        body: data['body'] as String? ?? '',
-        payloadJson: jsonEncode(payload),
-      );
+      if (enabled) {
+        await FcmService.instance.showTrackedNotification(
+          tag: channel,
+          title: data['title'] as String? ?? '75 Hard Challenge',
+          body: data['body'] as String? ?? '',
+          payloadJson: jsonEncode(payload),
+        );
+      }
       await doc.reference.update({
         'delivered': true,
         'deliveredAt': FieldValue.serverTimestamp(),
+        if (!enabled) 'suppressedByPrefs': true,
       });
     } catch (e) {
       if (kDebugMode) {
@@ -98,4 +107,8 @@ class NotificationDispatchListener {
       _inFlight.remove(doc.id);
     }
   }
+
+  /// Re-reads notification prefs now (e.g. right after the user saves new
+  /// ones) so the next delivery honors fresh values.
+  Future<void> refreshPrefs() => NotificationPreferences.instance.warmCache();
 }
