@@ -72,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _dailyQuote =
       'Discipline is choosing between what you want now and what you want most.';
 
+  /// Set when the completion-toggle path shows its own error SnackBar so the
+  /// BlocConsumer listener below doesn't surface the same failure twice.
+  bool _errorSnackClaimed = false;
+
   // ignore: prefer_final_fields is intentional — updated after init
 
   /// Whether a challenge should render as a water tracker card.
@@ -304,12 +308,17 @@ class _HomeScreenState extends State<HomeScreen> {
               // reappear behind a later error/loading emission.
               _lastLoadedState = null;
             } else if (state is ChallengeError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              if (_errorSnackClaimed) {
+                // Already surfaced by the toggle path — just reset the flag.
+                _errorSnackClaimed = false;
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             } else if (state is ChallengeReset) {
               _showResetDialog(state);
             } else if (state is ChallengeCompleted) {
@@ -489,15 +498,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   challenge: challenge,
                   isCompleted: isCompleted,
                   isEditable: isToday,
-                  onToggle: (completed) {
-                    context.read<ChallengeBloc>().add(
-                          UpdateDailyProgress(
-                            date: _selectedDay,
-                            challengeId: challenge.id,
-                            isCompleted: completed,
-                          ),
-                        );
-                  },
+                  onToggle: (completed) =>
+                      _toggleCompletion(challenge, completed),
                   onReminderUpdate: (updatedChallenge) {
                     context.read<ChallengeBloc>().add(
                           UpdateChallenge(updatedChallenge),
@@ -552,6 +554,96 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => ChallengeTaskSheet(bloc: bloc, challenge: challenge),
+    );
+  }
+
+  /// Saves a task toggle end-to-end. Shows a blocking progress dialog while
+  /// the bloc runs its chain (Hive save → Firestore publish → notification
+  /// reschedule), closes it as soon as the saved value is confirmed, and on
+  /// failure closes it and surfaces a SnackBar — the checkbox only follows
+  /// persisted state, so it never flips optimistically.
+  Future<void> _toggleCompletion(Challenge challenge, bool completed) async {
+    final bloc = context.read<ChallengeBloc>();
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    BuildContext? dialogContext;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        dialogContext = dialogCtx;
+        return const _SavingProgressDialog();
+      },
+    );
+
+    try {
+      // `bloc.add` is fire-and-forget: subscribe to the state stream first so
+      // the completion signal can't be missed, then dispatch the event.
+      final confirmed = bloc.stream.firstWhere(
+        (state) =>
+            state is ChallengeError || _isSaved(state, challenge.id, completed),
+      );
+      bloc.add(
+        UpdateDailyProgress(
+          date: _selectedDay,
+          challengeId: challenge.id,
+          isCompleted: completed,
+        ),
+      );
+      final state = await confirmed.timeout(const Duration(seconds: 10));
+      if (state is ChallengeError) {
+        _showToggleError(state.message);
+      }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Still saving your progress — it has not been confirmed yet.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (error) {
+      _showToggleError('$error');
+    } finally {
+      final ctx = dialogContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      } else if (ctx == null && rootNavigator.canPop()) {
+        // The save beat the dialog's first frame — pop through the navigator
+        // we pushed on, otherwise a non-dismissible dialog would be stranded.
+        rootNavigator.pop();
+      }
+    }
+  }
+
+  /// True when [state] already stores [value] for [challengeId] on the
+  /// selected day — i.e. the persistence actually landed.
+  bool _isSaved(ChallengeState state, String challengeId, bool value) {
+    if (state is! ChallengeLoaded || !state.hasActiveSession) return false;
+    for (final progress in state.currentProgress) {
+      if (_isSameDay(progress.date, _selectedDay)) {
+        return progress.challengeCompletions[challengeId] == value;
+      }
+    }
+    return false;
+  }
+
+  /// Surfaces the toggle failure once — the BlocConsumer listener skips its
+  /// own SnackBar when this path has already claimed the error.
+  void _showToggleError(String message) {
+    if (_errorSnackClaimed) {
+      _errorSnackClaimed = false;
+      return;
+    }
+    _errorSnackClaimed = true;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Could not save your progress — $message'),
+        backgroundColor: Colors.red,
+      ),
     );
   }
 
@@ -992,6 +1084,48 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Thank You!'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Modal progress dialog shown while a completion toggle is being persisted.
+/// Barrier taps and the system back button are blocked so the save chain can
+/// finish; the caller pops it as soon as the bloc confirms the new value (or
+/// the attempt fails).
+class _SavingProgressDialog extends StatelessWidget {
+  const _SavingProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Saving your progress…',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'This keeps your daily streak accurate.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

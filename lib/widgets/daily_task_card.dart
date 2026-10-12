@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/task_detail_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +12,7 @@ import 'package:seventy_five_hard_tracker/widgets/collaborator_dialog.dart';
 import 'apple_checkbox.dart';
 import 'challenge_icon_widget.dart';
 import 'reminder_bottom_sheet.dart';
+import 'task_type_card.dart';
 
 class DailyTaskCard extends StatefulWidget {
   final Challenge challenge;
@@ -292,60 +292,29 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 ),
               ),
             ),
-          _buildCleanCard(context),
+          _buildCleanCard(),
         ],
       ),
     );
   }
 
-  /// Consistent corner radius used across all task cards.
-  static const double kCardRadius = 16;
-
-  /// Status accent color used for the card's left edge and subtle tint.
-  /// Completed = green, active = per-task color, missed = red.
+  /// Status accent color used for the card's left edge and progress bar.
+  /// Completed = green, active = category color, missed = red.
   Color _statusAccent() {
     if (widget.isCompleted) return Colors.green;
     if (!widget.isEditable) return Colors.red;
-    return DynamicColorService.getColorForText(widget.challenge.title);
+    return TaskTypeStyle.of(widget.challenge.category).accent;
   }
 
-  /// Clean, theme-aware white/dark card that replaces the old glassmorphism
-  /// container. Uses the app surface color so it adapts to dark mode, a
-  /// consistent border radius, a soft shadow, and a per-task colored left edge.
-  Widget _buildCleanCard(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final accent = _statusAccent();
-    final surface = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 88),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(kCardRadius),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(kCardRadius),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(width: 4, color: accent)),
-          ),
-          child: _buildCardContent(),
-        ),
-      ),
+  /// Theme-aware card that renders through [TaskTypeCard]: category header
+  /// (icon, label, tagline), status-colored left edge and a completion
+  /// progress bar. The body keeps all existing checkbox/toggle behaviour.
+  Widget _buildCleanCard() {
+    return TaskTypeCard(
+      category: widget.challenge.category,
+      isCompleted: widget.isCompleted,
+      accent: _statusAccent(),
+      child: _buildCardContent(),
     );
   }
 
