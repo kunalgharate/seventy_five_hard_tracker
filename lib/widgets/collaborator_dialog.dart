@@ -237,6 +237,16 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
 
   Future<void> _save() async {
     if (_owner == null) return;
+    if (!_hasChanges) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No changes to save.'),
+          backgroundColor: Colors.blueGrey,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
 
     if (widget.taskId.isEmpty) {
@@ -394,10 +404,17 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildOwnerSection(),
-                    if (_collaborators.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _buildCollaboratorsList(),
-                    ],
+                    const SizedBox(height: 12),
+                    if (_collaborators.isNotEmpty)
+                      _buildCollaboratorsList()
+                    else
+                      Text(
+                        'No collaborators selected',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     _buildAddSection(),
                   ],

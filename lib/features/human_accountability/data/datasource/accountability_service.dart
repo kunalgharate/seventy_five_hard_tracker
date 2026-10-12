@@ -2970,36 +2970,48 @@ class AccountabilityService {
 
   /// Fetches completed review history (approved/rejected) for the current
   /// user — both as owner and reviewer. Limited to last 50.
+  ///
+  /// Review events are matched on status (approved/rejected) OR proofStatus,
+  /// because `reviewTaskProof` finalizes approvals as status 'completed' and
+  /// rejections as status 'pending'. Sorting happens in memory: docs approved
+  /// that way never get a `reviewedAt`, which orderBy would silently drop.
   Future<List<AccountabilityTask>> fetchReviewHistory() async {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      // Tasks I own that are approved/rejected
-      final ownSnap = await _db
-          .collection('accountability_tasks')
-          .where('assignedByUid', isEqualTo: uid)
-          .where('status', whereIn: ['approved', 'rejected'])
-          .orderBy('reviewedAt', descending: true)
-          .limit(25)
-          .get();
-      // Tasks I reviewed
-      final reviewSnap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('status', whereIn: ['approved', 'rejected'])
-          .orderBy('reviewedAt', descending: true)
-          .limit(25)
-          .get();
+      final tasks = _db.collection('accountability_tasks');
+      final decidedProof = [
+        ProofStatus.approved.toWire,
+        ProofStatus.rejected.toWire,
+      ];
+      final snaps = await Future.wait([
+        tasks
+            .where('assignedByUid', isEqualTo: uid)
+            .where('status', whereIn: ['approved', 'rejected']).get(),
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('status', whereIn: ['approved', 'rejected']).get(),
+        tasks
+            .where('assignedByUid', isEqualTo: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+      ]);
       final all = <String, AccountabilityTask>{};
-      for (final d in ownSnap.docs) {
-        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
-      }
-      for (final d in reviewSnap.docs) {
-        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
       }
       final list = all.values.toList()
-        ..sort((a, b) => (b.reviewedAt ?? b.assignedAt)
-            .compareTo(a.reviewedAt ?? a.assignedAt));
+        ..sort((a, b) {
+          final at = a.reviewedAt ?? a.proofReviewedAt ?? a.assignedAt;
+          final bt = b.reviewedAt ?? b.proofReviewedAt ?? b.assignedAt;
+          return bt.compareTo(at);
+        });
       return list.take(50).toList();
     } catch (e) {
       if (kDebugMode) {

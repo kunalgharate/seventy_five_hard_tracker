@@ -653,13 +653,46 @@ class _HistoryCard extends StatelessWidget {
   final AccountabilityTask task;
   const _HistoryCard({required this.task});
 
+  bool get _isApproved =>
+      task.status == AccountabilityTaskStatus.approved ||
+      task.proofStatus == ProofStatus.approved;
+
+  DateTime? get _reviewedAt => task.reviewedAt ?? task.proofReviewedAt;
+
+  String get _reviewerName {
+    final entries = [...task.approvals, ...task.rejections];
+    for (final e in entries.reversed) {
+      final name = e['name'];
+      if (name is String && name.isNotEmpty) return name;
+    }
+    return task.accountableName;
+  }
+
+  String? get _comment {
+    if (task.proofReviewComment != null &&
+        task.proofReviewComment!.isNotEmpty) {
+      return task.proofReviewComment;
+    }
+    if (task.reviewComment != null && task.reviewComment!.isNotEmpty) {
+      return task.reviewComment;
+    }
+    for (final e in task.approvals.reversed) {
+      final c = e['comment'];
+      if (c is String && c.isNotEmpty) return c;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isApproved = task.status == AccountabilityTaskStatus.approved;
+    final isApproved = _isApproved;
     final color = isApproved ? Colors.green : Colors.red;
     final icon = isApproved ? Icons.check_circle : Icons.cancel;
     final myUid = AccountabilityService().currentUid;
     final isMyTask = task.assignedByUid == myUid;
+    final reviewedAt = _reviewedAt;
+    final comment = _comment;
+    final reviewer = _reviewerName;
 
     return Card(
       elevation: 1,
@@ -685,8 +718,8 @@ class _HistoryCard extends StatelessWidget {
                   Text(
                     isMyTask
                         ? isApproved
-                            ? 'Approved by reviewer'
-                            : 'Rejected — resubmit proof'
+                            ? 'Approved by $reviewer'
+                            : 'Rejected by $reviewer — resubmit proof'
                         : isApproved
                             ? 'You approved '
                                 '${task.assignedByName}\'s task'
@@ -694,12 +727,11 @@ class _HistoryCard extends StatelessWidget {
                                 '${task.assignedByName}\'s task',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
-                  if (task.proofReviewComment != null &&
-                      task.proofReviewComment!.isNotEmpty)
+                  if (comment != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        '"${task.proofReviewComment}"',
+                        '"$comment"',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey[600],
@@ -712,11 +744,34 @@ class _HistoryCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (task.reviewedAt != null)
-              Text(
-                DateFormat('MMM d').format(task.reviewedAt!),
-                style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    isApproved ? 'Approved' : 'Rejected',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                ),
+                if (reviewedAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    DateFormat('MMM d').format(reviewedAt),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
