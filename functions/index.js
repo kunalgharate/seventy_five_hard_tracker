@@ -1,12 +1,9 @@
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
-
-const nvidiaApiKey = defineSecret('NVIDIA_API_KEY');
 
 // ── Push delivery ─────────────────────────────────────────────
 // Fires for every fcm_notifications doc the app writes (task review,
@@ -76,8 +73,12 @@ exports.sendPushOnNotificationCreate = onDocumentCreated(
 );
 
 // ── Tron AI proxy ─────────────────────────────────────────────
-// Holds the NVIDIA key server-side (functions secret) so it never
-// ships in the app. Callable, auth required, per-user daily cap.
+// Holds the NVIDIA key server-side in the `config/ai` Firestore doc
+// (client reads denied by firestore.rules; functions use Admin SDK).
+// Zero Secret Manager usage, so the free-tier secret quota is untouched.
+// The key is cached per function instance — one Firestore read per
+// cold start, then served from memory. Callable, auth required,
+// per-user daily cap.
 const TRON_MODEL = 'meta/llama-3.1-8b-instruct';
 const TRON_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const MAX_INPUT_CHARS = 4000;
@@ -90,8 +91,17 @@ const SYSTEM_PROMPT =
   'Do not add new ideas, advice or commentary. ' +
   'Reply with ONLY the cleaned text, nothing else.';
 
+let cachedNvidiaKey = null;
+async function getNvidiaKey() {
+  if (cachedNvidiaKey) return cachedNvidiaKey;
+  const snap = await db.doc('config/ai').get();
+  const key = snap.exists ? (snap.get('nvidiaKey') || '').toString() : '';
+  if (key) cachedNvidiaKey = key;
+  return key;
+}
+
 exports.polishDictation = onCall(
-  { secrets: [nvidiaApiKey], timeoutSeconds: 30 },
+  { timeoutSeconds: 30 },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in to use Tron AI.');
@@ -106,7 +116,7 @@ exports.polishDictation = onCall(
         'Text too long for Tron AI to polish — try shortening it.',
       );
     }
-    const key = nvidiaApiKey.value();
+    const key = await getNvidiaKey();
     if (!key) {
       throw new HttpsError(
         'failed-precondition',

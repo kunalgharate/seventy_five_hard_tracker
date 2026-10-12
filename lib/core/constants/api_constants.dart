@@ -37,7 +37,8 @@ class ApiConstants {
       'https://generativelanguage.googleapis.com/v1/models';
 
   // ── Tron AI (proxied through the `polishDictation` Cloud Function) ──
-  // The NVIDIA key lives server-side as a functions secret — it must never
-  // appear in client code or --dart-define flags. See functions/index.js.
+  // The NVIDIA key lives server-side in the `config/ai` Firestore doc
+  // (client reads denied by rules) — it must never appear in client code
+  // or --dart-define flags. See functions/index.js.
   // Model: meta/llama-3.1-8b-instruct (owned by the function).
 }

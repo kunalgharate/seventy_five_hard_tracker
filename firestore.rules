@@ -241,5 +241,12 @@ service cloud.firestore {
       allow read, update, delete: if request.auth != null
                                   && resource.data.recipientUid == request.auth.uid;
     }
+
+    // ── config (server-side settings, e.g. config/ai.nvidiaKey) ────
+    // No client access at all — Cloud Functions read these via Admin SDK
+    // (which bypasses rules). Explicit deny so the key is never leakable.
+    match /config/{docId} {
+      allow read, write: if false;
+    }
   }
 }
