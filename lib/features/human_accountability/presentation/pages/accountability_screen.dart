@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/partner_task_details_dialog.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import 'package:seventy_five_hard_tracker/widgets/create_task_sheet.dart';
 import 'package:intl/intl.dart';
@@ -1575,24 +1576,27 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               else ...[
                 ...() {
                   final myUid = AccountabilityService().currentUid;
+                  final friendUid = widget.partner.uidOf(myUid);
+                  // Only tasks that came FROM this friend: the friend is
+                  // the submitter/owner, or the friend submitted it and it
+                  // is awaiting MY review. The user's own tasks
+                  // (assignedByUid == me) never render in a partner card.
                   final visibleTasks = _accountabilityTasks
                       .where(
                         (t) =>
                             t.partnershipId == widget.partner.id &&
-                            (t.assignedByUid == myUid ||
-                                t.accountableUid == myUid ||
-                                t.accountableUserIds.contains(myUid) ||
-                                t.partnerUid == myUid) &&
-                            // Tasks needing MY review live in the
-                            // "My Responsibilities" section above — skip them
-                            // here so each task shows exactly once.
-                            !(t.partnerUid == myUid &&
-                                t.status ==
-                                    AccountabilityTaskStatus.pendingReview),
+                            (t.assignedByUid == friendUid ||
+                                (t.assignedByUid != myUid &&
+                                    t.partnerUid == myUid &&
+                                    (t.status ==
+                                            AccountabilityTaskStatus
+                                                .pendingReview ||
+                                        t.proofStatus ==
+                                            ProofStatus.submitted))),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
-                    return [
+                    return <Widget>[
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1620,7 +1624,7 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                       ),
                     ];
                   }
-                  return visibleTasks.map((task) {
+                  return visibleTasks.map<Widget>((task) {
                     // Approved counts as done on BOTH sides — owner and
                     // reviewer see the same checked checkbox.
                     final isCompleted =
@@ -1634,82 +1638,87 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         (task.accountableUid == myUid ||
                             task.accountableUserIds.contains(myUid) ||
                             task.partnerUid == myUid);
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isCompleted
-                            ? Colors.green.withValues(alpha: 0.06)
-                            : Colors.orange.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isCompleted
-                              ? Colors.green.withValues(alpha: 0.3)
-                              : Colors.orange.withValues(alpha: 0.25),
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => PartnerTaskDetailsDialog.show(context, task),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              // Checkbox for every review task — owner taps to
-                              // submit proof, reviewer taps to review. Once
-                              // approved it stays checked on both sides.
-                              Checkbox(
-                                value: isCompleted,
-                                activeColor: Colors.green,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                onChanged: isCompleted
-                                    ? null
-                                    : (_) => _onTaskCheckboxTapped(
-                                          context,
-                                          task,
-                                          iAmOwner: iAmOwner,
-                                          iAmReviewer: iAmReviewer,
-                                        ),
-                              ),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task.title,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    if (task.description != null &&
-                                        task.description!.isNotEmpty)
-                                      Text(
-                                        task.description!,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[500],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              _buildPartnerTaskStatusChip(
-                                isCompleted,
-                                proofStatus,
-                                task.status,
-                              ),
-                            ],
+                        decoration: BoxDecoration(
+                          color: isCompleted
+                              ? Colors.green.withValues(alpha: 0.06)
+                              : Colors.orange.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isCompleted
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.orange.withValues(alpha: 0.25),
                           ),
-                          if (!isCompleted)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: _buildPartnerTaskAction(task),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                // Checkbox for every review task — owner taps to
+                                // submit proof, reviewer taps to review. Once
+                                // approved it stays checked on both sides.
+                                Checkbox(
+                                  value: isCompleted,
+                                  activeColor: Colors.green,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  onChanged: isCompleted
+                                      ? null
+                                      : (_) => _onTaskCheckboxTapped(
+                                            context,
+                                            task,
+                                            iAmOwner: iAmOwner,
+                                            iAmReviewer: iAmReviewer,
+                                          ),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        task.title,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      if (task.description != null &&
+                                          task.description!.isNotEmpty)
+                                        Text(
+                                          task.description!,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey[500],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                _buildPartnerTaskStatusChip(
+                                  isCompleted,
+                                  proofStatus,
+                                  task.status,
+                                ),
+                              ],
                             ),
-                        ],
+                            if (!isCompleted)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: _buildPartnerTaskAction(task),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   });
