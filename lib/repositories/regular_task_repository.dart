@@ -110,6 +110,14 @@ class RegularTaskRepository {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  /// Wipes all locally stored regular tasks and completions (used on
+  /// sign-out and account switches so no data crosses accounts).
+  Future<void> clearAll() async {
+    await _ensureInitialized();
+    await _tasksBox!.clear();
+    await _completionsBox!.clear();
+  }
+
   /// Restores regular tasks and completions from a cloud backup JSON payload.
   Future<void> restoreFromJson(Map<String, dynamic> data) async {
     await _ensureInitialized();

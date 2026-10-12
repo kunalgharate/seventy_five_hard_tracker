@@ -298,6 +298,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   _accountabilityLoadedSessionId = sessionId;
                 });
               }
+            } else if (state is ChallengeLoaded) {
+              // No active session (sign-out / account switch cleared local
+              // data) — drop the cached snapshot so stale data can never
+              // reappear behind a later error/loading emission.
+              _lastLoadedState = null;
             } else if (state is ChallengeError) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

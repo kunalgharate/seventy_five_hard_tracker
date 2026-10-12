@@ -30,6 +30,7 @@ import 'features/human_accountability/presentation/bloc/accountability_bloc.dart
 import 'features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
+import 'core/services/data_ownership.dart';
 import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -457,6 +458,20 @@ class _InitialScreenState extends State<InitialScreen>
       currentUser = null;
     }
     if (currentUser != null) {
+      // Cross-account isolation: if the local data belongs to a different
+      // account (e.g. the previous user never signed out on this device),
+      // wipe it before it can be shown or uploaded for this account.
+      final owner = await DataOwnership.read();
+      if (owner != null && owner != currentUser.uid) {
+        try {
+          await CloudSyncService().clearLocalData(bloc.repository, taskRepo);
+        } catch (_) {}
+        if (mounted) {
+          bloc.add(LoadChallengeData());
+          context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        }
+      }
+
       final hasLocalData = await bloc.repository.hasActiveSession();
       if (!hasLocalData) {
         try {
@@ -473,6 +488,8 @@ class _InitialScreenState extends State<InitialScreen>
           }
         } catch (_) {}
       }
+      // Record (or adopt) which account owns the local data.
+      await DataOwnership.claim(currentUser.uid);
     }
 
     // Minimum splash display time

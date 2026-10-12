@@ -8,6 +8,7 @@ import 'package:pointycastle/export.dart' as pc;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/core/services/data_ownership.dart';
 
 /// Keys for SharedPreferences
 const _kLastSyncTime = 'lastSyncTime';
@@ -137,8 +138,61 @@ class CloudSyncService {
   }
 
   Future<void> signOut() async {
+    try {
+      // Also drop the Google account so the next sign-in cannot silently
+      // re-authenticate as the previous user.
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
     await _auth.signOut();
     _aesKey = null;
+  }
+
+  /// Removes all device-local user data and ownership markers. Used on
+  /// sign-out and account switches so one account's data is never visible,
+  /// uploaded, or published under another account.
+  Future<void> clearLocalData(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    await db.clearAllData();
+    await taskRepo.clearAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLastSyncTime);
+    await DataOwnership.clear();
+  }
+
+  /// Reconciles device-local data with the signed-in account after a
+  /// sign-in: another account's data is wiped (never uploaded) and this
+  /// account's cloud backup restored if needed; matching data is uploaded.
+  Future<({bool restored, bool uploaded})> reconcileOnSignIn(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    final uid = currentUser?.uid;
+    if (uid == null) return (restored: false, uploaded: false);
+
+    if (await DataOwnership.ownedByOther(uid)) {
+      await clearLocalData(db, taskRepo);
+    }
+
+    final hasLocal =
+        db.getAllSessions().isNotEmpty || taskRepo.getAllTasks().isNotEmpty;
+    if (hasLocal) {
+      final uploaded = await syncToCloud(db, taskRepo);
+      return (restored: false, uploaded: uploaded);
+    }
+
+    final cloudData = await syncFromCloud();
+    final sessions = (cloudData?['sessions'] as List?) ?? [];
+    if (cloudData != null && sessions.isNotEmpty) {
+      await db.restoreFromJson(cloudData);
+      await taskRepo.restoreFromJson(cloudData);
+      await DataOwnership.claim(uid);
+      return (restored: true, uploaded: false);
+    }
+
+    await DataOwnership.claim(uid);
+    return (restored: false, uploaded: false);
   }
 
   // ── User profile ─────────────────────────────────────────────────────────
@@ -210,6 +264,9 @@ class CloudSyncService {
     try {
       final uid = currentUser!.uid;
 
+      // Never upload local data that belongs to a different account.
+      if (await DataOwnership.ownedByOther(uid)) return false;
+
       // Gather ALL challenge sessions + their full progress history
       final sessions = db.getAllSessions();
       final allProgress = <Map<String, dynamic>>[];
@@ -246,6 +303,7 @@ class CloudSyncService {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLastSyncTime, DateTime.now().toIso8601String());
+      await DataOwnership.claim(uid);
 
       if (kDebugMode) debugPrint('[CloudSync] Sync complete (GCM)');
       return true;

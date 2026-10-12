@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import '../main.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -37,13 +39,18 @@ class _LoginScreenState extends State<LoginScreen> {
         debugPrint('[Login] Failed to record consent: $e');
       }
 
-      // 3. Trigger initial sync (creates user_data/{uid})
+      // 3. Reconcile local data with this account: wipe any other account's
+      //    data and restore this account's backup, or upload local data.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
           final taskRepo = context.read<RegularTaskBloc>().repository;
-          await syncSvc.syncToCloud(db, taskRepo);
+          await syncSvc.reconcileOnSignIn(db, taskRepo);
         } catch (_) {}
+        if (mounted) {
+          context.read<ChallengeBloc>().add(LoadChallengeData());
+          context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        }
       }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');

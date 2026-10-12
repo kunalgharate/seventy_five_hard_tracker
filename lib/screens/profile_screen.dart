@@ -10,7 +10,11 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/notification_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/discipline_heatmap.dart';
 import 'package:seventy_five_hard_tracker/widgets/achievements_showcase.dart';
 import 'journal_timeline_screen.dart';
@@ -711,8 +715,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final db = context.read<ChallengeBloc>().repository;
+    final taskRepo = context.read<RegularTaskBloc>().repository;
+
+    // Back up this account's data first, then remove every trace of it from
+    // the device so the next account never sees it (cross-account isolation).
+    try {
+      await _syncService.syncToCloud(db, taskRepo);
+    } catch (_) {}
+    try {
+      await _syncService.clearLocalData(db, taskRepo);
+    } catch (_) {}
+
+    // Reminders were scheduled from this account's tasks — cancel them.
+    try {
+      await SmartNotificationService()
+          .cancelAllRemindersForDate(DateTime.now());
+    } catch (_) {}
+    try {
+      await NotificationService().cancelAllNotifications();
+    } catch (_) {}
+
     await _syncService.signOut();
+
     if (mounted) {
+      context.read<ChallengeBloc>().add(LoadChallengeData());
+      context.read<RegularTaskBloc>().add(LoadRegularTasks());
+      context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
+      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
       setState(() => _lastSync = null);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -721,41 +751,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// After sign-in, checks if local data is empty. If so, restores from cloud.
-  /// Otherwise uploads local data to cloud.
+  /// After sign-in, reconciles local data with the signed-in account:
+  /// restores this account's cloud backup if local data is empty or belongs
+  /// to a different account, otherwise uploads local data to cloud.
   void _triggerAutoSync() async {
     final db = context.read<ChallengeBloc>().repository;
     final taskRepo = context.read<RegularTaskBloc>().repository;
     setState(() => _isSyncing = true);
 
     try {
-      // Check if local database is empty (reinstall scenario)
-      final hasLocalData = await db.hasActiveSession();
-
-      if (!hasLocalData) {
-        // Try restoring from cloud first
-        final cloudData = await _syncService.syncFromCloud();
-        if (cloudData != null &&
-            (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-          await db.restoreFromJson(cloudData);
-          await taskRepo.restoreFromJson(cloudData);
-          if (mounted) {
-            context.read<ChallengeBloc>().add(LoadChallengeData());
-            context.read<RegularTaskBloc>().add(LoadRegularTasks());
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Your data has been restored from cloud!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        }
-      } else {
-        // Local data exists — sync it up to cloud
-        final success = await _syncService.syncToCloud(db, taskRepo);
-        if (mounted && success) {
-          _loadLastSync();
-        }
+      final result = await _syncService.reconcileOnSignIn(db, taskRepo);
+      if (!mounted) return;
+      context.read<ChallengeBloc>().add(LoadChallengeData());
+      context.read<RegularTaskBloc>().add(LoadRegularTasks());
+      if (result.restored) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your data has been restored from cloud!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else if (result.uploaded) {
+        _loadLastSync();
       }
     } catch (_) {
     } finally {

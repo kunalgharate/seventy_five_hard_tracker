@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import '../../../../core/services/data_ownership.dart';
 import '../../../../models/collaborator.dart';
 import '../models/accountability_partner.dart';
 import '../models/accountability_task.dart';
@@ -804,6 +805,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Never publish another account's local data to my progress docs.
+      if (await DataOwnership.ownedByOther(uid)) return;
       // Ensure partner read-access list is current before publishing.
       await _syncAllowedReaders();
       await _db
@@ -839,6 +842,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Never publish another account's local data to my progress docs.
+      if (await DataOwnership.ownedByOther(uid)) return;
       _cachedAllowedReaders ??= await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set({
         'challengeNames': challengeNames,
