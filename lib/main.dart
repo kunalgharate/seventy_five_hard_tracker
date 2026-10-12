@@ -490,6 +490,9 @@ class _InitialScreenState extends State<InitialScreen>
       }
       // Record (or adopt) which account owns the local data.
       await DataOwnership.claim(currentUser.uid);
+      try {
+        await bloc.repository.adoptSessionsFor(currentUser.uid);
+      } catch (_) {}
     }
 
     // Minimum splash display time

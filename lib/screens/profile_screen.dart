@@ -12,6 +12,7 @@ import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bl
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/notification_service.dart';
@@ -734,6 +735,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {}
     try {
       await NotificationService().cancelAllNotifications();
+    } catch (_) {}
+
+    // Drop cached partner read-access lists from the previous account.
+    try {
+      AccountabilityService().invalidateAllowedReaders();
     } catch (_) {}
 
     await _syncService.signOut();

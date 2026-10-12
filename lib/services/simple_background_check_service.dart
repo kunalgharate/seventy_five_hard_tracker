@@ -1,5 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:seventy_five_hard_tracker/core/services/data_ownership.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
@@ -19,6 +21,11 @@ class SimpleBackgroundCheckService {
   /// Returns list of missed task titles if a reset is needed, null otherwise.
   Future<List<String>?> checkOnAppOpen() async {
     try {
+      // Never read or auto-reset while signed out, and never touch local
+      // data owned by a different account (cross-account isolation).
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || await DataOwnership.ownedByOther(uid)) return null;
+
       if (!Hive.isBoxOpen('challenge_sessions')) {
         await Hive.openBox<ChallengeSession>('challenge_sessions');
       }

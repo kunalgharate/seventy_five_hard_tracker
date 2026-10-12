@@ -143,6 +143,11 @@ class CloudSyncService {
       // re-authenticate as the previous user.
       await GoogleSignIn.instance.signOut();
     } catch (_) {}
+    // Drop the device-local Firestore disk cache so this account's offline
+    // data can't be read by the next account signed in on this device.
+    try {
+      await _firestore.clearPersistence();
+    } catch (_) {}
     await _auth.signOut();
     _aesKey = null;
   }

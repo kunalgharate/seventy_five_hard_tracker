@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
@@ -29,16 +30,47 @@ class DatabaseRepository {
   }
 
   // Challenge Session methods
+
+  /// UID of the signed-in account, or null when signed out.
+  String? get _currentUid {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A session is visible when it has no owner (legacy/local-only data) or
+  /// belongs to the signed-in account. Foreign-account sessions are never
+  /// read, shown, or synced.
+  bool _isVisible(ChallengeSession session) =>
+      session.ownerUid == null || session.ownerUid == _currentUid;
+
   Future<void> saveSession(ChallengeSession session) async {
     await _ensureInitialized();
+    if (session.ownerUid == null) {
+      final uid = _currentUid;
+      if (uid != null) session = session.copyWith(ownerUid: uid);
+    }
     await _sessionBox!.put(session.id, session);
+  }
+
+  /// Stamps all legacy (unowned) sessions with [uid] — used when the
+  /// signed-in account adopts pre-existing local data at app start.
+  Future<void> adoptSessionsFor(String uid) async {
+    await _ensureInitialized();
+    final legacy =
+        _sessionBox!.values.where((s) => s.ownerUid == null).toList();
+    for (final session in legacy) {
+      await _sessionBox!.put(session.id, session.copyWith(ownerUid: uid));
+    }
   }
 
   Future<ChallengeSession?> getActiveSession() async {
     await _ensureInitialized();
     try {
-      return _sessionBox!.values
-          .firstWhere((session) => session.isActive && !session.isCompleted);
+      return _sessionBox!.values.firstWhere((session) =>
+          _isVisible(session) && session.isActive && !session.isCompleted);
     } on StateError {
       // No active session found — expected case
       return null;
@@ -47,7 +79,7 @@ class DatabaseRepository {
 
   List<ChallengeSession> getAllSessions() {
     if (_sessionBox == null) return [];
-    return (_sessionBox!.values.toList())
+    return (_sessionBox!.values.where(_isVisible).toList())
       ..sort((a, b) => b.startDate.compareTo(a.startDate));
   }
 
@@ -97,8 +129,8 @@ class DatabaseRepository {
 
   Future<bool> hasActiveSession() async {
     await _ensureInitialized();
-    return _sessionBox!.values
-        .any((session) => session.isActive && !session.isCompleted);
+    return _sessionBox!.values.any((session) =>
+        _isVisible(session) && session.isActive && !session.isCompleted);
   }
 
   Future<void> clearAllData() async {
@@ -117,9 +149,13 @@ class DatabaseRepository {
     await _ensureInitialized();
     await clearAllData();
 
+    final uid = _currentUid;
     final sessions = (data['sessions'] as List?) ?? [];
     for (final s in sessions) {
-      final session = ChallengeSession.fromJson(s as Map<String, dynamic>);
+      var session = ChallengeSession.fromJson(s as Map<String, dynamic>);
+      if (session.ownerUid == null && uid != null) {
+        session = session.copyWith(ownerUid: uid);
+      }
       await _sessionBox!.put(session.id, session);
     }
 
