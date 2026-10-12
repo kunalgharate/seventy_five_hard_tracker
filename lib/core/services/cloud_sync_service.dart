@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/core/services/data_ownership.dart';
+import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 
 /// Keys for SharedPreferences
 const _kLastSyncTime = 'lastSyncTime';
@@ -138,6 +139,12 @@ class CloudSyncService {
   }
 
   Future<void> signOut() async {
+    // Cross-account isolation: drop this device's push token from the
+    // outgoing account BEFORE auth is revoked — security rules only let the
+    // owner update their `users` doc, so this would fail after sign-out.
+    try {
+      await FcmService.instance.unregisterCurrentDeviceToken();
+    } catch (_) {}
     try {
       // Also drop the Google account so the next sign-in cannot silently
       // re-authenticate as the previous user.

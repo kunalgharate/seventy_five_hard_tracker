@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
@@ -421,6 +422,7 @@ class AccountabilityBloc
         final challengeId = task?.challengeId;
         debugPrint(
             '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
+        if (task != null) _subscribeTaskChannels([task.id]);
 
         if (isClosed) return;
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
@@ -523,6 +525,7 @@ class AccountabilityBloc
           debugPrint('[AccountabilityBloc] Notification failed: $e');
         }
       }
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       emit(TaskReviewCompleted(task.id, 'approved',
           comment: event.improvementNote));
@@ -567,6 +570,7 @@ class AccountabilityBloc
           debugPrint('[AccountabilityBloc] Notification failed: $e');
         }
       }
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       emit(TaskReviewCompleted(task.id, 'rejected',
           comment: event.improvementNote));
@@ -627,6 +631,14 @@ class AccountabilityBloc
 
   // ── Phase 4: Multi-reviewer review system handlers ────────────────────
 
+  /// Joins the FCM topic of every task I'm attached to (owner or reviewer)
+  /// so a future server-side sender can broadcast to all of them.
+  void _subscribeTaskChannels(Iterable<String> taskIds) {
+    for (final id in taskIds) {
+      FcmService.instance.subscribeToTaskChannel(id);
+    }
+  }
+
   Future<void> _onLoadReviewTabData(
     LoadReviewTabData event,
     Emitter<AccountabilityState> emit,
@@ -645,6 +657,11 @@ class AccountabilityBloc
         myPendingTasks: results[2],
         reviewHistory: results[3],
       ));
+      // I'm a reviewer of these tasks — join their channels.
+      _subscribeTaskChannels([
+        ...results[0].map((t) => t.id),
+        ...results[1].map((t) => t.id),
+      ]);
     } catch (e) {
       if (isClosed) return;
       emit(AccountabilityError('Failed to load reviews: $e'));
@@ -662,6 +679,7 @@ class AccountabilityBloc
         // Notify the task owner
         final task = await _service.fetchTaskById(event.taskId);
         if (task != null) {
+          _subscribeTaskChannels([task.id]);
           try {
             await _notificationService.notifyRequestAccepted(
               recipientUid: task.assignedByUid,
@@ -731,9 +749,14 @@ class AccountabilityBloc
       }
 
       // Notify all accepted reviewers
-      final reviewerUids = task.accountableUserIds
-          .where((uid) => uid != task.assignedByUid)
-          .toList();
+      final reviewerUids = <String>{
+        ...task.accountableUserIds,
+        // Legacy docs list reviewers only in partnerUid/accountableUid —
+        // mirror AccountabilityService._isReviewerOf so nobody is missed.
+        if (task.partnerUid != null && task.partnerUid!.isNotEmpty)
+          task.partnerUid!,
+        if (task.accountableUid.isNotEmpty) task.accountableUid,
+      }.where((uid) => uid != task.assignedByUid).toList();
       if (reviewerUids.isNotEmpty) {
         try {
           await _notificationService.notifyProofSubmitted(
@@ -786,6 +809,9 @@ class AccountabilityBloc
           autoCompleted: autoCompleted,
         );
       } catch (_) {}
+      // My review of this task is done — leave its channel (re-subscribed
+      // automatically the next time it shows up in the Reviews tab).
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       if (isClosed) return;
       emit(ProofApproved(
@@ -825,6 +851,7 @@ class AccountabilityBloc
           comment: event.comment,
         );
       } catch (_) {}
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       if (isClosed) return;
       emit(ProofRejected(task.id, comment: event.comment));

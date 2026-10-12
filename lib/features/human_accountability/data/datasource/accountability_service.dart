@@ -1,15 +1,18 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/services/data_ownership.dart';
+import '../../../../core/services/fcm_service.dart';
 import '../../../../models/collaborator.dart';
 import '../models/accountability_partner.dart';
 import '../models/accountability_task.dart';
 import '../models/partner_review.dart';
 import '../models/app_user.dart';
 import '../models/accountability_invitation.dart';
+import 'accountability_notification_service.dart';
 
 /// Firestore collections:
 ///   partnerships/{id}              — partnership documents
@@ -1121,6 +1124,17 @@ class AccountabilityService {
         accountableEmail: accountableEmail,
       );
       await ref.set(task.toFirestore());
+      // Join the task's FCM topic on the owner's device now; assigned
+      // reviewers are notified so the recipient's delivery listener can
+      // surface the assignment (never blocks task creation on failure).
+      unawaited(FcmService.instance.subscribeToTaskChannel(ref.id));
+      try {
+        await _notifyTaskAssigned(task);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AccountabilityService] createTask notify error: $e');
+        }
+      }
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] createTask: ${ref.id} for $accountableUid challengeId=$challengeId partnershipId=$partnershipId');
@@ -1131,6 +1145,24 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] createTask error: $e');
       }
       return null;
+    }
+  }
+
+  /// Sends a "task assigned" notification to every assigned user (the
+  /// accountable uid plus any extra reviewer ids) except the creator.
+  Future<void> _notifyTaskAssigned(AccountabilityTask task) async {
+    final svc = AccountabilityNotificationService();
+    final assignees = <String>{
+      if (task.accountableUid.isNotEmpty) task.accountableUid,
+      ...task.accountableUserIds,
+    }.where((uid) => uid.isNotEmpty && uid != currentUid);
+    for (final uid in assignees) {
+      await svc.notifyTaskAssigned(
+        recipientUid: uid,
+        ownerName: task.assignedByName,
+        taskName: task.title,
+        taskId: task.id,
+      );
     }
   }
 
@@ -1884,6 +1916,12 @@ class AccountabilityService {
         createdAt: DateTime.now(),
       );
       await upgradeRef.set(upgraded.toFirestore());
+      if (recipient?.uid.isNotEmpty ?? false) {
+        await _notifyInvitationReceived(
+          recipientUid: recipient!.uid,
+          partnershipId: existing.id,
+        );
+      }
       return upgraded;
     }
 
@@ -1939,6 +1977,15 @@ class AccountabilityService {
 
     await batch.commit();
 
+    // Push the invite to the recipient's device if they already have an
+    // account (toUid is null for pre-registration invites).
+    if (recipientUid != null) {
+      await _notifyInvitationReceived(
+        recipientUid: recipientUid,
+        partnershipId: partnershipRef.id,
+      );
+    }
+
     if (kDebugMode) {
       debugPrint(
           '[AccountabilityService] sendEmailInvite: sent to $recipientEmail '
@@ -1946,6 +1993,23 @@ class AccountabilityService {
     }
 
     return invitation.copyWith(id: inviteRef.id);
+  }
+
+  Future<void> _notifyInvitationReceived({
+    required String recipientUid,
+    required String partnershipId,
+  }) async {
+    try {
+      await AccountabilityNotificationService().notifyInvitationReceived(
+        recipientUid: recipientUid,
+        senderName: currentUserDisplayName,
+        partnershipId: partnershipId,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] invite notify error: $e');
+      }
+    }
   }
 
   /// Fetches invitations received by the current user (by email).

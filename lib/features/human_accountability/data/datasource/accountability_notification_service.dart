@@ -8,10 +8,12 @@ enum AccountabilityNotificationType {
   invitationAccepted,
   invitationDeclined,
   taskNeedsReview,
+  taskAssigned,
   reviewApproved,
   reviewRejected,
   reviewReminder20h,
   reviewExpired,
+  partnerMessage,
 }
 
 /// Writes FCM notification documents to Firestore.
@@ -20,6 +22,12 @@ enum AccountabilityNotificationType {
 /// 1. The sender writes a doc to `fcm_notifications/{id}` with recipient UID
 /// 2. The recipient's app listens to this collection (delivered=false)
 /// 3. On receiving, the client shows a local notification and marks delivered=true
+///
+/// Every doc carries a `channel` — `task_<taskId>` for task/proof/review
+/// events, `partner_<partnershipId>` for chat messages, `invite_<id>` for
+/// invitations. The channel doubles as the FCM topic name and as the local
+/// notification id key, so repeated events for the same task replace one
+/// notification instead of stacking.
 class AccountabilityNotificationService {
   static final AccountabilityNotificationService _instance =
       AccountabilityNotificationService._();
@@ -36,8 +44,10 @@ class AccountabilityNotificationService {
     required String title,
     required String body,
     Map<String, String>? data,
+    String? channel,
   }) async {
     if (_auth.currentUser == null) return;
+    if (recipientUid.isEmpty) return;
 
     try {
       await _db.collection('fcm_notifications').add({
@@ -49,6 +59,7 @@ class AccountabilityNotificationService {
         'title': title,
         'body': body,
         'data': data ?? {},
+        if (channel != null && channel.isNotEmpty) 'channel': channel,
         'createdAt': FieldValue.serverTimestamp(),
         'delivered': false,
       });
@@ -65,20 +76,23 @@ class AccountabilityNotificationService {
   Future<void> notifyInvitationReceived({
     required String recipientUid,
     required String senderName,
-    required String taskName,
-    required String taskId,
+    String? taskName,
+    String? taskId,
     required String partnershipId,
   }) =>
       sendNotification(
         recipientUid: recipientUid,
         type: AccountabilityNotificationType.invitationReceived,
         title: 'Partner Invitation',
-        body: '$senderName invited you to review \'$taskName\'',
+        body: taskName != null
+            ? '$senderName invited you to review \'$taskName\''
+            : '$senderName invited you to be their accountability partner',
         data: {
           'type': 'invitation_received',
-          'taskId': taskId,
+          if (taskId != null) 'taskId': taskId,
           'partnershipId': partnershipId,
         },
+        channel: 'invite_$partnershipId',
       );
 
   /// Notify task owner that their invitation was accepted.
@@ -96,6 +110,7 @@ class AccountabilityNotificationService {
           'type': 'invitation_accepted',
           'partnershipId': partnershipId,
         },
+        channel: 'invite_$partnershipId',
       );
 
   /// Notify task owner that their invitation was declined.
@@ -113,6 +128,26 @@ class AccountabilityNotificationService {
           'type': 'invitation_declined',
           'partnershipId': partnershipId,
         },
+        channel: 'invite_$partnershipId',
+      );
+
+  /// Notify the assigned user that a task was created for them.
+  Future<void> notifyTaskAssigned({
+    required String recipientUid,
+    required String ownerName,
+    required String taskName,
+    required String taskId,
+  }) =>
+      sendNotification(
+        recipientUid: recipientUid,
+        type: AccountabilityNotificationType.taskAssigned,
+        title: 'New Task Assigned',
+        body: '$ownerName assigned \'$taskName\' to you',
+        data: {
+          'type': 'task_assigned',
+          'taskId': taskId,
+        },
+        channel: 'task_$taskId',
       );
 
   /// Notify partner that a task needs their review.
@@ -131,6 +166,7 @@ class AccountabilityNotificationService {
           'type': 'task_needs_review',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify task owner that partner approved.
@@ -148,6 +184,7 @@ class AccountabilityNotificationService {
           'type': 'review_approved',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify task owner that partner rejected.
@@ -168,6 +205,7 @@ class AccountabilityNotificationService {
           'type': 'review_rejected',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Remind partner at 20-hour mark.
@@ -185,6 +223,7 @@ class AccountabilityNotificationService {
           'type': 'review_reminder',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify task owner that review window expired.
@@ -202,6 +241,7 @@ class AccountabilityNotificationService {
           'type': 'review_expired',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   // ── Phase 4: Multi-reviewer notifications ──────────────────────────────
@@ -222,6 +262,7 @@ class AccountabilityNotificationService {
           'type': 'review_requested',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify the task owner that a reviewer accepted their request.
@@ -240,6 +281,7 @@ class AccountabilityNotificationService {
           'type': 'request_accepted',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify the task owner that a reviewer declined their request.
@@ -258,6 +300,7 @@ class AccountabilityNotificationService {
           'type': 'request_declined',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify all reviewers that proof has been submitted.
@@ -277,6 +320,7 @@ class AccountabilityNotificationService {
           'type': 'proof_submitted',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
     }
   }
@@ -300,6 +344,7 @@ class AccountabilityNotificationService {
           'type': 'proof_approved',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 
   /// Notify the task owner that their proof was rejected.
@@ -319,5 +364,6 @@ class AccountabilityNotificationService {
           'type': 'proof_rejected',
           'taskId': taskId,
         },
+        channel: 'task_$taskId',
       );
 }

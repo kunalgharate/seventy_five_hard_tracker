@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/accountability_message.dart';
 import '../models/accountability_notification.dart';
 import '../models/streak_action.dart';
+import 'accountability_notification_service.dart';
 
 /// Extension service that adds messaging, notifications, streak actions,
 /// weekly summaries, and partner progress visibility to the base
@@ -90,6 +91,26 @@ class AccountabilityExtensionService {
       body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
       referenceId: ref.id,
     );
+
+    // Deliverable push notification — `accountability_notifications` has no
+    // Firestore rules (writes are blocked and swallowed) and no UI reader,
+    // so the partner only hears about the message through fcm_notifications.
+    if (receiverUid != uid) {
+      await AccountabilityNotificationService().sendNotification(
+        recipientUid: receiverUid,
+        type: AccountabilityNotificationType.partnerMessage,
+        title: '$currentDisplayName sent a message',
+        body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
+        channel: 'partner_$partnershipId',
+        data: {
+          'type': 'partner_message',
+          'partnershipId': partnershipId,
+          'senderUid': uid,
+          'senderName': currentDisplayName,
+          'messageId': ref.id,
+        },
+      );
+    }
 
     if (kDebugMode) {
       debugPrint('[AccountabilityExtensionService] sendMessage: ${ref.id}');

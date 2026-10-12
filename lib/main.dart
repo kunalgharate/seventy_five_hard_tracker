@@ -31,6 +31,7 @@ import 'features/human_accountability/presentation/bloc/accountability_event.dar
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
 import 'core/services/data_ownership.dart';
+import 'core/services/fcm_service.dart';
 import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -42,6 +43,15 @@ import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+/// Global navigator key — lets notification taps navigate from outside the
+/// widget tree (see FcmService).
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// True once the splash screen has pushed /home. Notification payloads
+/// queued before that wait for [FcmService.flushPendingNavigation] so the
+/// splash hand-off cannot replace the screen a cold-start tap asked for.
+bool appNavigationReady = false;
 
 /// App-wide theme colors — single source of truth.
 /// Aligned to the Figma "Design Daily Metal App" palette.
@@ -148,6 +158,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Daily mettle',
         debugShowCheckedModeBanner: false,
+        navigatorKey: navigatorKey,
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
@@ -508,6 +519,8 @@ class _InitialScreenState extends State<InitialScreen>
     // - No session → shows "Start 75 Hard Challenge" button
     // The onboarding/setup wizard is triggered FROM home, not before it.
     Navigator.of(context).pushReplacementNamed('/home');
+    appNavigationReady = true;
+    unawaited(FcmService.instance.flushPendingNavigation());
   }
 
   Future<void> _fetchQuote() async {
