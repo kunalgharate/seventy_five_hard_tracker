@@ -23,13 +23,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: const CustomAppBar(
         title: 'Settings',
       ),
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is ChallengeLoaded && state.hasActiveSession) {
-            return _buildActiveSessionSettings(state);
-          }
-          return _buildGeneralSettings();
-        },
+      body: SafeArea(
+        top: false,
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            if (state is ChallengeLoaded && state.hasActiveSession) {
+              return _buildActiveSessionSettings(state);
+            }
+            return _buildGeneralSettings();
+          },
+        ),
       ),
     );
   }

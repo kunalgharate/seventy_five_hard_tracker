@@ -24,38 +24,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: const CustomAppBar(
         title: 'Challenge History',
       ),
-      body: BlocListener<ChallengeBloc, ChallengeState>(
-        listener: (context, state) {
-          if (_isRestarting && state is ChallengeLoaded) {
-            _isRestarting = false;
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          } else if (_isRestarting && state is ChallengeError) {
-            _isRestarting = false;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
-          }
-        },
-        child: BlocBuilder<ChallengeBloc, ChallengeState>(
-          builder: (context, state) {
-            if (state is ChallengeLoading) {
-              return const Center(child: CircularProgressIndicator());
+      body: SafeArea(
+        top: false,
+        child: BlocListener<ChallengeBloc, ChallengeState>(
+          listener: (context, state) {
+            if (_isRestarting && state is ChallengeLoaded) {
+              _isRestarting = false;
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            } else if (_isRestarting && state is ChallengeError) {
+              _isRestarting = false;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message)),
+              );
             }
-
-            if (state is ChallengeLoaded) {
-              final completedSessions = state.allSessions
-                  .where((session) => !session.isActive)
-                  .toList();
-
-              if (completedSessions.isEmpty) {
-                return _buildEmptyHistory();
+          },
+          child: BlocBuilder<ChallengeBloc, ChallengeState>(
+            builder: (context, state) {
+              if (state is ChallengeLoading) {
+                return const Center(child: CircularProgressIndicator());
               }
 
-              return _buildHistoryList(completedSessions, state);
-            }
+              if (state is ChallengeLoaded) {
+                final completedSessions = state.allSessions
+                    .where((session) => !session.isActive)
+                    .toList();
 
-            return _buildEmptyHistory();
-          },
+                if (completedSessions.isEmpty) {
+                  return _buildEmptyHistory();
+                }
+
+                return _buildHistoryList(completedSessions, state);
+              }
+
+              return _buildEmptyHistory();
+            },
+          ),
         ),
       ),
     );

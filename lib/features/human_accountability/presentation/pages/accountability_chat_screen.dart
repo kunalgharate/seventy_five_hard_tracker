@@ -107,7 +107,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           // Messages
           Expanded(child: _buildMessageList()),
           // Input
-          _buildInput(),
+          SafeArea(top: false, child: _buildInput()),
         ],
       ),
     );

@@ -36,47 +36,50 @@ class JournalTimelineScreen extends StatelessWidget {
       appBar: const CustomAppBar(
         title: 'Journal History',
       ),
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is ChallengeLoaded) {
-            // Load journal entries from ALL sessions, not just active
-            final bloc = context.read<ChallengeBloc>();
-            final allProgress = <DailyProgress>[];
-            for (final session in state.allSessions) {
-              final sessionProgress =
-                  bloc.repository.getProgressForSession(session.startDate);
-              allProgress.addAll(sessionProgress);
-            }
-
-            // Expand every day's entries into individual cards (a day can
-            // hold many entries), newest first.
-            final items = <_TimelineItem>[];
-            for (final p in allProgress) {
-              if (p.journalNote == null || p.journalNote!.trim().isEmpty) {
-                continue;
+      body: SafeArea(
+        top: false,
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            if (state is ChallengeLoaded) {
+              // Load journal entries from ALL sessions, not just active
+              final bloc = context.read<ChallengeBloc>();
+              final allProgress = <DailyProgress>[];
+              for (final session in state.allSessions) {
+                final sessionProgress =
+                    bloc.repository.getProgressForSession(session.startDate);
+                allProgress.addAll(sessionProgress);
               }
-              for (final e in JournalEntry.decode(p.journalNote!,
-                  fallbackDate: p.date)) {
-                items.add(_TimelineItem(
-                    date: p.date, entry: e, completed: p.isCompleted));
+
+              // Expand every day's entries into individual cards (a day can
+              // hold many entries), newest first.
+              final items = <_TimelineItem>[];
+              for (final p in allProgress) {
+                if (p.journalNote == null || p.journalNote!.trim().isEmpty) {
+                  continue;
+                }
+                for (final e in JournalEntry.decode(p.journalNote!,
+                    fallbackDate: p.date)) {
+                  items.add(_TimelineItem(
+                      date: p.date, entry: e, completed: p.isCompleted));
+                }
               }
-            }
-            items.sort((a, b) {
-              final c = b.date.compareTo(a.date);
-              return c != 0
-                  ? c
-                  : b.entry.createdAt.compareTo(a.entry.createdAt);
-            });
+              items.sort((a, b) {
+                final c = b.date.compareTo(a.date);
+                return c != 0
+                    ? c
+                    : b.entry.createdAt.compareTo(a.entry.createdAt);
+              });
 
-            if (items.isEmpty) {
-              return _buildEmptyState(context);
-            }
+              if (items.isEmpty) {
+                return _buildEmptyState(context);
+              }
 
-            return _buildTimeline(
-                context, state.activeSession, state.allSessions, items);
-          }
-          return _buildEmptyState(context);
-        },
+              return _buildTimeline(
+                  context, state.activeSession, state.allSessions, items);
+            }
+            return _buildEmptyState(context);
+          },
+        ),
       ),
     );
   }
