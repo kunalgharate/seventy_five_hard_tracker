@@ -24,44 +24,47 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: const CustomAppBar(
         title: 'Challenge History',
       ),
-      body: BlocListener<ChallengeBloc, ChallengeState>(
-        listener: (context, state) {
-          if (_isRestarting && state is ChallengeLoaded) {
-            _isRestarting = false;
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          } else if (_isRestarting && state is ChallengeError) {
-            _isRestarting = false;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
-          }
-        },
-        child: BlocBuilder<ChallengeBloc, ChallengeState>(
-          builder: (context, state) {
-            if (state is ChallengeLoading) {
-              return const Center(child: CircularProgressIndicator());
+      body: SafeArea(
+        top: false,
+        child: BlocListener<ChallengeBloc, ChallengeState>(
+          listener: (context, state) {
+            if (_isRestarting && state is ChallengeLoaded) {
+              _isRestarting = false;
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            } else if (_isRestarting && state is ChallengeError) {
+              _isRestarting = false;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message)),
+              );
             }
-
-            if (state is ChallengeLoaded) {
-              final completedSessions = state.allSessions
-                  .where((session) => !session.isActive)
-                  .toList();
-
-              if (completedSessions.isEmpty) {
-                return _buildEmptyHistory();
+          },
+          child: BlocBuilder<ChallengeBloc, ChallengeState>(
+            builder: (context, state) {
+              if (state is ChallengeLoading) {
+                return const Center(child: CircularProgressIndicator());
               }
 
-              return _buildHistoryList(completedSessions, state);
-            }
+              if (state is ChallengeLoaded) {
+                final completedSessions = state.allSessions
+                    .where((session) => !session.isActive)
+                    .toList();
 
-            return _buildEmptyHistory();
-          },
+                if (completedSessions.isEmpty) {
+                  return _buildEmptyHistory(context);
+                }
+
+                return _buildHistoryList(context, completedSessions, state);
+              }
+
+              return _buildEmptyHistory(context);
+            },
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyHistory() {
+  Widget _buildEmptyHistory(BuildContext context) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -69,7 +72,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Icon(
             Icons.history,
             size: 100,
-            color: Colors.grey[400],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           const SizedBox(height: 16),
           Text(
@@ -77,7 +80,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
@@ -85,7 +88,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             'Complete or reset a challenge to see history',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -93,19 +96,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildHistoryList(
+  Widget _buildHistoryList(BuildContext context,
       List<ChallengeSession> sessions, ChallengeLoaded state) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: sessions.length,
       itemBuilder: (context, index) {
         final session = sessions[index];
-        return _buildSessionCard(session, state);
+        return _buildSessionCard(context, session, state);
       },
     );
   }
 
-  Widget _buildSessionCard(ChallengeSession session, ChallengeLoaded state) {
+  Widget _buildSessionCard(
+      BuildContext context, ChallengeSession session, ChallengeLoaded state) {
     final isCompleted = session.isCompleted;
     final duration = session.endDate != null
         ? session.endDate!.difference(session.startDate).inDays + 1
@@ -154,8 +158,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...session.challenges
-                    .map((challenge) => _buildChallengeDetail(challenge)),
+                ...session.challenges.map(
+                    (challenge) => _buildChallengeDetail(context, challenge)),
                 if (!isCompleted) ...[
                   const SizedBox(height: 16),
                   _buildResetInfo(session),
@@ -164,7 +168,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   _buildCompletionInfo(session),
                 ],
                 const SizedBox(height: 16),
-                _buildSessionStats(session, duration),
+                _buildSessionStats(context, session, duration),
                 const SizedBox(height: 16),
                 _buildRestartButton(session, state),
               ],
@@ -175,7 +179,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildChallengeDetail(Challenge challenge) {
+  Widget _buildChallengeDetail(BuildContext context, Challenge challenge) {
     final taskTypeLabel = challenge.taskType == 'hard'
         ? 'Hard'
         : challenge.taskType == 'soft'
@@ -228,7 +232,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   '${challenge.category} • $reminderSummary',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[600],
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -411,21 +415,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     context.read<ChallengeBloc>().add(RestartFromHistory(sessionId));
   }
 
-  Widget _buildSessionStats(ChallengeSession session, int duration) {
+  Widget _buildSessionStats(
+      BuildContext context, ChallengeSession session, int duration) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         _buildStatColumn(
+          context,
           'Days Completed',
           duration.toString(),
           Icons.calendar_today,
         ),
         _buildStatColumn(
+          context,
           'Tasks',
           session.challenges.length.toString(),
           Icons.task_alt,
         ),
         _buildStatColumn(
+          context,
           'Success Rate',
           session.isCompleted
               ? '100%'
@@ -436,7 +444,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildStatColumn(String label, String value, IconData icon) {
+  Widget _buildStatColumn(
+      BuildContext context, String label, String value, IconData icon) {
     return Column(
       children: [
         Icon(icon, color: Colors.blue, size: 24),
@@ -451,7 +460,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         Text(
           label,
           style: TextStyle(
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 12,
           ),
           textAlign: TextAlign.center,

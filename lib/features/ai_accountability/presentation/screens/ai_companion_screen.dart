@@ -234,7 +234,7 @@ Respond as a supportive but firm coach. Keep it under 60 words.
           ),
 
           // Input
-          _buildInput(),
+          SafeArea(top: false, child: _buildInput()),
         ],
       ),
     );

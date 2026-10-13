@@ -326,6 +326,10 @@ class _ProofReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // I already approved but quorum isn't reached: don't offer Approve
+    // again — show the waiting state instead.
+    final myUid = AccountabilityService().currentUid;
+    final iApproved = myUid != null && task.hasApprovedBy(myUid);
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 8),
@@ -393,41 +397,65 @@ class _ProofReviewCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showRejectDialog(context, task),
-                    icon: const Icon(Icons.close, size: 16),
-                    label: const Text('Reject'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+            if (iApproved)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.hourglass_top, size: 16, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text(
+                      'You approved — waiting for other reviewers',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.blue),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showRejectDialog(context, task),
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Reject'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => context
-                        .read<AccountabilityBloc>()
-                        .add(ApproveProof(task.id)),
-                    icon: const Icon(Icons.check, size: 16),
-                    label: const Text('Approve'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => context
+                          .read<AccountabilityBloc>()
+                          .add(ApproveProof(task.id)),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Approve'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),
@@ -653,13 +681,46 @@ class _HistoryCard extends StatelessWidget {
   final AccountabilityTask task;
   const _HistoryCard({required this.task});
 
+  bool get _isApproved =>
+      task.status == AccountabilityTaskStatus.approved ||
+      task.proofStatus == ProofStatus.approved;
+
+  DateTime? get _reviewedAt => task.reviewedAt ?? task.proofReviewedAt;
+
+  String get _reviewerName {
+    final entries = [...task.approvals, ...task.rejections];
+    for (final e in entries.reversed) {
+      final name = e['name'];
+      if (name is String && name.isNotEmpty) return name;
+    }
+    return task.accountableName;
+  }
+
+  String? get _comment {
+    if (task.proofReviewComment != null &&
+        task.proofReviewComment!.isNotEmpty) {
+      return task.proofReviewComment;
+    }
+    if (task.reviewComment != null && task.reviewComment!.isNotEmpty) {
+      return task.reviewComment;
+    }
+    for (final e in task.approvals.reversed) {
+      final c = e['comment'];
+      if (c is String && c.isNotEmpty) return c;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isApproved = task.status == AccountabilityTaskStatus.approved;
+    final isApproved = _isApproved;
     final color = isApproved ? Colors.green : Colors.red;
     final icon = isApproved ? Icons.check_circle : Icons.cancel;
     final myUid = AccountabilityService().currentUid;
     final isMyTask = task.assignedByUid == myUid;
+    final reviewedAt = _reviewedAt;
+    final comment = _comment;
+    final reviewer = _reviewerName;
 
     return Card(
       elevation: 1,
@@ -685,8 +746,8 @@ class _HistoryCard extends StatelessWidget {
                   Text(
                     isMyTask
                         ? isApproved
-                            ? 'Approved by reviewer'
-                            : 'Rejected — resubmit proof'
+                            ? 'Approved by $reviewer'
+                            : 'Rejected by $reviewer — resubmit proof'
                         : isApproved
                             ? 'You approved '
                                 '${task.assignedByName}\'s task'
@@ -694,12 +755,11 @@ class _HistoryCard extends StatelessWidget {
                                 '${task.assignedByName}\'s task',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
-                  if (task.proofReviewComment != null &&
-                      task.proofReviewComment!.isNotEmpty)
+                  if (comment != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        '"${task.proofReviewComment}"',
+                        '"$comment"',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey[600],
@@ -712,11 +772,34 @@ class _HistoryCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (task.reviewedAt != null)
-              Text(
-                DateFormat('MMM d').format(task.reviewedAt!),
-                style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    isApproved ? 'Approved' : 'Rejected',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                ),
+                if (reviewedAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    DateFormat('MMM d').format(reviewedAt),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),

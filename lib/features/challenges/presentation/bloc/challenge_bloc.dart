@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/journal_entry.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
@@ -35,6 +36,8 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   /// Guard to prevent re-entrant missed-day checks.
   bool _isCheckingMissedDays = false;
   bool _hasCheckedMissedDays = false;
+
+  Future<void> _journalLock = Future.value();
 
   DatabaseRepository get repository => _repository;
 
@@ -79,7 +82,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<LoadChallengeData>(_onLoadChallengeData);
     on<StartNewSession>(_onStartNewSession);
     on<UpdateDailyProgress>(_onUpdateDailyProgress);
-    on<AddJournalNote>(_onAddJournalNote);
+    on<AddJournalEntry>(_onAddJournalEntry);
+    on<UpdateJournalEntry>(_onUpdateJournalEntry);
+    on<DeleteJournalEntry>(_onDeleteJournalEntry);
     on<AddTaskNote>(_onAddTaskNote);
     on<UpdateChallenge>(_onUpdateChallenge);
     on<ResetChallenge>(_onResetChallenge);
@@ -466,33 +471,96 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     }).toList();
   }
 
-  Future<void> _onAddJournalNote(
-    AddJournalNote event,
+  /// Load (creating if needed) the DailyProgress for [date].
+  Future<DailyProgress?> _progressForDate(DateTime date) async {
+    final activeSession = await _repository.getActiveSession();
+    var dailyProgress = _repository.getDailyProgress(date);
+    if (dailyProgress == null && activeSession != null) {
+      // Create a fresh DailyProgress entry if none exists yet
+      final challengeCompletions = <String, bool>{};
+      for (final challenge in activeSession.challenges) {
+        challengeCompletions[challenge.id] = false;
+      }
+      dailyProgress = DailyProgress(
+        date: date,
+        challengeCompletions: challengeCompletions,
+        isCompleted: false,
+      );
+    }
+    return dailyProgress;
+  }
+
+  /// Rewrite the day's entry list through [transform] and persist it.
+  Future<void> _mutateJournalEntries(
+    DateTime date,
+    List<JournalEntry> Function(List<JournalEntry>) transform,
+  ) {
+    return _serializeJournal(() async {
+      final dailyProgress = await _progressForDate(date);
+      if (dailyProgress == null) return;
+      final current = JournalEntry.decode(
+        dailyProgress.journalNote,
+        fallbackDate: dailyProgress.date,
+      );
+      final updated = transform(current);
+      await _repository.saveDailyProgress(
+        dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
+      );
+      add(LoadChallengeData());
+    });
+  }
+
+  Future<T> _serializeJournal<T>(Future<T> Function() action) {
+    final result = _journalLock.then((_) => action());
+    _journalLock = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<void> _onAddJournalEntry(
+    AddJournalEntry event,
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = await _repository.getActiveSession();
-      var dailyProgress = _repository.getDailyProgress(event.date);
-      if (dailyProgress == null && activeSession != null) {
-        // Create a fresh DailyProgress entry if none exists yet
-        final challengeCompletions = <String, bool>{};
-        for (final challenge in activeSession.challenges) {
-          challengeCompletions[challenge.id] = false;
-        }
-        dailyProgress = DailyProgress(
-          date: event.date,
-          challengeCompletions: challengeCompletions,
-          isCompleted: false,
-        );
-      }
-      if (dailyProgress != null) {
-        final updatedProgress = dailyProgress.copyWith(journalNote: event.note);
-        await _repository.saveDailyProgress(updatedProgress);
-        add(LoadChallengeData());
-      }
+      if (event.entry.isEmpty) return;
+      await _mutateJournalEntries(event.date, (current) {
+        // Same id (double-tap / retry) replaces instead of duplicating.
+        final list = current.where((e) => e.id != event.entry.id).toList()
+          ..add(event.entry);
+        return list;
+      });
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
-      emit(ChallengeError('Failed to add journal note: $e'));
+      emit(ChallengeError('Failed to add journal entry: $e'));
+    }
+  }
+
+  Future<void> _onUpdateJournalEntry(
+    UpdateJournalEntry event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      await _mutateJournalEntries(event.date, (current) {
+        return current
+            .map((e) => e.id == event.entry.id ? event.entry : e)
+            .toList();
+      });
+    } catch (e, stack) {
+      unawaited(_analytics.logError(e, stack));
+      emit(ChallengeError('Failed to update journal entry: $e'));
+    }
+  }
+
+  Future<void> _onDeleteJournalEntry(
+    DeleteJournalEntry event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      await _mutateJournalEntries(event.date, (current) {
+        return current.where((e) => e.id != event.entryId).toList();
+      });
+    } catch (e, stack) {
+      unawaited(_analytics.logError(e, stack));
+      emit(ChallengeError('Failed to delete journal entry: $e'));
     }
   }
 
@@ -746,6 +814,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       await _repository.saveDailyProgress(todayProgress);
       debugPrint(
           '🟢 [BLoC] DailyProgress saved with completions: ${todayProgress.challengeCompletions.keys.toList()}');
+
+      // Backfill past days so a mid-challenge task doesn't trip the
+      // missed-day check: every EXISTING DailyProgress since the session
+      // start that lacks the new id gets it as exempt (true — the task
+      // didn't exist those days). Days with no entry at all are genuinely
+      // missed days and are left for _checkForMissedDays to judge.
+      final newId = event.challenge.id;
+      final start = activeSession.startDate;
+      var day = DateTime(start.year, start.month, start.day);
+      final todayDate = DateTime(today.year, today.month, today.day);
+      while (day.isBefore(todayDate)) {
+        final past = _repository.getDailyProgress(day);
+        if (past != null && !past.challengeCompletions.containsKey(newId)) {
+          await _repository.saveDailyProgress(
+            past.copyWith(
+              challengeCompletions: {
+                ...past.challengeCompletions,
+                newId: true,
+              },
+            ),
+          );
+        }
+        day = day.add(const Duration(days: 1));
+      }
 
       final currentProgress =
           _repository.getProgressForSession(activeSession.startDate);

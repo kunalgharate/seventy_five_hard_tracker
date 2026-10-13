@@ -167,34 +167,37 @@ class _StreakEscalationScreenState extends State<StreakEscalationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Streak Escalation'),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Action form (only for partners, not the subject)
-                if (_isPartner) ...[
-                  _buildActionForm(),
-                  const SizedBox(height: 20),
-                ],
+      body: SafeArea(
+        top: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Action form (only for partners, not the subject)
+                  if (_isPartner) ...[
+                    _buildActionForm(),
+                    const SizedBox(height: 20),
+                  ],
 
-                // Audit history
-                Text('Audit History',
-                    style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 8),
-                if (_actions.isEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text('No streak actions recorded.',
-                          style: TextStyle(color: Colors.grey[500])),
-                    ),
-                  )
-                else
-                  ..._actions.map((a) => _buildActionCard(a)),
-              ],
-            ),
+                  // Audit history
+                  Text('Audit History',
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 8),
+                  if (_actions.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text('No streak actions recorded.',
+                            style: TextStyle(color: Colors.grey[500])),
+                      ),
+                    )
+                  else
+                    ..._actions.map((a) => _buildActionCard(a)),
+                ],
+              ),
+      ),
     );
   }
 

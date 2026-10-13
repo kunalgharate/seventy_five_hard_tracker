@@ -5,13 +5,14 @@ import 'package:flutter/foundation.dart';
 import '../models/accountability_message.dart';
 import '../models/accountability_notification.dart';
 import '../models/streak_action.dart';
+import 'accountability_notification_service.dart';
 
 /// Extension service that adds messaging, notifications, streak actions,
 /// weekly summaries, and partner progress visibility to the base
 /// [AccountabilityService].
 ///
 /// New Firestore collections:
-///   accountability_messages/{id}
+///   partnerships/{id}/messages/{id}
 ///   accountability_notifications/{id}
 ///   streak_actions/{id}
 class AccountabilityExtensionService {
@@ -48,48 +49,73 @@ class AccountabilityExtensionService {
 
   // ── Messaging ────────────────────────────────────────────────────
 
+  /// Firestore subcollection holding chat messages for [partnershipId].
+  /// Stored under the partnership doc so Firestore rules can gate reads
+  /// and writes on membership via the parent partnership.
+  CollectionReference<Map<String, dynamic>> _messagesRef(
+          String partnershipId) =>
+      _db.collection('partnerships').doc(partnershipId).collection('messages');
+
   /// Send a message from the current user to [receiverUid].
+  ///
+  /// Throws on failure (e.g. Firestore permission-denied) so callers can
+  /// surface the error instead of silently losing the user's text.
   Future<AccountabilityMessage?> sendMessage({
     required String receiverUid,
     required String partnershipId,
     required String text,
     required MessageType type,
   }) async {
-    if (!_isReady) return null;
-    try {
-      final uid = currentUid!;
-      final ref = _db.collection('accountability_messages').doc();
-      final msg = AccountabilityMessage(
-        id: ref.id,
-        senderUid: uid,
-        senderName: currentDisplayName,
-        receiverUid: receiverUid,
-        partnershipId: partnershipId,
-        text: text,
-        type: type,
-        createdAt: DateTime.now(),
-      );
-      await ref.set(msg.toFirestore());
-
-      // Notify the receiver
-      await _createNotification(
-        recipientUid: receiverUid,
-        type: NotificationType.partnerMessage,
-        title: '${msg.type.emoji} New message from $currentDisplayName',
-        body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
-        referenceId: ref.id,
-      );
-
-      if (kDebugMode) {
-        debugPrint('[AccountabilityExtensionService] sendMessage: ${ref.id}');
-      }
-      return msg;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[AccountabilityExtensionService] sendMessage error: $e');
-      }
-      return null;
+    if (!_isReady) {
+      throw StateError('Not signed in — cannot send message');
     }
+    final uid = currentUid!;
+    final ref = _messagesRef(partnershipId).doc();
+    final msg = AccountabilityMessage(
+      id: ref.id,
+      senderUid: uid,
+      senderName: currentDisplayName,
+      receiverUid: receiverUid,
+      partnershipId: partnershipId,
+      text: text,
+      type: type,
+      createdAt: DateTime.now(),
+    );
+    await ref.set(msg.toFirestore());
+
+    // Notify the receiver
+    await _createNotification(
+      recipientUid: receiverUid,
+      type: NotificationType.partnerMessage,
+      title: '${msg.type.emoji} New message from $currentDisplayName',
+      body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
+      referenceId: ref.id,
+    );
+
+    // Deliverable push notification — `accountability_notifications` has no
+    // Firestore rules (writes are blocked and swallowed) and no UI reader,
+    // so the partner only hears about the message through fcm_notifications.
+    if (receiverUid != uid) {
+      await AccountabilityNotificationService().sendNotification(
+        recipientUid: receiverUid,
+        type: AccountabilityNotificationType.partnerMessage,
+        title: '$currentDisplayName sent a message',
+        body: text.length > 80 ? '${text.substring(0, 80)}…' : text,
+        channel: 'partner_$partnershipId',
+        data: {
+          'type': 'partner_message',
+          'partnershipId': partnershipId,
+          'senderUid': uid,
+          'senderName': currentDisplayName,
+          'messageId': ref.id,
+        },
+      );
+    }
+
+    if (kDebugMode) {
+      debugPrint('[AccountabilityExtensionService] sendMessage: ${ref.id}');
+    }
+    return msg;
   }
 
   /// Fetch all messages for a partnership, ordered by time.
@@ -97,9 +123,7 @@ class AccountabilityExtensionService {
       String partnershipId) async {
     if (!_isReady) return [];
     try {
-      final snap = await _db
-          .collection('accountability_messages')
-          .where('partnershipId', isEqualTo: partnershipId)
+      final snap = await _messagesRef(partnershipId)
           .orderBy('createdAt', descending: false)
           .limit(100)
           .get();
@@ -117,9 +141,7 @@ class AccountabilityExtensionService {
   /// Real-time stream of messages for a partnership.
   Stream<List<AccountabilityMessage>> messagesStream(String partnershipId) {
     if (!_isReady) return const Stream.empty();
-    return _db
-        .collection('accountability_messages')
-        .where('partnershipId', isEqualTo: partnershipId)
+    return _messagesRef(partnershipId)
         .orderBy('createdAt', descending: false)
         .snapshots()
         .map((snap) => snap.docs
@@ -128,13 +150,10 @@ class AccountabilityExtensionService {
   }
 
   /// Mark a message as read.
-  Future<void> markMessageRead(String messageId) async {
+  Future<void> markMessageRead(String partnershipId, String messageId) async {
     if (!_isReady) return;
     try {
-      await _db
-          .collection('accountability_messages')
-          .doc(messageId)
-          .update({'isRead': true});
+      await _messagesRef(partnershipId).doc(messageId).update({'isRead': true});
     } catch (e) {
       if (kDebugMode) {
         debugPrint(

@@ -301,10 +301,10 @@ class _IconPickerWidgetState extends State<IconPickerWidget>
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Choose a custom image for your challenge',
             style: TextStyle(
-              color: Colors.grey,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 14,
             ),
             textAlign: TextAlign.center,

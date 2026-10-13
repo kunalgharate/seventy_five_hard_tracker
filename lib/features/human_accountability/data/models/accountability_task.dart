@@ -226,6 +226,41 @@ class AccountabilityTask extends Equatable {
       expiresAt != null &&
       DateTime.now().isAfter(expiresAt!);
   bool get is75Hard => taskType == 'hard';
+
+  /// Calendar-day comparison in local time.
+  static bool isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Approval counts only for the day it happened: every new day the task
+  /// needs fresh proof + approval. Approve paths stamp proofReviewedAt /
+  /// reviewedAt with `now`, so this is exact for reviewed tasks. Legacy
+  /// docs without stamps fail open (treated as approved).
+  bool get isApprovedToday {
+    if (!isApproved) return false;
+    final at = proofReviewedAt ?? reviewedAt;
+    if (at == null) return true;
+    return isSameDay(at, DateTime.now());
+  }
+
+  /// Done-state for TODAY's UI: completed/approved/proof-approved only when
+  /// the decision happened today (best available stamp; fail open when none).
+  /// Yesterday's approval renders as needing new proof, not as done.
+  bool get isDoneToday {
+    final now = DateTime.now();
+    if (isCompleted) {
+      final at = completedAt ?? proofReviewedAt ?? reviewedAt;
+      if (at == null) return true;
+      return isSameDay(at, now);
+    }
+    if (isApproved) return isApprovedToday;
+    if (proofStatus == ProofStatus.approved) {
+      final at = proofReviewedAt ?? reviewedAt ?? completedAt;
+      if (at == null) return true;
+      return isSameDay(at, now);
+    }
+    return false;
+  }
+
   bool get isRegular => taskType == 'regular';
 
   /// Whether enough reviewers have approved to auto-complete.

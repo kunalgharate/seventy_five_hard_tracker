@@ -20,13 +20,11 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/dat
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
-import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/horizontal_date_picker.dart';
-import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
@@ -47,6 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+
+  /// challengeId -> latest linked accountability task. Kept so the card can
+  /// date-scope the done-state (yesterday's approval is not today's).
+  /// Same lifecycle as the status maps above (rebuilt from the streams).
+  final Map<String, AccountabilityTask> _accountabilityTasks = {};
 
   /// challengeId -> true when the current user is only the REVIEWER of the
   /// linked accountability task (a partner assigned it). Such cards must not
@@ -74,6 +77,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Daily motivational quote.
   String _dailyQuote =
       'Discipline is choosing between what you want now and what you want most.';
+
+  /// Set when the completion-toggle path shows its own error SnackBar so the
+  /// BlocConsumer listener below doesn't surface the same failure twice.
+  bool _errorSnackClaimed = false;
 
   // ignore: prefer_final_fields is intentional — updated after init
 
@@ -134,8 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _reviewOnlyChallenges[cid] = reviewOnly;
         changed = true;
       }
-      final approved = task.status == AccountabilityTaskStatus.approved ||
-          task.status == AccountabilityTaskStatus.completed;
+      _accountabilityTasks[cid] = task;
+      // Only TODAY's approval completes local progress — yesterday's must
+      // not check off the new day.
+      final approved = task.isDoneToday;
       if (approved && !reviewOnly) {
         context.read<ChallengeBloc>().add(
               UpdateDailyProgress(
@@ -163,7 +172,10 @@ class _HomeScreenState extends State<HomeScreen> {
           .get();
       if (!mounted) return;
       setState(() {
-        _recentNotifications = snap.docs.map((d) {
+        // Docs the user muted via notification prefs stay out of the cards.
+        _recentNotifications = snap.docs
+            .where((d) => d.data()['suppressedByPrefs'] != true)
+            .map((d) {
           final data = d.data();
           final type = data['type'] as String? ?? '';
           String action = 'feedback';
@@ -237,11 +249,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             scaffoldMessenger.showSnackBar(
                               const SnackBar(
                                   content: Text(
-                                      'Test notification scheduled for 10 seconds')),
+                                      'Test notification scheduled for 5 seconds')),
                             );
                           }
                         },
-                        child: const Text('10 Seconds'),
+                        child: const Text('5 Seconds'),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
@@ -273,6 +285,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
+        builder: (context, state) {
+          final hasSession = (state is ChallengeLoaded &&
+                  state.hasActiveSession) ||
+              (_lastLoadedState != null && _lastLoadedState!.hasActiveSession);
+          if (!hasSession) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            heroTag: 'addChallengeTask',
+            onPressed: () => _showTaskSheet(context, null),
+            backgroundColor: Colors.orange[600],
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Add Task',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            tooltip: 'Add Task',
+          );
+        },
+      ),
       body: BlocConsumer<ChallengeBloc, ChallengeState>(
         listener: (context, state) {
           // Use addPostFrameCallback to avoid setState during build
@@ -301,13 +333,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   _accountabilityLoadedSessionId = sessionId;
                 });
               }
+            } else if (state is ChallengeLoaded) {
+              // No active session (sign-out / account switch cleared local
+              // data) — drop the cached snapshot so stale data can never
+              // reappear behind a later error/loading emission.
+              _lastLoadedState = null;
             } else if (state is ChallengeError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              if (_errorSnackClaimed) {
+                // Already surfaced by the toggle path — just reset the flag.
+                _errorSnackClaimed = false;
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             } else if (state is ChallengeReset) {
               _showResetDialog(state);
             } else if (state is ChallengeCompleted) {
@@ -419,7 +461,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // --- Build a flat list of widgets ---
     final List<Widget> items = [
       // 1. Greeting
-      const GreetingHeader(),
+      GreetingHeader(
+        notificationCount: _recentNotifications.length,
+        onNotificationTap: _openNotifications,
+      ),
 
       // 2. Hero card
       ChallengeHeroCard(
@@ -487,15 +532,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   challenge: challenge,
                   isCompleted: isCompleted,
                   isEditable: isToday,
-                  onToggle: (completed) {
-                    context.read<ChallengeBloc>().add(
-                          UpdateDailyProgress(
-                            date: _selectedDay,
-                            challengeId: challenge.id,
-                            isCompleted: completed,
-                          ),
-                        );
-                  },
+                  onToggle: (completed) =>
+                      _toggleCompletion(challenge, completed),
                   onReminderUpdate: (updatedChallenge) {
                     context.read<ChallengeBloc>().add(
                           UpdateChallenge(updatedChallenge),
@@ -505,6 +543,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onEdit: () => _showTaskSheet(context, challenge),
                   proofStatus: _proofStatuses[challenge.id],
                   accountabilityStatus: _accountabilityStatuses[challenge.id],
+                  accountabilityDoneToday:
+                      _accountabilityTasks[challenge.id]?.isDoneToday ?? true,
                   isReviewOnly: _reviewOnlyChallenges[challenge.id] ?? false,
                   onSubmitProof: () => _submitProof(challenge),
                   onReviewProof: () => _reviewProof(challenge),
@@ -540,9 +580,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  
-
-  
   void _showTaskSheet(
     BuildContext context,
     Challenge? challenge,
@@ -556,6 +593,115 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Opens the app's notification surface — the Reviews screen, the same
+  /// destination the Squad top-right button and notification taps use.
+  void _openNotifications() {
+    final bloc = context.read<AccountabilityBloc>();
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => BlocProvider.value(
+              value: bloc,
+              child: const Scaffold(
+                appBar: CustomAppBar(title: 'Reviews'),
+                body: ReviewsTabV2(),
+              ),
+            ),
+          ),
+        )
+        .then((_) => _loadRecentNotifications());
+  }
+
+  /// Saves a task toggle end-to-end. Shows a blocking progress dialog while
+  /// the bloc runs its chain (Hive save → Firestore publish → notification
+  /// reschedule), closes it as soon as the saved value is confirmed, and on
+  /// failure closes it and surfaces a SnackBar — the checkbox only follows
+  /// persisted state, so it never flips optimistically.
+  Future<void> _toggleCompletion(Challenge challenge, bool completed) async {
+    final bloc = context.read<ChallengeBloc>();
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    BuildContext? dialogContext;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        dialogContext = dialogCtx;
+        return const _SavingProgressDialog();
+      },
+    );
+
+    try {
+      // `bloc.add` is fire-and-forget: subscribe to the state stream first so
+      // the completion signal can't be missed, then dispatch the event.
+      final confirmed = bloc.stream.firstWhere(
+        (state) =>
+            state is ChallengeError || _isSaved(state, challenge.id, completed),
+      );
+      bloc.add(
+        UpdateDailyProgress(
+          date: _selectedDay,
+          challengeId: challenge.id,
+          isCompleted: completed,
+        ),
+      );
+      final state = await confirmed.timeout(const Duration(seconds: 10));
+      if (state is ChallengeError) {
+        _showToggleError(state.message);
+      }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Still saving your progress — it has not been confirmed yet.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (error) {
+      _showToggleError('$error');
+    } finally {
+      final ctx = dialogContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      } else if (ctx == null && rootNavigator.canPop()) {
+        // The save beat the dialog's first frame — pop through the navigator
+        // we pushed on, otherwise a non-dismissible dialog would be stranded.
+        rootNavigator.pop();
+      }
+    }
+  }
+
+  /// True when [state] already stores [value] for [challengeId] on the
+  /// selected day — i.e. the persistence actually landed.
+  bool _isSaved(ChallengeState state, String challengeId, bool value) {
+    if (state is! ChallengeLoaded || !state.hasActiveSession) return false;
+    for (final progress in state.currentProgress) {
+      if (_isSameDay(progress.date, _selectedDay)) {
+        return progress.challengeCompletions[challengeId] == value;
+      }
+    }
+    return false;
+  }
+
+  /// Surfaces the toggle failure once — the BlocConsumer listener skips its
+  /// own SnackBar when this path has already claimed the error.
+  void _showToggleError(String message) {
+    if (_errorSnackClaimed) {
+      _errorSnackClaimed = false;
+      return;
+    }
+    _errorSnackClaimed = true;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Could not save your progress — $message'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   void _handleRemoveTask(ChallengeSession session, Challenge challenge) {
     final remaining =
         session.challenges.where((c) => c.taskType != 'regular').length;
@@ -563,6 +709,16 @@ class _HomeScreenState extends State<HomeScreen> {
       context.read<ChallengeBloc>().add(
             RemoveChallengeFromSession(challenge.id),
           );
+      // Immediate local feedback: the bloc persists the delete to Hive and
+      // reloads, but that round-trip is silent — confirm now so offline
+      // deletes feel applied. Failures still surface via the ChallengeError
+      // listener below. No hardcoded color so the SnackBar follows the theme.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Removed "${challenge.title}"'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
@@ -654,115 +810,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
-  Widget _buildDateProgressIndicator(
-      ChallengeLoaded state, ChallengeSession session) {
-    final progress = state.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-
-    if (progress == null) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'No data for this date',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: progress.isCompleted
-            ? null
-            : () => _scrollToFirstIncompleteTask(session),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                progress.isCompleted ? Icons.check_circle : Icons.cancel,
-                color:
-                    progress.isCompleted ? Colors.green[600] : Colors.red[600],
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  progress.isCompleted
-                      ? 'All tasks completed!'
-                      : 'Some tasks are incomplete',
-                  style: TextStyle(
-                    color: progress.isCompleted
-                        ? Colors.green[700]
-                        : Colors.red[700],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (!progress.isCompleted)
-                Icon(Icons.keyboard_arrow_down, color: Colors.red[700]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _scrollToFirstIncompleteTask(ChallengeSession session) {
-    Challenge? target;
-    for (final c in session.challenges.where((c) => c.taskType != 'regular')) {
-      final isCompleted = _taskCompletionFor(c);
-      if (!isCompleted) {
-        target = c;
-        break;
-      }
-    }
-    final GlobalKey? key = null; // GlobalKeys removed to fix layout assertion
-    final context2 = key?.currentContext;
-    if (context2 != null) {
-      Scrollable.ensureVisible(
-        context2,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        alignment: 0.2,
-      );
-    }
-  }
-
-  bool _taskCompletionFor(Challenge challenge) {
-    final allProgress = context.read<ChallengeBloc>().state;
-    if (allProgress is! ChallengeLoaded) return false;
-    final progress = allProgress.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-    return progress?.challengeCompletions[challenge.id] ?? false;
-  }
-
-  /// Loads the current accountability task status for each challenge from Firestore.
   /// Called on initial session load so DailyTaskCard shows correct review states.
   Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
     final svc = AccountabilityService();
@@ -781,14 +828,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Partner approved my proof → the task is complete; mirror it onto
           // my local challenge so the Today card shows the checkmark.
-          final partnerApproved =
-              task.status == AccountabilityTaskStatus.completed ||
-                  task.status == AccountabilityTaskStatus.approved;
+          // Date-scoped: only today's approval completes today's progress.
+          final partnerApproved = task.isDoneToday;
 
           setState(() {
             _accountabilityStatuses[challenge.id] = task.status;
             _proofStatuses[challenge.id] = task.proofStatus;
             _reviewOnlyChallenges[challenge.id] = reviewOnly;
+            _accountabilityTasks[challenge.id] = task;
           });
 
           if (partnerApproved && !reviewOnly && mounted) {
@@ -873,6 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _proofStatuses[challenge.id] = ProofStatus.submitted;
           _accountabilityStatuses[challenge.id] =
               AccountabilityTaskStatus.pendingReview;
+          _accountabilityTasks[challenge.id] = updated;
         });
       }
     }
@@ -893,8 +941,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
-    if (taskId == null) return;
-
+    if (taskId == null) {
+      // Never fail silently — the camera button must always give feedback.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find the linked review task. Please try again later.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
     final result = await PhotoProofSheet.show(
       context: context,
@@ -1094,31 +1153,45 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
 
-  void _showJournalBottomSheet(
-    BuildContext context,
-    ChallengeLoaded state,
-    DailyProgress? selectedProgress,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => JournalBottomSheet(
-        date: _selectedDay,
-        existingNote: selectedProgress?.journalNote,
-        onSave: (note) {
-          context.read<ChallengeBloc>().add(
-                AddJournalNote(date: _selectedDay, note: note),
-              );
-        },
-        onDelete: selectedProgress?.journalNote != null
-            ? () {
-                context.read<ChallengeBloc>().add(
-                      AddJournalNote(date: _selectedDay, note: ''),
-                    );
-              }
-            : null,
+/// Modal progress dialog shown while a completion toggle is being persisted.
+/// Barrier taps and the system back button are blocked so the save chain can
+/// finish; the caller pops it as soon as the bloc confirms the new value (or
+/// the attempt fails).
+class _SavingProgressDialog extends StatelessWidget {
+  const _SavingProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Saving your progress…',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'This keeps your daily streak accurate.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

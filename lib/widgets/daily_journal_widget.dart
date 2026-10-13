@@ -79,9 +79,10 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
       builder: (context) => SafeArea(
           top: false,
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -126,7 +127,8 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                         child: Text(
                           'Cancel',
                           style: GoogleFonts.inter(
-                            color: Colors.grey[600],
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -225,7 +227,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       Text(
@@ -233,7 +235,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                             .format(widget.selectedDate),
                         style: GoogleFonts.inter(
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -337,7 +339,7 @@ class _DailyJournalWidgetState extends State<DailyJournalWidget> {
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: Colors.grey[700],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 12),

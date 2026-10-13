@@ -30,6 +30,8 @@ import 'features/human_accountability/presentation/bloc/accountability_bloc.dart
 import 'features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
+import 'core/services/data_ownership.dart';
+import 'core/services/fcm_service.dart';
 import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -41,6 +43,15 @@ import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+/// Global navigator key — lets notification taps navigate from outside the
+/// widget tree (see FcmService).
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// True once the splash screen has pushed /home. Notification payloads
+/// queued before that wait for [FcmService.flushPendingNavigation] so the
+/// splash hand-off cannot replace the screen a cold-start tap asked for.
+bool appNavigationReady = false;
 
 /// App-wide theme colors — single source of truth.
 /// Aligned to the Figma "Design Daily Metal App" palette.
@@ -147,6 +158,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Daily mettle',
         debugShowCheckedModeBanner: false,
+        navigatorKey: navigatorKey,
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
@@ -192,9 +204,7 @@ class MyApp extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(FigmaTokens.rCard),
           side: BorderSide(
-            color: isDark
-                ? const Color(0xFF3A3335)
-                : const Color(0xFFEEE9E7),
+            color: isDark ? const Color(0xFF3A3335) : const Color(0xFFEEE9E7),
           ),
         ),
       ),
@@ -445,7 +455,8 @@ class _InitialScreenState extends State<InitialScreen>
     // Awaiting this would freeze the splash behind the system permission
     // dialog until the user responds; instead we fire-and-forget so DB init
     // and navigation proceed normally.
-    unawaited(SmartNotificationService().requestPermissions().catchError((_) {}));
+    unawaited(
+        SmartNotificationService().requestPermissions().catchError((_) {}));
 
     await bloc.repository.init();
     await taskRepo.init();
@@ -458,6 +469,20 @@ class _InitialScreenState extends State<InitialScreen>
       currentUser = null;
     }
     if (currentUser != null) {
+      // Cross-account isolation: if the local data belongs to a different
+      // account (e.g. the previous user never signed out on this device),
+      // wipe it before it can be shown or uploaded for this account.
+      final owner = await DataOwnership.read();
+      if (owner != null && owner != currentUser.uid) {
+        try {
+          await CloudSyncService().clearLocalData(bloc.repository, taskRepo);
+        } catch (_) {}
+        if (mounted) {
+          bloc.add(LoadChallengeData());
+          context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        }
+      }
+
       final hasLocalData = await bloc.repository.hasActiveSession();
       if (!hasLocalData) {
         try {
@@ -474,6 +499,11 @@ class _InitialScreenState extends State<InitialScreen>
           }
         } catch (_) {}
       }
+      // Record (or adopt) which account owns the local data.
+      await DataOwnership.claim(currentUser.uid);
+      try {
+        await bloc.repository.adoptSessionsFor(currentUser.uid);
+      } catch (_) {}
     }
 
     // Minimum splash display time
@@ -489,6 +519,8 @@ class _InitialScreenState extends State<InitialScreen>
     // - No session → shows "Start 75 Hard Challenge" button
     // The onboarding/setup wizard is triggered FROM home, not before it.
     Navigator.of(context).pushReplacementNamed('/home');
+    appNavigationReady = true;
+    unawaited(FcmService.instance.flushPendingNavigation());
   }
 
   Future<void> _fetchQuote() async {

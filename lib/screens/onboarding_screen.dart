@@ -335,8 +335,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       // 3. Record consent
       await syncSvc.recordConsent();
 
-      // 4. Check if cloud backup exists (reinstall scenario)
-      //    Restore if found, then always go to /home.
+      // 4. Reconcile local data with this account: wipe any other account's
+      //    data and restore this account's backup if it exists, otherwise
+      //    upload local data. Always go to /home afterwards.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
@@ -344,18 +345,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           await db.init();
           await taskRepo.init();
 
-          final cloudData = await syncSvc.syncFromCloud();
-          if (cloudData != null &&
-              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-            await db.restoreFromJson(cloudData);
-            await taskRepo.restoreFromJson(cloudData);
-            if (mounted) {
-              context.read<ChallengeBloc>().add(LoadChallengeData());
-              context.read<RegularTaskBloc>().add(LoadRegularTasks());
-            }
-          } else {
-            // No cloud data yet — sync current (empty) local state
-            await syncSvc.syncToCloud(db, taskRepo);
+          await syncSvc.reconcileOnSignIn(db, taskRepo);
+          if (mounted) {
+            context.read<ChallengeBloc>().add(LoadChallengeData());
+            context.read<RegularTaskBloc>().add(LoadRegularTasks());
           }
         } catch (_) {}
       }

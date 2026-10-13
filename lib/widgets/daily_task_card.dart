@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:seventy_five_hard_tracker/core/services/dynamic_color_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/task_detail_sheet.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -14,6 +12,7 @@ import 'package:seventy_five_hard_tracker/widgets/collaborator_dialog.dart';
 import 'apple_checkbox.dart';
 import 'challenge_icon_widget.dart';
 import 'reminder_bottom_sheet.dart';
+import 'task_type_card.dart';
 
 class DailyTaskCard extends StatefulWidget {
   final Challenge challenge;
@@ -33,6 +32,11 @@ class DailyTaskCard extends StatefulWidget {
   /// must not see a completion checkbox here.
   final bool isReviewOnly;
   final ProofStatus? proofStatus;
+
+  /// Date-scoped done-state from the linked accountability task (computed by
+  /// the parent via `task.isDoneToday`). A previous day's approval must not
+  /// render as approved today. Defaults to true (no linked task info).
+  final bool accountabilityDoneToday;
   final VoidCallback? onSubmitProof;
   final VoidCallback? onReviewProof;
   final VoidCallback? onViewProof;
@@ -56,6 +60,7 @@ class DailyTaskCard extends StatefulWidget {
     this.accountabilityStatus,
     this.isReviewOnly = false,
     this.proofStatus,
+    this.accountabilityDoneToday = true,
     this.onSubmitProof,
     this.onReviewProof,
     this.onViewProof,
@@ -70,8 +75,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     with TickerProviderStateMixin {
   late AnimationController _completionController;
   late AnimationController _pulseController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _pulseAnimation;
   OverlayEntry? _activeOverlayEntry;
   List<Collaborator> _collaborators = [];
 
@@ -87,22 +90,6 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.02,
-    ).animate(CurvedAnimation(
-      parent: _completionController,
-      curve: Curves.elasticOut,
-    ));
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
 
     if (widget.isCompleted) {
       _completionController.forward();
@@ -123,6 +110,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
   /// Whether this task has collaborator reviewers assigned.
   bool get _hasReviewers => _collaborators.isNotEmpty;
+
+  /// Whether this challenge is linked to a Squad accountability task
+  /// (reviewer assigned via partnership, not via the collaborator dialog).
+  /// The Today screen doesn't pass partner props, so the collaborator list
+  /// stays empty for these tasks — the accountability status is the signal.
+  bool get _hasAccountabilityTask => widget.accountabilityStatus != null;
 
   /// Opens the task detail bottom sheet.
   void _openTaskDetail() {
@@ -157,7 +150,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       );
       return;
     }
-    if (newValue && _hasReviewers && widget.onProofRequired != null) {
+    if (newValue &&
+        (_hasReviewers || _hasAccountabilityTask) &&
+        widget.onProofRequired != null) {
       // User is trying to complete → require proof upload
       widget.onProofRequired!();
     } else if (newValue &&
@@ -278,20 +273,24 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                         size: 12,
                       ),
                       const SizedBox(width: 3),
-                      Text(
-                        () {
-                          final displayTime =
-                              _getDisplayTime(widget.challenge.reminderTime!);
-                          final timeParts = displayTime.split(':');
-                          final hour = int.parse(timeParts[0]);
-                          final minute = int.parse(timeParts[1]);
-                          return DateFormat('h:mm a')
-                              .format(DateTime(2024, 1, 1, hour, minute));
-                        }(),
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: Colors.orange[800],
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          () {
+                            final displayTime =
+                                _getDisplayTime(widget.challenge.reminderTime!);
+                            final timeParts = displayTime.split(':');
+                            final hour = int.parse(timeParts[0]);
+                            final minute = int.parse(timeParts[1]);
+                            return DateFormat('h:mm a')
+                                .format(DateTime(2024, 1, 1, hour, minute));
+                          }(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: Colors.orange[800],
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -299,60 +298,29 @@ class _DailyTaskCardState extends State<DailyTaskCard>
                 ),
               ),
             ),
-          _buildCleanCard(context),
+          _buildCleanCard(),
         ],
       ),
     );
   }
 
-  /// Consistent corner radius used across all task cards.
-  static const double kCardRadius = 16;
-
-  /// Status accent color used for the card's left edge and subtle tint.
-  /// Completed = green, active = per-task color, missed = red.
+  /// Status accent color used for the card's left edge and progress bar.
+  /// Completed = green, active = category color, missed = red.
   Color _statusAccent() {
     if (widget.isCompleted) return Colors.green;
     if (!widget.isEditable) return Colors.red;
-    return DynamicColorService.getColorForText(widget.challenge.title);
+    return TaskTypeStyle.of(widget.challenge.category).accent;
   }
 
-  /// Clean, theme-aware white/dark card that replaces the old glassmorphism
-  /// container. Uses the app surface color so it adapts to dark mode, a
-  /// consistent border radius, a soft shadow, and a per-task colored left edge.
-  Widget _buildCleanCard(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final accent = _statusAccent();
-    final surface = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 88),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(kCardRadius),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(kCardRadius),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(width: 4, color: accent)),
-          ),
-          child: _buildCardContent(),
-        ),
-      ),
+  /// Theme-aware card that renders through [TaskTypeCard]: category header
+  /// (icon, label, tagline), status-colored left edge and a completion
+  /// progress bar. The body keeps all existing checkbox/toggle behaviour.
+  Widget _buildCleanCard() {
+    return TaskTypeCard(
+      category: widget.challenge.category,
+      isCompleted: widget.isCompleted,
+      accent: _statusAccent(),
+      child: _buildCardContent(),
     );
   }
 
@@ -499,6 +467,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (widget.isEditable &&
         (_hasAccountabilityConnection ||
+            _hasAccountabilityTask ||
             widget.isReviewOnly ||
             widget.accountabilityStatus ==
                 AccountabilityTaskStatus.pendingReview ||
@@ -532,14 +501,21 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     if (actions.isEmpty) return const SizedBox.shrink();
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: actions
-          .map((w) => Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: w,
-              ))
-          .toList(),
+    // Wrap (instead of Row) so the buttons flow onto a second line on narrow
+    // screens instead of overflowing the card with a RenderFlex stripe.
+    // Flexible bounds the width to the space left by the title; on normal
+    // widths this renders exactly like the old single-line Row.
+    return Flexible(
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: actions
+            .map((w) => Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: w,
+                ))
+            .toList(),
+      ),
     );
   }
 
@@ -578,17 +554,18 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     // it and uploads proof; I review the proof. Show a real checkbox (not an
     // eye icon) so the review task is visible inline — tapping it opens the
     // proof review when proof is submitted, otherwise explains the wait.
-    // Once approved, the checkbox reflects checked on BOTH sides.
+    // Once approved, the checkbox reflects checked on BOTH sides — but only
+    // for TODAY's approval. A previous day's approval needs fresh proof.
     if (widget.isReviewOnly) {
-      final checked = widget.isCompleted ||
-          widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
-          widget.accountabilityStatus ==
-              AccountabilityTaskStatus.completed ||
-          widget.proofStatus == ProofStatus.approved;
-      final hasProofToReview =
-          widget.accountabilityStatus ==
-                  AccountabilityTaskStatus.pendingReview ||
-              widget.proofStatus == ProofStatus.submitted;
+      final approvedNow = widget.accountabilityDoneToday &&
+          (widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
+              widget.accountabilityStatus ==
+                  AccountabilityTaskStatus.completed ||
+              widget.proofStatus == ProofStatus.approved);
+      final checked = widget.isCompleted || approvedNow;
+      final hasProofToReview = widget.accountabilityStatus ==
+              AccountabilityTaskStatus.pendingReview ||
+          widget.proofStatus == ProofStatus.submitted;
       final tip = widget.partnerName != null && widget.partnerName!.isNotEmpty
           ? '${widget.partnerName} completes this — tap checkbox to review the proof'
           : 'Your partner completes this — tap checkbox to review the proof';
@@ -702,8 +679,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       text = 'Awaiting review';
       color = Colors.orange;
       icon = Icons.hourglass_top;
-    } else if (accStatus == AccountabilityTaskStatus.approved ||
-        proof == ProofStatus.approved) {
+    } else if ((accStatus == AccountabilityTaskStatus.approved ||
+            proof == ProofStatus.approved) &&
+        widget.accountabilityDoneToday) {
       text = 'Approved';
       color = Colors.green;
       icon = Icons.check_circle;
@@ -834,8 +812,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
             widget.onReviewProof, 'Review Photo Proof');
       }
       if (status == ProofStatus.approved ||
-          widget.accountabilityStatus ==
-              AccountabilityTaskStatus.approved) {
+          widget.accountabilityStatus == AccountabilityTaskStatus.approved) {
         return iconBtn(Icons.check_circle, Colors.green[600]!,
             widget.onViewProof, 'View Approved Proof');
       }
@@ -845,7 +822,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     }
 
     // ── CREATOR (assigned this task to a collaborator) ──
-    if (isCreator) {
+    // Also covers the owner side of a Squad accountability task: the Today
+    // screen doesn't pass creator props, so fall back to the accountability
+    // status (not review-only + a linked task = I'm the one who proves it).
+    if (isCreator || (!widget.isReviewOnly && _hasAccountabilityTask)) {
       // Reviewer hasn't accepted yet — nothing to upload against.
       if (_isRequestedAndUnaccepted()) {
         return iconBtn(Icons.lock_outline, Colors.orange[600]!, null,
@@ -909,12 +889,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     if (accStatus != null) {
       // For creator with pending accepted task and proof required, show upload prompt
       if (accStatus == AccountabilityTaskStatus.pending &&
-          _hasAccountabilityConnection &&
+          (_hasAccountabilityConnection || _hasAccountabilityTask) &&
+          !widget.isReviewOnly &&
           (proofStatus == null || proofStatus == ProofStatus.notRequired)) {
-        final myUid = FirebaseAuth.instance.currentUser?.uid;
-        if (_isAssigner(myUid)) {
-          return 'Proof required — upload photo';
-        }
+        return 'Proof required — upload photo';
       }
 
       switch (accStatus) {

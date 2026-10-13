@@ -16,6 +16,16 @@ service cloud.firestore {
                     && resource.data.ownerUid == request.auth.uid;
     }
 
+    // Shared membership check for the partnership chat subcollection.
+    // get() reads the parent doc — a constant path for list queries, so
+    // listing messages passes rules without per-message uid filters.
+    function isPartnershipMember(partnershipId) {
+      return request.auth != null && (
+        get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.ownerUid == request.auth.uid
+        || get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.partnerUid == request.auth.uid
+      );
+    }
+
     // ── partnerships ──────────────────────────────────────────────
     // Owner can create. Owner or accepted partner can read/delete.
     // The acceptor claims a pending partnership via an update-only
@@ -58,6 +68,20 @@ service cloud.firestore {
                           && (request.resource.data.status == 'accepted'
                               || request.resource.data.status == 'declined'))
                     );
+
+      // ── messages (partner chat) ─────────────────────────────────
+      // Membership comes from the parent partnership doc, so listing
+      // this subcollection passes rules. The sender must stamp their
+      // own uid and keep the message tied to this partnership.
+      match /messages/{messageId} {
+        allow read: if isPartnershipMember(partnershipId);
+        allow create: if isPartnershipMember(partnershipId)
+                      && request.resource.data.senderUid == request.auth.uid
+                      && request.resource.data.partnershipId == partnershipId;
+        allow update: if isPartnershipMember(partnershipId);
+        allow delete: if request.auth != null
+                      && resource.data.senderUid == request.auth.uid;
+      }
     }
 
     // ── public_progress ───────────────────────────────────────────

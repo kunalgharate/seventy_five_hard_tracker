@@ -80,11 +80,14 @@ class _PartnerProgressScreenState extends State<PartnerProgressScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _progress.isEmpty
-              ? _buildEmpty()
-              : _buildContent(),
+      body: SafeArea(
+        top: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _progress.isEmpty
+                ? _buildEmpty()
+                : _buildContent(),
+      ),
     );
   }
 

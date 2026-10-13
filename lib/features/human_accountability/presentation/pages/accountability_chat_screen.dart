@@ -27,6 +27,17 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
   bool _sending = false;
   int _previousMessageCount = 0;
 
+  /// Cached message stream. Creating it in build() resubscribes on every
+  /// rebuild (keyboard open/close, setState) — flashing the loading spinner
+  /// and dropping already-loaded messages — which reads as broken messaging.
+  late final Stream<List<AccountabilityMessage>> _messages;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = _svc.messagesStream(widget.partner.id);
+  }
+
   String get _myUid => AccountabilityService().currentUid ?? '';
 
   @override
@@ -57,24 +68,40 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 
   Future<void> _send() async {
     final text = _textCtrl.text.trim();
-    if (text.isEmpty || widget.partner.partnerUid == null) return;
+    if (text.isEmpty) return;
+
+    final partnerUid = widget.partner.partnerUid;
+    final receiverUid = widget.partner.ownerUid == _myUid
+        ? partnerUid
+        : widget.partner.ownerUid;
+    if (partnerUid == null || receiverUid == null || receiverUid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Cannot message: partner has not linked yet')),
+      );
+      return;
+    }
 
     setState(() => _sending = true);
     _textCtrl.clear();
 
-    // Determine receiver: if I am the owner, send to partnerUid; otherwise send to ownerUid
-    final receiverUid = widget.partner.ownerUid == _myUid
-        ? widget.partner.partnerUid!
-        : widget.partner.ownerUid;
-
-    await _svc.sendMessage(
-      receiverUid: receiverUid,
-      partnershipId: widget.partner.id,
-      text: text,
-      type: _selectedType,
-    );
-
-    if (mounted) setState(() => _sending = false);
+    try {
+      await _svc.sendMessage(
+        receiverUid: receiverUid,
+        partnershipId: widget.partner.id,
+        text: text,
+        type: _selectedType,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _textCtrl.text = text;
+      _textCtrl.selection = TextSelection.collapsed(offset: text.length);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
     _scrollToBottom();
   }
 
@@ -91,7 +118,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           // Messages
           Expanded(child: _buildMessageList()),
           // Input
-          _buildInput(),
+          SafeArea(top: false, child: _buildInput()),
         ],
       ),
     );
@@ -141,10 +168,22 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 
   Widget _buildMessageList() {
     return StreamBuilder<List<AccountabilityMessage>>(
-      stream: _svc.messagesStream(widget.partner.id),
+      stream: _messages,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Couldn\'t load messages: ${snap.error}',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ),
+          );
         }
         final messages = snap.data ?? [];
         if (messages.isEmpty) {

@@ -31,10 +31,12 @@ class FigmaCard extends StatelessWidget {
     final content = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: background ?? (isDark ? FigmaTokens.darkCard : FigmaTokens.white),
+        color:
+            background ?? (isDark ? FigmaTokens.darkCard : FigmaTokens.white),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: borderColor ?? (isDark ? FigmaTokens.darkLine : FigmaTokens.line),
+          color:
+              borderColor ?? (isDark ? FigmaTokens.darkLine : FigmaTokens.line),
         ),
         boxShadow: shadow ?? FigmaTokens.cardShadow,
       ),
@@ -50,7 +52,8 @@ class FigmaSectionHead extends StatelessWidget {
   final String title;
   final String? note;
   final Widget? trailing;
-  const FigmaSectionHead({super.key, required this.title, this.note, this.trailing});
+  const FigmaSectionHead(
+      {super.key, required this.title, this.note, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +71,8 @@ class FigmaSectionHead extends StatelessWidget {
                 Text(title, style: FigmaTokens.heading(17, color: titleColor)),
                 if (note != null) ...[
                   const SizedBox(height: 3),
-                  Text(note!, style: FigmaTokens.body(11, color: FigmaTokens.muted)),
+                  Text(note!,
+                      style: FigmaTokens.body(11, color: FigmaTokens.muted)),
                 ],
               ],
             ),
@@ -191,7 +195,8 @@ class FigmaChip extends StatelessWidget {
             const SizedBox(width: 4),
           ],
           Text(label,
-              style: FigmaTokens.body(10, weight: FontWeight.w800, color: color)),
+              style:
+                  FigmaTokens.body(10, weight: FontWeight.w800, color: color)),
         ],
       ),
     );
