@@ -32,6 +32,11 @@ class DailyTaskCard extends StatefulWidget {
   /// must not see a completion checkbox here.
   final bool isReviewOnly;
   final ProofStatus? proofStatus;
+
+  /// Date-scoped done-state from the linked accountability task (computed by
+  /// the parent via `task.isDoneToday`). A previous day's approval must not
+  /// render as approved today. Defaults to true (no linked task info).
+  final bool accountabilityDoneToday;
   final VoidCallback? onSubmitProof;
   final VoidCallback? onReviewProof;
   final VoidCallback? onViewProof;
@@ -55,6 +60,7 @@ class DailyTaskCard extends StatefulWidget {
     this.accountabilityStatus,
     this.isReviewOnly = false,
     this.proofStatus,
+    this.accountabilityDoneToday = true,
     this.onSubmitProof,
     this.onReviewProof,
     this.onViewProof,
@@ -548,12 +554,15 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     // it and uploads proof; I review the proof. Show a real checkbox (not an
     // eye icon) so the review task is visible inline — tapping it opens the
     // proof review when proof is submitted, otherwise explains the wait.
-    // Once approved, the checkbox reflects checked on BOTH sides.
+    // Once approved, the checkbox reflects checked on BOTH sides — but only
+    // for TODAY's approval. A previous day's approval needs fresh proof.
     if (widget.isReviewOnly) {
-      final checked = widget.isCompleted ||
-          widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
-          widget.accountabilityStatus == AccountabilityTaskStatus.completed ||
-          widget.proofStatus == ProofStatus.approved;
+      final approvedNow = widget.accountabilityDoneToday &&
+          (widget.accountabilityStatus == AccountabilityTaskStatus.approved ||
+              widget.accountabilityStatus ==
+                  AccountabilityTaskStatus.completed ||
+              widget.proofStatus == ProofStatus.approved);
+      final checked = widget.isCompleted || approvedNow;
       final hasProofToReview = widget.accountabilityStatus ==
               AccountabilityTaskStatus.pendingReview ||
           widget.proofStatus == ProofStatus.submitted;
@@ -670,8 +679,9 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       text = 'Awaiting review';
       color = Colors.orange;
       icon = Icons.hourglass_top;
-    } else if (accStatus == AccountabilityTaskStatus.approved ||
-        proof == ProofStatus.approved) {
+    } else if ((accStatus == AccountabilityTaskStatus.approved ||
+            proof == ProofStatus.approved) &&
+        widget.accountabilityDoneToday) {
       text = 'Approved';
       color = Colors.green;
       icon = Icons.check_circle;

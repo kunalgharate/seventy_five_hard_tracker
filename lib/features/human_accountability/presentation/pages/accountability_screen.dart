@@ -1625,12 +1625,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     ];
                   }
                   return visibleTasks.map<Widget>((task) {
-                    // Approved counts as done on BOTH sides — owner and
-                    // reviewer see the same checked checkbox.
-                    final isCompleted =
-                        task.status == AccountabilityTaskStatus.completed ||
-                            task.status == AccountabilityTaskStatus.approved ||
-                            task.proofStatus == ProofStatus.approved;
+                    // Done-state is scoped to TODAY: an approval from a
+                    // previous day renders as needing new proof, with the
+                    // submit/review action visible again — owner and
+                    // reviewer see the same state on both sides.
+                    final isCompleted = task.isDoneToday;
                     final proofStatus = task.proofStatus;
                     final myUid = AccountabilityService().currentUid;
                     final iAmOwner = task.assignedByUid == myUid;
@@ -1737,9 +1736,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     ProofStatus? proofStatus,
     AccountabilityTaskStatus status,
   ) {
-    if (isCompleted ||
-        status == AccountabilityTaskStatus.completed ||
-        status == AccountabilityTaskStatus.approved) {
+    // `isCompleted` is the date-scoped done-state (task.isDoneToday):
+    // previous-day approvals fall through to the branches below.
+    if (isCompleted) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -1851,7 +1850,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         ),
       );
     }
-    if (proofStatus == ProofStatus.approved) {
+    // Proof-approved only counts when done today (isCompleted above);
+    // a previous day's approval falls through to "Needs proof" below.
+    if (isCompleted && proofStatus == ProofStatus.approved) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -1896,6 +1897,27 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               ),
             ),
           ],
+        ),
+      );
+    }
+    // Approved on a previous day (isCompleted above is date-scoped):
+    // the task needs today's proof, not a green chip.
+    if (status == AccountabilityTaskStatus.approved ||
+        status == AccountabilityTaskStatus.completed ||
+        proofStatus == ProofStatus.approved) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          'Needs proof',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.orange[700],
+          ),
         ),
       );
     }

@@ -46,6 +46,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
 
+  /// challengeId -> latest linked accountability task. Kept so the card can
+  /// date-scope the done-state (yesterday's approval is not today's).
+  /// Same lifecycle as the status maps above (rebuilt from the streams).
+  final Map<String, AccountabilityTask> _accountabilityTasks = {};
+
   /// challengeId -> true when the current user is only the REVIEWER of the
   /// linked accountability task (a partner assigned it). Such cards must not
   /// offer completion — the owner completes and uploads proof.
@@ -136,8 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _reviewOnlyChallenges[cid] = reviewOnly;
         changed = true;
       }
-      final approved = task.status == AccountabilityTaskStatus.approved ||
-          task.status == AccountabilityTaskStatus.completed;
+      _accountabilityTasks[cid] = task;
+      // Only TODAY's approval completes local progress — yesterday's must
+      // not check off the new day.
+      final approved = task.isDoneToday;
       if (approved && !reviewOnly) {
         context.read<ChallengeBloc>().add(
               UpdateDailyProgress(
@@ -536,6 +543,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onEdit: () => _showTaskSheet(context, challenge),
                   proofStatus: _proofStatuses[challenge.id],
                   accountabilityStatus: _accountabilityStatuses[challenge.id],
+                  accountabilityDoneToday:
+                      _accountabilityTasks[challenge.id]?.isDoneToday ?? true,
                   isReviewOnly: _reviewOnlyChallenges[challenge.id] ?? false,
                   onSubmitProof: () => _submitProof(challenge),
                   onReviewProof: () => _reviewProof(challenge),
@@ -809,14 +818,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Partner approved my proof → the task is complete; mirror it onto
           // my local challenge so the Today card shows the checkmark.
-          final partnerApproved =
-              task.status == AccountabilityTaskStatus.completed ||
-                  task.status == AccountabilityTaskStatus.approved;
+          // Date-scoped: only today's approval completes today's progress.
+          final partnerApproved = task.isDoneToday;
 
           setState(() {
             _accountabilityStatuses[challenge.id] = task.status;
             _proofStatuses[challenge.id] = task.proofStatus;
             _reviewOnlyChallenges[challenge.id] = reviewOnly;
+            _accountabilityTasks[challenge.id] = task;
           });
 
           if (partnerApproved && !reviewOnly && mounted) {
@@ -901,6 +910,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _proofStatuses[challenge.id] = ProofStatus.submitted;
           _accountabilityStatuses[challenge.id] =
               AccountabilityTaskStatus.pendingReview;
+          _accountabilityTasks[challenge.id] = updated;
         });
       }
     }

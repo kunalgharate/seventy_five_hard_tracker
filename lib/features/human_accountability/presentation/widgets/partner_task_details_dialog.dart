@@ -21,20 +21,29 @@ class PartnerTaskDetailsDialog extends StatelessWidget {
   ({String label, MaterialColor color}) get _status {
     final status = task.status;
     final proof = task.proofStatus;
-    if (status == AccountabilityTaskStatus.approved ||
-        proof == ProofStatus.approved) {
+    // Done-states are date-scoped: a previous day's approval shows as
+    // needing today's proof (history dates below still show the record).
+    if ((status == AccountabilityTaskStatus.approved ||
+            proof == ProofStatus.approved) &&
+        task.isDoneToday) {
       return (label: 'Approved', color: Colors.green);
     }
     if (status == AccountabilityTaskStatus.rejected ||
         proof == ProofStatus.rejected) {
       return (label: 'Rejected', color: Colors.red);
     }
-    if (status == AccountabilityTaskStatus.completed) {
+    if (status == AccountabilityTaskStatus.completed && task.isDoneToday) {
       return (label: 'Completed', color: Colors.green);
     }
     if (status == AccountabilityTaskStatus.pendingReview ||
         proof == ProofStatus.submitted) {
       return (label: 'Awaiting Review', color: Colors.orange);
+    }
+    if ((status == AccountabilityTaskStatus.approved ||
+            status == AccountabilityTaskStatus.completed ||
+            proof == ProofStatus.approved) &&
+        !task.isDoneToday) {
+      return (label: 'Needs today\u2019s proof', color: Colors.orange);
     }
     if (status == AccountabilityTaskStatus.declined) {
       return (label: 'Declined', color: Colors.red);
