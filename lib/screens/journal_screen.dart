@@ -501,6 +501,14 @@ class _EntryEditorSheetState extends State<_EntryEditorSheet> {
 
   Future<void> _save() async {
     if (_saving) return;
+    if (_textCtrl.text.trim().isEmpty &&
+        (_mood ?? '').isEmpty &&
+        _proudCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Write something first')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     final bloc = context.read<ChallengeBloc>();
     bloc.add(

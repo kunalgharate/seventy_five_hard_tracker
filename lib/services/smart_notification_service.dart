@@ -22,9 +22,15 @@ class SmartNotificationService {
   int _scheduledCount = 0;
   static const int _maxNotifications = 400;
 
+  static bool _tzReady = false;
+
   // ── Initialization ──────────────────────────────────────────────
 
-  Future<void> initialize() async {
+  /// Idempotent timezone setup so every schedule call has a valid tz.local,
+  /// even if it runs before [initialize] (e.g. the debug test action
+  /// creates its own instance without initializing it).
+  static Future<void> _ensureTimeZoneInitialized() async {
+    if (_tzReady) return;
     tz_data.initializeTimeZones();
 
     // Map device UTC offset to a known timezone
@@ -68,6 +74,11 @@ class SmartNotificationService {
     } catch (_) {
       tz.setLocalLocation(tz.getLocation('UTC'));
     }
+    _tzReady = true;
+  }
+
+  Future<void> initialize() async {
+    await _ensureTimeZoneInitialized();
 
     const androidSettings =
         AndroidInitializationSettings('@drawable/ic_notification');
@@ -92,8 +103,25 @@ class SmartNotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       await androidPlugin.requestNotificationsPermission();
+      // Opens the "Alarms & reminders" settings on Android 12+; the user
+      // must toggle it there, so scheduling still falls back when denied.
       await androidPlugin.requestExactAlarmsPermission();
     }
+  }
+
+  /// Exact alarms throw on Android 12+ without the "Alarms & reminders"
+  /// grant, silently losing the reminder. Fall back to inexact delivery
+  /// instead of dropping the notification.
+  Future<AndroidScheduleMode> _effectiveScheduleMode() async {
+    try {
+      final androidPlugin =
+          _notifications.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      if (await androidPlugin?.canScheduleExactNotifications() == false) {
+        return AndroidScheduleMode.inexactAllowWhileIdle;
+      }
+    } catch (_) {}
+    return AndroidScheduleMode.exactAllowWhileIdle;
   }
 
   Future<void> _createNotificationChannels() async {
@@ -169,6 +197,7 @@ class SmartNotificationService {
     List<Challenge> challenges,
     DailyProgress? progress,
   ) async {
+    await _ensureTimeZoneInitialized();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDate = DateTime(date.year, date.month, date.day);
@@ -238,7 +267,7 @@ class SmartNotificationService {
       'Time to complete your task! Tap to mark done.',
       scheduledDate,
       _taskNotificationDetails(),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _effectiveScheduleMode(),
     );
     _scheduledCount++;
 
@@ -266,7 +295,7 @@ class SmartNotificationService {
             presentSound: true,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: await _effectiveScheduleMode(),
       );
       _scheduledCount++;
     }
@@ -299,7 +328,7 @@ class SmartNotificationService {
             presentSound: true,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: await _effectiveScheduleMode(),
       );
       _scheduledCount++;
     }
@@ -330,7 +359,7 @@ class SmartNotificationService {
         'Hourly reminder: Complete your task!',
         scheduledDate,
         _taskNotificationDetails(),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: await _effectiveScheduleMode(),
         matchDateTimeComponents: DateTimeComponents.time,
       );
       _scheduledCount++;
@@ -366,7 +395,7 @@ class SmartNotificationService {
             'Reminder: Complete your task!',
             scheduledDate,
             _taskNotificationDetails(),
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            androidScheduleMode: await _effectiveScheduleMode(),
             matchDateTimeComponents: DateTimeComponents.time,
           );
           _scheduledCount++;
@@ -379,6 +408,7 @@ class SmartNotificationService {
   // ── Daily Motivation ────────────────────────────────────────────
 
   Future<void> scheduleDailyMotivation() async {
+    await _ensureTimeZoneInitialized();
     try {
       final message = await _fetchMotivationalMessage();
       final scheduledDate = _nextInstanceOfTime(8, 0);
@@ -399,7 +429,7 @@ class SmartNotificationService {
             enableVibration: true,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: await _effectiveScheduleMode(),
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (e) {
@@ -474,6 +504,7 @@ class SmartNotificationService {
     DateTime date,
     List<Challenge> pendingChallenges,
   ) async {
+    await _ensureTimeZoneInitialized();
     if (pendingChallenges.isEmpty) {
       // Cancel any previously scheduled night summaries
       await cancelNightSummaries();
@@ -535,7 +566,7 @@ class SmartNotificationService {
           subtitle: body,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _effectiveScheduleMode(),
     );
   }
 
@@ -624,39 +655,50 @@ class SmartNotificationService {
   // ── Debug / Test (only used in debug builds) ────────────────────
 
   Future<void> sendTestNotification() async {
-    await _notifications.show(
-      998,
-      'Test Notification',
-      'This is a test notification to verify the system works',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          importance: Importance.high,
-          priority: Priority.high,
+    try {
+      await _notifications.show(
+        998,
+        'Test Notification',
+        'This is a test notification to verify the system works',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (kDebugMode) print('Failed to send test notification: $e');
+    }
   }
 
   Future<void> scheduleTestNotification() async {
+    await _ensureTimeZoneInitialized();
     final scheduledTime =
-        tz.TZDateTime.now(tz.local).add(const Duration(seconds: 10));
-    await _notifications.zonedSchedule(
-      997,
-      'Scheduled Test',
-      'This test notification was scheduled 10 seconds ago',
-      scheduledTime,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          importance: Importance.high,
-          priority: Priority.high,
+        tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5));
+    try {
+      await _notifications.zonedSchedule(
+        997,
+        'Scheduled Test',
+        'This test notification was scheduled 5 seconds ago',
+        scheduledTime,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
+        androidScheduleMode: await _effectiveScheduleMode(),
+      );
+    } catch (e) {
+      if (kDebugMode) print('Scheduled test failed, showing now: $e');
+      // Always leave something visible so the debug action is reliable.
+      await sendTestNotification();
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────

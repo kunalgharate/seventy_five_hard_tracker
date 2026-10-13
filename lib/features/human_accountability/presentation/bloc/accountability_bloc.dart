@@ -819,6 +819,15 @@ class AccountabilityBloc
         autoCompleted: autoCompleted,
         challengeId: task.challengeId,
       ));
+      if (autoCompleted) {
+        // Compute streak impact — same update the approve-task path triggers.
+        final newStreak = _scoringEngine.compute75HardStreak(
+          1, // TODO: pass actual current streak from ChallengeBloc
+          'approved',
+        );
+        if (isClosed) return;
+        emit(StreakImpacted(newStreak, 'approved'));
+      }
       add(LoadReviewTabData());
     } catch (e) {
       if (isClosed) return;
@@ -855,6 +864,14 @@ class AccountabilityBloc
 
       if (isClosed) return;
       emit(ProofRejected(task.id, comment: event.comment));
+
+      // Compute streak impact — rejected resets streak.
+      final newStreak = _scoringEngine.compute75HardStreak(
+        1, // TODO: pass actual current streak from ChallengeBloc
+        'rejected',
+      );
+      if (isClosed) return;
+      emit(StreakImpacted(newStreak, 'rejected'));
       add(LoadReviewTabData());
     } catch (e) {
       if (isClosed) return;

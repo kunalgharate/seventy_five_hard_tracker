@@ -139,7 +139,7 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
 
   String? _validateEmail(String value) {
     final email = value.trim();
-    if (email.isEmpty) return null;
+    if (email.isEmpty) return 'Please enter an email address';
     final emailRegex =
         RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     if (!emailRegex.hasMatch(email)) {
@@ -164,7 +164,6 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       setState(() => _emailError = error);
       return;
     }
-    if (email.isEmpty) return;
 
     setState(() {
       _lookingUp = true;

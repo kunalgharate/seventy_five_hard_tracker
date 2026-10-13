@@ -2835,6 +2835,7 @@ class AccountabilityService {
         'status': 'approved',
         'reviewedAt': Timestamp.fromDate(now),
         'reviewDecision': 'approved',
+        'completedAt': Timestamp.fromDate(now),
       };
       if (improvementNote != null && improvementNote.length <= 500) {
         updateData['reviewComment'] = improvementNote;
@@ -2847,6 +2848,7 @@ class AccountabilityService {
         reviewedAt: now,
         reviewDecision: 'approved',
         reviewComment: improvementNote,
+        completedAt: now,
       );
     } catch (e) {
       if (kDebugMode) {

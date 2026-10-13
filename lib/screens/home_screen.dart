@@ -20,6 +20,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/dat
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
@@ -241,11 +242,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             scaffoldMessenger.showSnackBar(
                               const SnackBar(
                                   content: Text(
-                                      'Test notification scheduled for 10 seconds')),
+                                      'Test notification scheduled for 5 seconds')),
                             );
                           }
                         },
-                        child: const Text('10 Seconds'),
+                        child: const Text('5 Seconds'),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
@@ -276,6 +277,26 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+      ),
+      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
+        builder: (context, state) {
+          final hasSession = (state is ChallengeLoaded &&
+                  state.hasActiveSession) ||
+              (_lastLoadedState != null && _lastLoadedState!.hasActiveSession);
+          if (!hasSession) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            heroTag: 'addChallengeTask',
+            onPressed: () => _showTaskSheet(context, null),
+            backgroundColor: Colors.orange[600],
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Add Task',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            tooltip: 'Add Task',
+          );
+        },
       ),
       body: BlocConsumer<ChallengeBloc, ChallengeState>(
         listener: (context, state) {
@@ -433,7 +454,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // --- Build a flat list of widgets ---
     final List<Widget> items = [
       // 1. Greeting
-      const GreetingHeader(),
+      GreetingHeader(
+        notificationCount: _recentNotifications.length,
+        onNotificationTap: _openNotifications,
+      ),
 
       // 2. Hero card
       ChallengeHeroCard(
@@ -558,6 +582,25 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => ChallengeTaskSheet(bloc: bloc, challenge: challenge),
     );
+  }
+
+  /// Opens the app's notification surface — the Reviews screen, the same
+  /// destination the Squad top-right button and notification taps use.
+  void _openNotifications() {
+    final bloc = context.read<AccountabilityBloc>();
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => BlocProvider.value(
+              value: bloc,
+              child: const Scaffold(
+                appBar: CustomAppBar(title: 'Reviews'),
+                body: ReviewsTabV2(),
+              ),
+            ),
+          ),
+        )
+        .then((_) => _loadRecentNotifications());
   }
 
   /// Saves a task toggle end-to-end. Shows a blocking progress dialog while

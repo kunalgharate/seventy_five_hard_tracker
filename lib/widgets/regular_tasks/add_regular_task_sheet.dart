@@ -340,7 +340,7 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
                                       (_challenge.isReminderEnabled &&
                                               _challenge.reminderTime != null)
                                           ? 'Reminder Set ✓'
-                                          : '⚠ Set Reminder (Required)',
+                                          : 'Set Reminder (Optional)',
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
@@ -433,31 +433,15 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
+                      // Reminders are optional for regular tasks — save is
+                      // allowed with or without one, matching the edit sheet.
                       onPressed: _challenge.title.trim().isEmpty ||
                               _taskNameError != null
                           ? null
-                          : (!_challenge.isReminderEnabled ||
-                                  _challenge.reminderTime == null)
-                              ? () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text(
-                                          'Please set a reminder before creating the task'),
-                                      backgroundColor: Colors.red[600],
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.all(16),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10)),
-                                    ),
-                                  );
-                                }
-                              : _createTask,
+                          : _createTask,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: (_challenge.title.trim().isNotEmpty &&
-                                _taskNameError == null &&
-                                _challenge.isReminderEnabled &&
-                                _challenge.reminderTime != null)
+                                _taskNameError == null)
                             ? Colors.orange[600]
                             : Colors.grey[400],
                         disabledBackgroundColor: Colors.grey[300],
@@ -470,9 +454,7 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: (_challenge.title.trim().isNotEmpty &&
-                                    _taskNameError == null &&
-                                    _challenge.isReminderEnabled &&
-                                    _challenge.reminderTime != null)
+                                    _taskNameError == null)
                                 ? Colors.white
                                 : Colors.grey[600]),
                       ),
