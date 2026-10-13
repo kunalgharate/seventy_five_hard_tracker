@@ -6,9 +6,8 @@ import 'package:flutter/foundation.dart';
 /// `notifPrefs` (`users/{uid}` — self-update already allowed by rules).
 /// Absent category or doc means enabled (fail-open).
 ///
-/// The same category keys are mirrored in functions/index.js so the push
-/// sender honors them server-side; the dispatch listener honors them
-/// client-side. Keep the two mappings in sync.
+/// Enforced client-side by the dispatch listener (and Home cards). If a
+/// server push sender is added later, mirror `categoryForType` there.
 class NotificationPreferences {
   NotificationPreferences._();
   static final NotificationPreferences instance = NotificationPreferences._();
