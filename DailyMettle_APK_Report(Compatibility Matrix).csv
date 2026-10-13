@@ -1,0 +1,3 @@
+Device/emulator,Android version,Screen configuration,Installation status,Launch status,Critical workflow status,Crash observations,Remarks
+ReadBuddyTest emulator,API 36 / Android 16 preview,"1080x2400, 420dpi",Pass,Pass,Fail (challenge creation flow blocks),"No app crash, but a black screen/blank state occurred after CTA tap; generic Android “System UI isn’t responding” overlay was transient",Main app flow is visible on a real emulator; challenge creation route is blocked by a blank-screen defect
+APK archive inspection only,N/A,N/A,N/A,N/A,Not tested,N/A,Static inspection only; runtime compatibility beyond the launch flow was not assessed
