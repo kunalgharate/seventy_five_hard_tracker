@@ -440,13 +440,23 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.copy, color: AppColors.primary),
-                    onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: partner.inviteCode),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Code copied!')),
-                      );
+                    onPressed: () async {
+                      try {
+                        await Clipboard.setData(
+                          ClipboardData(text: partner.inviteCode),
+                        );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Code copied!')),
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Couldn\'t copy the code'),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ],
@@ -2665,56 +2675,94 @@ class _PendingInviteCard extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 6),
-                  // Invite code with copy
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: partner.inviteCode),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Invite code copied!')),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.orange.withValues(alpha: 0.4),
+                  // Invite code with copy (code invites only — email invites
+                  // carry no code, so show the recipient instead of an empty
+                  // box whose "copy" would silently copy nothing).
+                  if (partner.inviteCode.isNotEmpty)
+                    GestureDetector(
+                      onTap: () async {
+                        try {
+                          await Clipboard.setData(
+                            ClipboardData(text: partner.inviteCode),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Invite code copied!')),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Couldn\'t copy — long-press the code to copy it manually.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.key_outlined,
+                              size: 13,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              partner.inviteCode,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 3,
+                                color: Colors.orange[800],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.copy,
+                              size: 12,
+                              color: Colors.orange,
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.key_outlined,
-                            size: 13,
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            partner.inviteCode,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 3,
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.email_outlined,
+                          size: 13,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            partner.partnerEmail ?? 'Invite sent',
+                            style: TextStyle(
+                              fontSize: 12,
                               color: Colors.orange[800],
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(
-                            Icons.copy,
-                            size: 12,
-                            color: Colors.orange,
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ),
                 ],
               ),
             ),
@@ -4021,16 +4069,26 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                     Center(
                       child: TextButton.icon(
                         onPressed: () {
+                          // Capture the bloc and a still-mounted ancestor
+                          // context BEFORE popping: the sheet's own context
+                          // is deactivated by the pop, and reusing it for the
+                          // next sheet (or for context.read inside its
+                          // builder) throws and leaves a blank sheet.
+                          final bloc = context.read<AccountabilityBloc>();
+                          final parentContext = Navigator.of(context).context;
                           Navigator.pop(context);
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => BlocProvider.value(
-                              value: context.read<AccountabilityBloc>(),
-                              child: const _InvitePartnerSheet(),
-                            ),
-                          );
+                          Future.microtask(() {
+                            if (!parentContext.mounted) return;
+                            showModalBottomSheet(
+                              context: parentContext,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (_) => BlocProvider.value(
+                                value: bloc,
+                                child: const _InvitePartnerSheet(),
+                              ),
+                            );
+                          });
                         },
                         icon: Icon(
                           Icons.tag,

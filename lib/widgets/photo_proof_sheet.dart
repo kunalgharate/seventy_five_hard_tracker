@@ -170,9 +170,9 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
     // overflow the bottom of the sheet.
     return SafeArea(
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: EdgeInsets.fromLTRB(
           24,
@@ -330,7 +330,10 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
                       onPressed:
                           _uploading ? null : () => Navigator.pop(context),
                       child: Text('Cancel',
-                          style: TextStyle(color: Colors.grey[600])),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                     ),
                   ),
                   const SizedBox(width: 12),

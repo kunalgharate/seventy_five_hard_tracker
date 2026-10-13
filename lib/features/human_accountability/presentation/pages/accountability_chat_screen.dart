@@ -27,6 +27,17 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
   bool _sending = false;
   int _previousMessageCount = 0;
 
+  /// Cached message stream. Creating it in build() resubscribes on every
+  /// rebuild (keyboard open/close, setState) — flashing the loading spinner
+  /// and dropping already-loaded messages — which reads as broken messaging.
+  late final Stream<List<AccountabilityMessage>> _messages;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = _svc.messagesStream(widget.partner.id);
+  }
+
   String get _myUid => AccountabilityService().currentUid ?? '';
 
   @override
@@ -157,7 +168,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 
   Widget _buildMessageList() {
     return StreamBuilder<List<AccountabilityMessage>>(
-      stream: _svc.messagesStream(widget.partner.id),
+      stream: _messages,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

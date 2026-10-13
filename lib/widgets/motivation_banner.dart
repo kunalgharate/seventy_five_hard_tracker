@@ -8,6 +8,7 @@ class MotivationBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -24,7 +25,7 @@ class MotivationBanner extends StatelessWidget {
               quote,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.orange[800],
+                color: isDark ? Colors.orange[300] : Colors.orange[800],
                 fontStyle: FontStyle.italic,
                 height: 1.4,
               ),

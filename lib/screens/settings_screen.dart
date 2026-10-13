@@ -60,9 +60,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Get inspired with daily motivational quotes at 8:00 AM',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
@@ -92,9 +93,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'These actions cannot be undone',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -218,7 +220,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -236,7 +239,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 200,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: SingleChildScrollView(

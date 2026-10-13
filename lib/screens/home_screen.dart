@@ -709,6 +709,16 @@ class _HomeScreenState extends State<HomeScreen> {
       context.read<ChallengeBloc>().add(
             RemoveChallengeFromSession(challenge.id),
           );
+      // Immediate local feedback: the bloc persists the delete to Hive and
+      // reloads, but that round-trip is silent — confirm now so offline
+      // deletes feel applied. Failures still surface via the ChallengeError
+      // listener below. No hardcoded color so the SnackBar follows the theme.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Removed "${challenge.title}"'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 

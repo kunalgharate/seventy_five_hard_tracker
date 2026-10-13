@@ -27,6 +27,7 @@ class _JournalScreenState extends State<JournalScreen> {
   final _reflectionCtrl = TextEditingController();
   final _proudCtrl = TextEditingController();
   bool _saving = false;
+  bool _composerExpanded = true;
 
   // Figma mood row: 5 moods, color-coded green → red.
   static const _moods = [
@@ -60,6 +61,7 @@ class _JournalScreenState extends State<JournalScreen> {
         _selectedMood = null;
         _reflectionCtrl.clear();
         _proudCtrl.clear();
+        _composerExpanded = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -92,102 +94,139 @@ class _JournalScreenState extends State<JournalScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
         children: [
-          // ── New entry composer ──
-          FigmaCard(
-            padding: const EdgeInsets.all(17),
-            radius: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('How are you feeling?',
-                    style: FigmaTokens.heading(16, color: textColor)),
-                const SizedBox(height: 15),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: _moods.map((m) {
-                    final selected = _selectedMood == m.$1;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedMood = m.$1),
-                      child: Column(
-                        children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: 38,
-                            height: 38,
-                            transform: selected
-                                ? (Matrix4.identity()
-                                  ..scaleByDouble(1.12, 1.12, 1.12, 1.0))
-                                : Matrix4.identity(),
-                            transformAlignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: m.$3,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: selected ? m.$3 : Colors.transparent,
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: cardBg,
-                                  spreadRadius: selected ? 4 : 6,
-                                  blurRadius: 0,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(m.$2,
-                              style: FigmaTokens.body(9,
-                                  weight: selected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: selected ? m.$3 : FigmaTokens.muted)),
-                        ],
+          // ── New entry composer (collapses to a compact affordance
+          // after each successful save; entries below stay newest-first) ──
+          if (!_composerExpanded)
+            FigmaCard(
+              onTap: () => setState(() => _composerExpanded = true),
+              padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
+              radius: 20,
+              child: Row(
+                children: [
+                  const Icon(Icons.add_circle_outline, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Add entry',
+                        style: FigmaTokens.heading(15, color: textColor)),
+                  ),
+                  const Icon(Icons.expand_more,
+                      color: FigmaTokens.muted, size: 22),
+                ],
+              ),
+            )
+          else
+            FigmaCard(
+              padding: const EdgeInsets.all(17),
+              radius: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('How are you feeling?',
+                            style: FigmaTokens.heading(16, color: textColor)),
                       ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                _FieldLabel(
-                  label: "What's on your mind?",
-                  textColor: textColor,
-                  controller: _reflectionCtrl,
-                ),
-                const SizedBox(height: 7),
-                _JournalField(
-                  controller: _reflectionCtrl,
-                  hint:
-                      "Write or dictate today's progress, challenges, or anything you want to remember...",
-                  minLines: 4,
-                  maxLines: 6,
-                  isDark: isDark,
-                  textColor: textColor,
-                ),
-                const SizedBox(height: 15),
-                _FieldLabel(
-                  label: "One thing I'm proud of",
-                  textColor: textColor,
-                  controller: _proudCtrl,
-                ),
-                const SizedBox(height: 7),
-                _JournalField(
-                  controller: _proudCtrl,
-                  hint: 'I showed up even when it was difficult.',
-                  minLines: 1,
-                  maxLines: 2,
-                  isDark: isDark,
-                  textColor: textColor,
-                ),
-                const SizedBox(height: 18),
-                FigmaGradientButton(
-                  label: 'Save reflection',
-                  icon: Icons.menu_book,
-                  loading: _saving,
-                  onTap: _save,
-                ),
-              ],
+                      IconButton(
+                        onPressed: () =>
+                            setState(() => _composerExpanded = false),
+                        icon: const Icon(Icons.expand_less, size: 22),
+                        color: FigmaTokens.muted,
+                        tooltip: 'Minimize',
+                        constraints:
+                            const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: _moods.map((m) {
+                      final selected = _selectedMood == m.$1;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedMood = m.$1),
+                        child: Column(
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              width: 38,
+                              height: 38,
+                              transform: selected
+                                  ? (Matrix4.identity()
+                                    ..scaleByDouble(1.12, 1.12, 1.12, 1.0))
+                                  : Matrix4.identity(),
+                              transformAlignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: m.$3,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected ? m.$3 : Colors.transparent,
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: cardBg,
+                                    spreadRadius: selected ? 4 : 6,
+                                    blurRadius: 0,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(m.$2,
+                                style: FigmaTokens.body(9,
+                                    weight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color:
+                                        selected ? m.$3 : FigmaTokens.muted)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  _FieldLabel(
+                    label: "What's on your mind?",
+                    textColor: textColor,
+                    controller: _reflectionCtrl,
+                  ),
+                  const SizedBox(height: 7),
+                  _JournalField(
+                    controller: _reflectionCtrl,
+                    hint:
+                        "Write or dictate today's progress, challenges, or anything you want to remember...",
+                    minLines: 4,
+                    maxLines: 6,
+                    isDark: isDark,
+                    textColor: textColor,
+                  ),
+                  const SizedBox(height: 15),
+                  _FieldLabel(
+                    label: "One thing I'm proud of",
+                    textColor: textColor,
+                    controller: _proudCtrl,
+                  ),
+                  const SizedBox(height: 7),
+                  _JournalField(
+                    controller: _proudCtrl,
+                    hint: 'I showed up even when it was difficult.',
+                    minLines: 1,
+                    maxLines: 2,
+                    isDark: isDark,
+                    textColor: textColor,
+                  ),
+                  const SizedBox(height: 18),
+                  FigmaGradientButton(
+                    label: 'Save reflection',
+                    icon: Icons.menu_book,
+                    loading: _saving,
+                    onTap: _save,
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // ── Entries grouped by date (accordions) ──
           const FigmaSectionHead(title: 'Entries by date', note: null),

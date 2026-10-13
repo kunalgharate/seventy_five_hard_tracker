@@ -97,9 +97,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                     .clamp(360.0, availableHeight)
                     .toDouble(),
           ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -255,7 +255,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
@@ -274,7 +274,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                 ),
                 Text(
                   'Get notified for this task',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -295,6 +297,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
   Widget _buildTypeOption(
       String value, String title, String subtitle, IconData icon) {
     final isSelected = _type == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => setState(() {
         _type = value;
@@ -306,7 +309,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.orange[50] : Colors.white,
+          color: isSelected
+              ? Colors.orange[50]
+              : (isDark ? Colors.grey[800]! : Colors.white),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? Colors.orange[300]! : Colors.grey[300]!,
@@ -327,7 +332,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.orange[700] : Colors.black87,
+                      color: isSelected
+                          ? Colors.orange[700]
+                          : Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   Text(
@@ -374,7 +381,7 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.grey[300]!),
             ),
@@ -572,12 +579,15 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
 
   Widget _buildIntervalChip(String label, int minutes) {
     final isSelected = _intervalMinutes == minutes;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => setState(() => _intervalMinutes = minutes),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.orange[600] : Colors.white,
+          color: isSelected
+              ? Colors.orange[600]
+              : (isDark ? Colors.grey[800]! : Colors.white),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
               color: isSelected ? Colors.orange[600]! : Colors.grey[300]!),
@@ -587,7 +597,9 @@ class _ReminderBottomSheetState extends State<ReminderBottomSheet> {
           style: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ),

@@ -6,6 +6,8 @@ import '../core/theme/figma_widgets.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_state.dart';
 
 /// Insights screen — real data from ChallengeBloc, styled to match the Figma
 /// design (dark highlight card, gradient bar chart, 2x2 metrics grid,
@@ -80,9 +82,12 @@ class _InsightsBody extends StatelessWidget {
     final bestStreak = _computeBestStreak(progress);
     final perfectDays = completedDays;
 
-    // Task performance: completion ratio per challenge
-    final challenges = session.challenges;
-    final taskStats = <String, double>{};
+    // Challenge-task performance: completion ratio per non-regular challenge
+    // in the active session. Habits (regular tasks) live in RegularTaskBloc
+    // and render in their own "Habit performance" section below.
+    final challenges =
+        session.challenges.where((c) => c.taskType != 'regular').toList();
+    final challengeStats = <String, double>{};
     for (final c in challenges) {
       int done = 0, total = 0;
       for (final p in progress) {
@@ -91,7 +96,7 @@ class _InsightsBody extends StatelessWidget {
           if (p.challengeCompletions[c.id] == true) done++;
         }
       }
-      taskStats[c.title] = total > 0 ? done / total : 0.0;
+      challengeStats[c.title] = total > 0 ? done / total : 0.0;
     }
 
     // Weekly completion % per day (last 7 days) — ratio of tasks done that day
@@ -275,38 +280,156 @@ class _InsightsBody extends StatelessWidget {
           ],
         ),
 
-        // ── Habit performance ──
+        // ── Habit performance (habits data source: RegularTaskBloc) ──
         const FigmaSectionHead(title: 'Habit performance', note: null),
-        FigmaCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Column(
-            children: taskStats.entries.toList().asMap().entries.map((e) {
-              final idx = e.key;
-              final name = e.value.key;
-              final ratio = e.value.value;
-              final isLast = idx == taskStats.length - 1;
-              return Container(
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  border: isLast
-                      ? null
-                      : Border(
-                          bottom: BorderSide(
-                              color: isDark
-                                  ? FigmaTokens.darkLine
-                                  : FigmaTokens.line)),
-                ),
-                child: FigmaPerformanceBar(
-                  label: name,
-                  percent: (ratio * 100).round(),
-                  color: perfBarColors[idx % perfBarColors.length],
+        BlocBuilder<RegularTaskBloc, RegularTaskState>(
+          builder: (context, rState) {
+            if (rState is! RegularTaskLoaded || rState.tasks.isEmpty) {
+              return FigmaCard(
+                child: Text(
+                  rState is RegularTaskLoaded
+                      ? 'No habits yet. Add one from the Habits tab.'
+                      : 'Loading habits…',
+                  style: FigmaTokens.body(12, color: FigmaTokens.muted),
                 ),
               );
-            }).toList(),
-          ),
+            }
+            final completions = rState.recentCompletions;
+            final entries = rState.tasks.asMap().entries.map((e) {
+              final task = e.value;
+              int done = 0;
+              for (final c in completions) {
+                if (c.taskCompletions[task.id] == true) done++;
+              }
+              final ratio =
+                  completions.isNotEmpty ? done / completions.length : 0.0;
+              return (task.title, ratio);
+            }).toList();
+            return FigmaCard(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Column(
+                children: entries.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final name = e.value.$1;
+                  final ratio = e.value.$2;
+                  final isLast = idx == entries.length - 1;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      border: isLast
+                          ? null
+                          : Border(
+                              bottom: BorderSide(
+                                  color: isDark
+                                      ? FigmaTokens.darkLine
+                                      : FigmaTokens.line)),
+                    ),
+                    child: FigmaPerformanceBar(
+                      label: name,
+                      percent: (ratio * 100).round(),
+                      color: perfBarColors[idx % perfBarColors.length],
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
+          },
         ),
+
+        // ── Challenges (challenge-sessions data source: ChallengeBloc) ──
+        const FigmaSectionHead(title: 'Challenges', note: null),
+        FigmaCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: challengeStats.isEmpty
+              ? Text(
+                  'No challenge tasks in the active session.',
+                  style: FigmaTokens.body(12, color: FigmaTokens.muted),
+                )
+              : Column(
+                  children:
+                      challengeStats.entries.toList().asMap().entries.map((e) {
+                    final idx = e.key;
+                    final name = e.value.key;
+                    final ratio = e.value.value;
+                    final isLast = idx == challengeStats.length - 1;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: BoxDecoration(
+                        border: isLast
+                            ? null
+                            : Border(
+                                bottom: BorderSide(
+                                    color: isDark
+                                        ? FigmaTokens.darkLine
+                                        : FigmaTokens.line)),
+                      ),
+                      child: FigmaPerformanceBar(
+                        label: name,
+                        percent: (ratio * 100).round(),
+                        color: perfBarColors[idx % perfBarColors.length],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+        const SizedBox(height: 4),
+        _ChallengeSessionsList(state: state),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+class _ChallengeSessionsList extends StatelessWidget {
+  final ChallengeLoaded state;
+  const _ChallengeSessionsList({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sessions = [...state.allSessions]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
+    if (sessions.length <= 1) return const SizedBox.shrink();
+    final past =
+        sessions.where((s) => s.id != state.activeSession?.id).take(3).toList();
+    if (past.isEmpty) return const SizedBox.shrink();
+    final titleColor = isDark ? Colors.white : FigmaTokens.ink;
+    return FigmaCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Column(
+        children: past.asMap().entries.map((e) {
+          final idx = e.key;
+          final s = e.value;
+          final isLast = idx == past.length - 1;
+          final status =
+              s.isCompleted ? 'Completed' : (s.isActive ? 'Active' : 'Ended');
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              border: isLast
+                  ? null
+                  : Border(
+                      bottom: BorderSide(
+                          color: isDark
+                              ? FigmaTokens.darkLine
+                              : FigmaTokens.line)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Day ${s.currentDay}/${s.totalDaysTarget} · ${s.challenges.length} tasks',
+                    style: FigmaTokens.body(12,
+                        weight: FontWeight.w600, color: titleColor),
+                  ),
+                ),
+                Text(status,
+                    style: FigmaTokens.body(11, color: FigmaTokens.muted)),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 }

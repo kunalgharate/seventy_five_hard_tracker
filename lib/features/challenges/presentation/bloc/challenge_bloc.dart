@@ -815,6 +815,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       debugPrint(
           '🟢 [BLoC] DailyProgress saved with completions: ${todayProgress.challengeCompletions.keys.toList()}');
 
+      // Backfill past days so a mid-challenge task doesn't trip the
+      // missed-day check: every EXISTING DailyProgress since the session
+      // start that lacks the new id gets it as exempt (true — the task
+      // didn't exist those days). Days with no entry at all are genuinely
+      // missed days and are left for _checkForMissedDays to judge.
+      final newId = event.challenge.id;
+      final start = activeSession.startDate;
+      var day = DateTime(start.year, start.month, start.day);
+      final todayDate = DateTime(today.year, today.month, today.day);
+      while (day.isBefore(todayDate)) {
+        final past = _repository.getDailyProgress(day);
+        if (past != null && !past.challengeCompletions.containsKey(newId)) {
+          await _repository.saveDailyProgress(
+            past.copyWith(
+              challengeCompletions: {
+                ...past.challengeCompletions,
+                newId: true,
+              },
+            ),
+          );
+        }
+        day = day.add(const Duration(days: 1));
+      }
+
       final currentProgress =
           _repository.getProgressForSession(activeSession.startDate);
       final allSessions = _repository.getAllSessions();

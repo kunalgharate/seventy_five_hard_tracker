@@ -69,6 +69,20 @@ class JournalTimelineScreen extends StatelessWidget {
                     ? c
                     : b.entry.createdAt.compareTo(a.entry.createdAt);
               });
+              // Dedupe: overlapping sessions can return the same
+              // DailyProgress (same date key) twice, decoding the same
+              // journalNote twice. Items are newest-first, so keep the
+              // first occurrence of each entry id + dateKey.
+              final seen = <String>{};
+              final deduped = <_TimelineItem>[];
+              for (final item in items) {
+                final key =
+                    '${item.date.year}-${item.date.month}-${item.date.day}|${item.entry.id}';
+                if (seen.add(key)) deduped.add(item);
+              }
+              items
+                ..clear()
+                ..addAll(deduped);
 
               if (items.isEmpty) {
                 return _buildEmptyState(context);

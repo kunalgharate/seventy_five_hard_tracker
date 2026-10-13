@@ -223,7 +223,18 @@ class _TronPolishButtonState extends State<TronPolishButton> {
 
   Future<void> _polish() async {
     final text = widget.controller.text.trim();
-    if (text.isEmpty || _busy) return;
+    if (_busy) return;
+    if (text.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Write or dictate something first, then tap Tron AI.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     setState(() => _busy = true);
     try {
       final res = await TronAiService().polishDictation(text);

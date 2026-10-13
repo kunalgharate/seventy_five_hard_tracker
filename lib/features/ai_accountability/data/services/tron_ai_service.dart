@@ -34,7 +34,10 @@ class TronAiService {
       );
     }
     if (text.trim().isEmpty) {
-      return const TronAiResponse(text: '', isError: true);
+      return const TronAiResponse(
+        text: 'Write or dictate something first, then tap Tron AI.',
+        isError: true,
+      );
     }
     for (int attempt = 0; attempt < 2; attempt++) {
       try {

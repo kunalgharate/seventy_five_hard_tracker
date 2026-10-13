@@ -11,6 +11,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/mod
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
+import 'package:seventy_five_hard_tracker/widgets/regular_tasks/regular_task_sheet_helpers.dart';
 
 /// Bottom sheet to create a new task from the Squad screen.
 /// Reviewer assignment is optional — tasks without reviewers
@@ -31,7 +32,8 @@ class CreateTaskSheet extends StatefulWidget {
   State<CreateTaskSheet> createState() => _CreateTaskSheetState();
 }
 
-class _CreateTaskSheetState extends State<CreateTaskSheet> {
+class _CreateTaskSheetState extends State<CreateTaskSheet>
+    with RegularTaskSheetHelpers {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -51,6 +53,24 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   /// without typing anything.
   List<AccountabilityPartner> _partners = [];
   bool _loadingPartners = true;
+
+  /// Draft holding the 75-Hard reminder choice. Squad-created 75-Hard tasks
+  /// require a reminder (same rule as ChallengeTaskSheet); routine tasks
+  /// keep reminders optional so this stays untouched for 'regular'.
+  Challenge _hardReminder = const Challenge(
+    id: 'squad-draft',
+    title: '',
+    taskType: 'hard',
+    category: 'general',
+  );
+
+  @override
+  Challenge get sheetChallenge => _hardReminder;
+  @override
+  set sheetChallenge(Challenge value) => _hardReminder = value;
+
+  bool get _hasHardReminder =>
+      _hardReminder.isReminderEnabled && _hardReminder.reminderTime != null;
 
   final _svc = AccountabilityService();
 
@@ -161,6 +181,17 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       setState(() => _titleError = validationError);
       return;
     }
+    // 75-Hard tasks require a reminder before saving (mirrors the
+    // ChallengeTaskSheet gate). Routine-task reminders stay optional.
+    if (_taskType == 'hard' && !_hasHardReminder) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please set a reminder before saving this task'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     setState(() {
       _titleError = null;
       _creating = true;
@@ -251,6 +282,19 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   title: title,
                   taskType: 'hard',
                   category: 'general',
+                  // Reminder was gated above, so scheduling (in the bloc)
+                  // picks this task up exactly like ChallengeSheet tasks.
+                  // Only today's DailyProgress is touched — past days are
+                  // never backfilled, so mid-challenge adds don't mark
+                  // earlier days missed.
+                  reminderTime: _hardReminder.reminderTime,
+                  isReminderEnabled: true,
+                  reminderType: _hardReminder.reminderType,
+                  reminderStartHour: _hardReminder.reminderStartHour,
+                  reminderEndHour: _hardReminder.reminderEndHour,
+                  allowNightReminders: _hardReminder.allowNightReminders,
+                  reminderIntervalMinutes:
+                      _hardReminder.reminderIntervalMinutes,
                 ),
               ),
             );
@@ -386,6 +430,60 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               ],
             ),
             const SizedBox(height: 16),
+
+            // ── Reminder (required for 75 Hard, optional for Routine) ──
+            if (_taskType == 'hard') ...[
+              GestureDetector(
+                onTap: showReminderSetup,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _hasHardReminder
+                        ? Colors.orange.withValues(alpha: 0.08)
+                        : Colors.red.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _hasHardReminder
+                          ? Colors.orange.withValues(alpha: 0.4)
+                          : Colors.red.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _hasHardReminder ? Icons.alarm_on : Icons.alarm_add,
+                        size: 18,
+                        color: _hasHardReminder
+                            ? Colors.orange[700]
+                            : Colors.red[700],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _hasHardReminder
+                              ? 'Reminder Set'
+                              : 'Set Reminder (Required)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _hasHardReminder
+                                ? Colors.orange[800]
+                                : Colors.red[700],
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 18,
+                          color: _hasHardReminder
+                              ? Colors.orange[400]
+                              : Colors.red[400]),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // ── Task name ──
             TextField(
