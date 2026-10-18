@@ -33,17 +33,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   int _currentIndex = 0;
   Future<void>? _resumeSyncInFlight;
   final Set<int> _visitedTabs = {0};
+  final Map<int, Widget> _builtScreens = {};
 
   late final List<Widget Function()> _screenBuilders = [
     () => HomeScreen(
-      onGoToSquad: () => _selectTab(4),
-    ),
+          onGoToSquad: () => _selectTab(4),
+        ),
     () => const RegularTasksScreen(),
     () => const JournalScreen(),
     () => const InsightsScreen(),
     () => AccountabilityScreen(
-      onGoToProfile: () => _selectTab(5),
-    ),
+          onGoToProfile: () => _selectTab(5),
+        ),
     () => const ProfileScreen(),
   ];
 
@@ -124,7 +125,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         index: _currentIndex,
         children: List<Widget>.generate(_screenBuilders.length, (index) {
           return _visitedTabs.contains(index)
-              ? _screenBuilders[index]()
+              ? _builtScreens.putIfAbsent(index, _screenBuilders[index])
               : const SizedBox.shrink();
         }),
       ),

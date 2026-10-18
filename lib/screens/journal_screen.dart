@@ -467,7 +467,7 @@ class _DayAccordion extends StatelessWidget {
             tilePadding: const EdgeInsets.symmetric(horizontal: 8),
             childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
             leading: Text(
-              moods.isNotEmpty ? moods.last : '📝',
+              moods.isNotEmpty ? moods.first : '📝',
               style: const TextStyle(fontSize: 26),
             ),
             title: Text(
