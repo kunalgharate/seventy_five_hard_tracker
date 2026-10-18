@@ -208,6 +208,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
     try {
       // Connectivity snapshot: drives the offline fallback paths below.
       final offline = !await ConnectivityService().hasInternet();
+      if (!mounted) return;
       if (offline && _emailInviteOnly) {
         setState(() => _creating = false);
         ScaffoldMessenger.of(context).showSnackBar(

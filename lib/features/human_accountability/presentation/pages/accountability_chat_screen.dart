@@ -188,7 +188,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not ${action} message: $e')),
+          SnackBar(content: Text('Could not $action message: $e')),
         );
       }
     }
