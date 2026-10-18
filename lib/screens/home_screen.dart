@@ -648,16 +648,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openNotifications() async {
     final bloc = context.read<AccountabilityBloc>();
     final route = Navigator.of(context).push<void>(
-          MaterialPageRoute(
-            builder: (_) => BlocProvider.value(
-              value: bloc,
-              child: const Scaffold(
-                appBar: CustomAppBar(title: 'Reviews'),
-                body: ReviewsTabV2(),
-              ),
-            ),
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: bloc,
+          child: const Scaffold(
+            appBar: CustomAppBar(title: 'Reviews'),
+            body: ReviewsTabV2(),
           ),
-        );
+        ),
+      ),
+    );
     try {
       await _markNotificationsRead();
     } catch (e) {

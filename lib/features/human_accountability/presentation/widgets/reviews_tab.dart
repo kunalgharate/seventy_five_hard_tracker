@@ -719,8 +719,11 @@ class _HistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isApproved = _isApproved;
     final isExpired = _isExpired;
-    final color =
-        isApproved ? Colors.green : isExpired ? Colors.orange : Colors.red;
+    final color = isApproved
+        ? Colors.green
+        : isExpired
+            ? Colors.orange
+            : Colors.red;
     final icon = isApproved
         ? Icons.check_circle
         : isExpired
@@ -766,7 +769,7 @@ class _HistoryCard extends StatelessWidget {
                             : isExpired
                                 ? 'Expired — ${task.assignedByName}\'s task'
                                 : 'You rejected '
-                                '${task.assignedByName}\'s task',
+                                    '${task.assignedByName}\'s task',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
                   if (comment != null)

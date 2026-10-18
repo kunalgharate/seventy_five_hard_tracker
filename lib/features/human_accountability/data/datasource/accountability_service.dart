@@ -1740,8 +1740,7 @@ class AccountabilityService {
     // Subscriptions start paused so the Firestore listeners only attach when
     // the returned stream is actually listened to (matching the lazy
     // behavior of raw .snapshots()).
-    final subs = <StreamSubscription<
-        QuerySnapshot<Map<String, dynamic>>>>[];
+    final subs = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
     final controller = StreamController<List<AccountabilityTask>>(
       onListen: () {
         for (final sub in subs) {
@@ -1780,7 +1779,8 @@ class AccountabilityService {
         emit();
       }, onError: (Object e) {
         if (kDebugMode) {
-          debugPrint('[AccountabilityService] tasksStream($uidField) error: $e');
+          debugPrint(
+              '[AccountabilityService] tasksStream($uidField) error: $e');
         }
         if (!controller.isClosed) controller.addError(e);
       });
@@ -2857,7 +2857,8 @@ class AccountabilityService {
         (txn) async {
           final doc = await txn.get(ref);
           if (!doc.exists) return null;
-          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+          final task =
+              AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
           // Validate: only the accountable user can submit for review
           if (task.accountableUid != uid) return null;
@@ -2906,18 +2907,22 @@ class AccountabilityService {
         (txn) async {
           final doc = await txn.get(ref);
           if (!doc.exists) return null;
-          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+          final task =
+              AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
           // Validate: only the partner can approve
           if (task.partnerUid != uid && task.assignedByUid != uid) {
             return null;
           }
           // Validate: must be in pendingReview state
-          if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+          if (task.status != AccountabilityTaskStatus.pendingReview) {
+            return null;
+          }
           // Validate: not already reviewed
           if (task.reviewedAt != null) return null;
           // Validate: not expired
-          if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+          if (task.expiresAt != null &&
+              DateTime.now().isAfter(task.expiresAt!)) {
             return null;
           }
 
@@ -2970,18 +2975,22 @@ class AccountabilityService {
         (txn) async {
           final doc = await txn.get(ref);
           if (!doc.exists) return null;
-          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+          final task =
+              AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
           // Validate: only the partner can reject
           if (task.partnerUid != uid && task.assignedByUid != uid) {
             return null;
           }
           // Validate: must be in pendingReview state
-          if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+          if (task.status != AccountabilityTaskStatus.pendingReview) {
+            return null;
+          }
           // Validate: not already reviewed
           if (task.reviewedAt != null) return null;
           // Validate: not expired
-          if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+          if (task.expiresAt != null &&
+              DateTime.now().isAfter(task.expiresAt!)) {
             return null;
           }
 
@@ -3151,12 +3160,10 @@ class AccountabilityService {
         ProofStatus.rejected.toWire,
       ];
       final snaps = await Future.wait([
-        tasks
-            .where('assignedByUid', isEqualTo: uid)
-            .where('status', whereIn: ['approved', 'rejected', 'expired']).get(),
-        tasks
-            .where('accountableUserIds', arrayContains: uid)
-            .where('status', whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks.where('assignedByUid', isEqualTo: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks.where('accountableUserIds', arrayContains: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks
             .where('assignedByUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)

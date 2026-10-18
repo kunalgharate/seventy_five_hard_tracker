@@ -147,8 +147,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
                 child: const Text('Cancel'),
               ),
               TextButton(
-                onPressed: () =>
-                    Navigator.pop(context, controller.text.trim()),
+                onPressed: () => Navigator.pop(context, controller.text.trim()),
                 child: const Text('Save'),
               ),
             ],
@@ -166,7 +165,8 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Delete message?'),
-            content: const Text('This message will be removed for both of you.'),
+            content:
+                const Text('This message will be removed for both of you.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),

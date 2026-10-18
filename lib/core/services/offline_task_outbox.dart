@@ -34,10 +34,10 @@ class OfflineTaskOutbox {
     OfflineTaskCreator? createTask,
   })  : _hasInternet = hasInternet ?? ConnectivityService().hasInternet,
         _isReady = isReady ?? (() => AccountabilityService().isReady),
-        _currentUid =
-            currentUid ?? (() => AccountabilityService().currentUid),
+        _currentUid = currentUid ?? (() => AccountabilityService().currentUid),
         _resolvePartnership = resolvePartnership ??
-            ((uid, name) => AccountabilityService().ensurePartnership(uid, name)),
+            ((uid, name) =>
+                AccountabilityService().ensurePartnership(uid, name)),
         _createTask = createTask ?? _createWithAccountabilityService;
 
   static final OfflineTaskOutbox instance = OfflineTaskOutbox();

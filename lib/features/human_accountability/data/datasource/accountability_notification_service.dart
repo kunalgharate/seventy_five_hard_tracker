@@ -74,8 +74,7 @@ class AccountabilityNotificationService {
   /// '_' are legacy camelCase enum names and pass through untouched.
   static String enumNameFromCanonicalType(String canonical) {
     if (!canonical.contains('_')) return canonical;
-    final words =
-        canonical.split('_').where((w) => w.isNotEmpty).toList();
+    final words = canonical.split('_').where((w) => w.isNotEmpty).toList();
     if (words.isEmpty) return canonical;
     final enumName = StringBuffer(words.first);
     for (final word in words.skip(1)) {
@@ -198,8 +197,7 @@ class AccountabilityNotificationService {
         title: 'New Task Assigned',
         body: '$ownerName assigned \'$taskName\' to you',
         data: {
-          'type':
-              AccountabilityNotificationType.taskAssigned.canonicalType,
+          'type': AccountabilityNotificationType.taskAssigned.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -218,8 +216,7 @@ class AccountabilityNotificationService {
         title: '$ownerName\'s Task',
         body: '\'$taskName\' needs your review',
         data: {
-          'type':
-              AccountabilityNotificationType.taskNeedsReview.canonicalType,
+          'type': AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -237,8 +234,7 @@ class AccountabilityNotificationService {
         title: 'Task Approved ✅',
         body: 'Your partner approved \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewApproved.canonicalType,
+          'type': AccountabilityNotificationType.reviewApproved.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -259,8 +255,7 @@ class AccountabilityNotificationService {
             ? 'Your partner rejected \'$taskName\': $comment'
             : 'Your partner rejected \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewRejected.canonicalType,
+          'type': AccountabilityNotificationType.reviewRejected.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -297,8 +292,7 @@ class AccountabilityNotificationService {
         title: 'Review Expired',
         body: 'Review window closed — \'$taskName\' marked incomplete',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewExpired.canonicalType,
+          'type': AccountabilityNotificationType.reviewExpired.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -321,8 +315,7 @@ class AccountabilityNotificationService {
         // Phase-4 conveniences reuse a parent enum value above; the payload
         // type still travels as that enum's canonical string.
         data: {
-          'type':
-              AccountabilityNotificationType.taskNeedsReview.canonicalType,
+          'type': AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -382,8 +375,7 @@ class AccountabilityNotificationService {
         title: 'Proof Submitted',
         body: '$ownerName submitted proof for \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.taskNeedsReview.canonicalType,
+          'type': AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -407,8 +399,7 @@ class AccountabilityNotificationService {
             ? '$reviewerName approved \'$taskName\' — task completed!'
             : '$reviewerName approved your proof for \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewApproved.canonicalType,
+          'type': AccountabilityNotificationType.reviewApproved.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -428,8 +419,7 @@ class AccountabilityNotificationService {
         title: 'Task Needs Work',
         body: '$reviewerName rejected \'$taskName\': $comment',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewRejected.canonicalType,
+          'type': AccountabilityNotificationType.reviewRejected.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',

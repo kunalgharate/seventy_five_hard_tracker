@@ -899,12 +899,10 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       }
 
       switch (accStatus) {
-        case AccountabilityTaskStatus.requested
-            when !widget.isEditable:
+        case AccountabilityTaskStatus.requested when !widget.isEditable:
           // Non-editable past day — falls through to the generic 'Missed' check.
           break;
-        case AccountabilityTaskStatus.pending
-            when !widget.isEditable:
+        case AccountabilityTaskStatus.pending when !widget.isEditable:
           // Non-editable past day — falls through to the generic 'Missed' check.
           break;
         case AccountabilityTaskStatus.requested:
