@@ -50,20 +50,20 @@ class StreakReviewOutcome extends StreakImpacted {
 }
 
 StreakReviewOutcome createStreakReviewOutcome({
-      required AccountabilityTask task,
-      required int newStreakDay,
-      required String outcome,
+  required AccountabilityTask task,
+  required int newStreakDay,
+  required String outcome,
 }) =>
-        StreakReviewOutcome(
-          newStreakDay: newStreakDay,
-          reason: outcome,
-          taskId: task.id,
-          challengeId: task.challengeId,
-          taskOwnerUid: task.assignedByUid,
-          taskType: task.taskType,
-          reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
-          taskAssignedAt: task.assignedAt,
-        );
+    StreakReviewOutcome(
+      newStreakDay: newStreakDay,
+      reason: outcome,
+      taskId: task.id,
+      challengeId: task.challengeId,
+      taskOwnerUid: task.assignedByUid,
+      taskType: task.taskType,
+      reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
+      taskAssignedAt: task.assignedAt,
+    );
 
 class AccountabilityBloc
     extends Bloc<AccountabilityEvent, AccountabilityState> {

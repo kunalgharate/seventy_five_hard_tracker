@@ -263,8 +263,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _applyNotificationSnapshot(
-      QuerySnapshot<Map<String, dynamic>> snap) {
+  void _applyNotificationSnapshot(QuerySnapshot<Map<String, dynamic>> snap) {
     if (!mounted) return;
     setState(() {
       // Docs the user muted via notification prefs stay out of the cards.
@@ -301,16 +300,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (surfacedIds.isEmpty) return;
     final batch = FirebaseFirestore.instance.batch();
     for (final notification in surfacedNotifications) {
-        final id = notification['id'];
-        if (id == null || id.isEmpty) continue;
-        batch.update(
-          FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
-          {'isRead': true, 'readAt': Timestamp.now()},
-        );
+      final id = notification['id'];
+      if (id == null || id.isEmpty) continue;
+      batch.update(
+        FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
+        {'isRead': true, 'readAt': Timestamp.now()},
+      );
     }
     if (mounted) {
-      setState(() => _recentNotifications
-          .removeWhere((notification) => surfacedIds.contains(notification['id'])));
+      setState(() => _recentNotifications.removeWhere(
+          (notification) => surfacedIds.contains(notification['id'])));
     }
     try {
       await batch.commit();

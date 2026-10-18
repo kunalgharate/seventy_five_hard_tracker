@@ -674,8 +674,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     Color color;
     IconData icon;
 
-    if (accStatus == AccountabilityTaskStatus.requested &&
-        !widget.isEditable) {
+    if (accStatus == AccountabilityTaskStatus.requested && !widget.isEditable) {
       text = 'Awaiting acceptance';
       color = Colors.orange;
       icon = Icons.hourglass_empty;

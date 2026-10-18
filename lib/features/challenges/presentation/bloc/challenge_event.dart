@@ -221,8 +221,7 @@ class ReviewOutcomeObserved extends ChallengeEvent {
       !taskAssignedAt!.isBefore(session.startDate);
 
   @override
-  List<Object?> get props =>
-      [
+  List<Object?> get props => [
         taskId,
         challengeId,
         taskOwnerUid,

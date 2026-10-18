@@ -201,7 +201,8 @@ class OfflineTaskOutbox {
       // queued sender is still the signed-in account.
       if (creator.isEmpty || creator != uid) {
         if (kDebugMode) {
-          debugPrint('[OfflineTaskOutbox] dropping invalid or stale task "$creator"');
+          debugPrint(
+              '[OfflineTaskOutbox] dropping invalid or stale task "$creator"');
         }
         await _removeQueuedItem(item);
         continue;
