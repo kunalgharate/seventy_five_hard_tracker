@@ -218,6 +218,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             (isSignedIn ? 'Signed In' : (_cachedName ?? 'Local Challenger'));
         final email = user?.email ?? _cachedEmail;
         final photoUrl = user?.photoURL ?? _cachedPhotoUrl;
+        final photoImage = photoUrl != null && photoUrl.isNotEmpty
+            ? NetworkImage(photoUrl)
+            : null;
         // Offline hint: auth stream has no live user but we have saved data,
         // or the stream itself errored.
         final showOfflineHint = (user == null && hasCache) || snapshot.hasError;
@@ -245,27 +248,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Hero(
-                        tag: 'profile_avatar',
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.2),
-                          ),
-                          child: CircleAvatar(
-                            radius: 45,
-                            backgroundColor: Colors.white,
-                            backgroundImage:
-                                (photoUrl != null && photoUrl.isNotEmpty)
-                                    ? NetworkImage(photoUrl)
-                                    : null,
-                            onBackgroundImageError: (_, __) {},
-                            child: (photoUrl != null && photoUrl.isNotEmpty)
-                                ? null
-                                : const Icon(Icons.person,
-                                    size: 50, color: AppColors.primary),
-                          ),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                        child: CircleAvatar(
+                          radius: 45,
+                          backgroundColor: Colors.white,
+                          backgroundImage: photoImage,
+                          onBackgroundImageError:
+                              photoImage != null ? (_, __) {} : null,
+                          child: photoImage != null
+                              ? null
+                              : const Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: AppColors.primary,
+                                ),
                         ),
                       )
                           .animate()

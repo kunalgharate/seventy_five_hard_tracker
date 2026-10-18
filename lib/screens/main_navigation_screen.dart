@@ -32,18 +32,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
   Future<void>? _resumeSyncInFlight;
+  final Set<int> _visitedTabs = {0};
 
-  late final List<Widget> _screens = [
-    HomeScreen(
-      onGoToSquad: () => setState(() => _currentIndex = 4),
+  late final List<Widget Function()> _screenBuilders = [
+    () => HomeScreen(
+      onGoToSquad: () => _selectTab(4),
     ),
-    const RegularTasksScreen(),
-    const JournalScreen(),
-    const InsightsScreen(),
-    AccountabilityScreen(
-      onGoToProfile: () => setState(() => _currentIndex = 5),
+    () => const RegularTasksScreen(),
+    () => const JournalScreen(),
+    () => const InsightsScreen(),
+    () => AccountabilityScreen(
+      onGoToProfile: () => _selectTab(5),
     ),
-    const ProfileScreen(),
+    () => const ProfileScreen(),
   ];
 
   @override
@@ -56,6 +57,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      _currentIndex = index;
+      _visitedTabs.add(index);
+    });
   }
 
   @override
@@ -112,7 +120,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _screens),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: List<Widget>.generate(_screenBuilders.length, (index) {
+          return _visitedTabs.contains(index)
+              ? _screenBuilders[index]()
+              : const SizedBox.shrink();
+        }),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -124,7 +139,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             // partner) sees fresh data instead of the last cached payload.
             context.read<AccountabilityBloc>().add(LoadAccountabilityData());
           }
-          setState(() => _currentIndex = index);
+          _selectTab(index);
         },
         selectedItemColor: const Color(0xFFFF5449),
         unselectedItemColor:
