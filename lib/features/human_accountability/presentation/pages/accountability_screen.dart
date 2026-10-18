@@ -338,20 +338,35 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   /// errors and return empty lists when offline.
   Future<void> _onRefreshPressed() async {
     if (_isRefreshing) return;
-    final refreshed = await refreshWhenOnline(
-      hasInternet: ConnectivityService().hasInternet,
-      refresh: () async {
-        if (!mounted) return;
-        setState(() => _isRefreshing = true);
-        context.read<AccountabilityBloc>().add(LoadAccountabilityData());
-      },
-    );
-    if (!refreshed) {
-      if (!mounted) return;
-      _showSnack(
-        'You\'re offline — showing your latest saved squad data.',
-        isSuccess: false,
+    setState(() => _isRefreshing = true);
+    var loadDispatched = false;
+    try {
+      final refreshed = await refreshWhenOnline(
+        hasInternet: ConnectivityService().hasInternet,
+        refresh: () async {
+          if (!mounted) return;
+          context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+          loadDispatched = true;
+        },
       );
+      if (!refreshed) {
+        if (!mounted) return;
+        setState(() => _isRefreshing = false);
+        _showSnack(
+          'You\'re offline — showing your latest saved squad data.',
+          isSuccess: false,
+        );
+      }
+    } catch (_) {
+      if (mounted && !loadDispatched) {
+        setState(() => _isRefreshing = false);
+      }
+      rethrow;
+    } finally {
+      // The bloc listener owns spinner cleanup after a dispatched load.
+      if (mounted && !loadDispatched && _isRefreshing) {
+        setState(() => _isRefreshing = false);
+      }
     }
   }
 

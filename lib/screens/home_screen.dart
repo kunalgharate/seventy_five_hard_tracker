@@ -43,7 +43,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
@@ -75,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Recent review notifications for inline display.
   List<Map<String, String>> _recentNotifications = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notificationsSub;
 
   /// Daily motivational quote.
   String _dailyQuote =
@@ -93,10 +94,38 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     context.read<ChallengeBloc>().add(LoadChallengeData());
-    _loadRecentNotifications();
+    _subscribeToNotifications();
     _loadDailyQuote();
     _subscribeToAccountabilityStreams();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _subscribeToNotifications();
+  }
+
+  void _subscribeToNotifications() {
+    _notificationsSub?.cancel();
+    final uid = AccountabilityService().currentUid;
+    if (uid == null) return;
+    _notificationsSub = FirebaseFirestore.instance
+        .collection('fcm_notifications')
+        .where('recipientUid', isEqualTo: uid)
+        .where('delivered', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .listen(
+      (snap) => _applyNotificationSnapshot(snap),
+      onError: (Object e) {
+        if (kDebugMode) {
+          debugPrint('[HomeScreen] notification stream failed: $e');
+        }
+      },
+    );
   }
 
   /// Listens to both directions of the review flow so approval reflects on
@@ -123,6 +152,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// complete too — so both sides show the same checked state.
   void _applyTaskStreamUpdate(List<AccountabilityTask> tasks) {
     if (!mounted) return;
+    final myUid = AccountabilityService().currentUid;
+    final challengeBloc = context.read<ChallengeBloc>();
+    for (final task in tasks) {
+      final outcome = reviewOutcomeForOwnerTask(task, currentUid: myUid);
+      if (outcome != null) challengeBloc.add(outcome);
+    }
+
     final state = context.read<ChallengeBloc>().state;
     if (state is! ChallengeLoaded || !state.hasActiveSession) return;
     final challengeIds =
@@ -131,7 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final task in tasks) {
       final cid = task.challengeId;
       if (cid == null || !challengeIds.contains(cid)) continue;
-      final myUid = AccountabilityService().currentUid;
       final reviewOnly = myUid != null &&
           task.accountableUid == myUid &&
           task.assignedByUid != myUid;
@@ -173,67 +208,96 @@ class _HomeScreenState extends State<HomeScreen> {
           .where('recipientUid', isEqualTo: uid)
           .where('delivered', isEqualTo: true)
           .orderBy('createdAt', descending: true)
+          .limit(100)
           .get();
-      if (!mounted) return;
-      setState(() {
-        // Docs the user muted via notification prefs stay out of the cards.
-        _recentNotifications = unreadDeliveredNotifications(
-          snap.docs.map((doc) => {'id': doc.id, ...doc.data()}),
-        ).map((data) {
-          // Canonical snake_case type — payload type first, legacy camelCase
-          // enum-name top level normalized the same way as delivery.
-          final notifData =
-              (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-          final type = AccountabilityNotificationService.canonicalTypeFromName(
-              (notifData['type'] ?? data['type'] ?? '').toString());
-          String action = 'feedback';
-          if (type == 'review_approved') action = 'approved';
-          if (type == 'review_rejected') action = 'rejected';
-          return {
-            'id': data['id'] as String? ?? '',
-            'reviewer': (data['title'] as String? ?? '').split(' ').first,
-            'task': data['body'] as String? ?? '',
-            'action': action,
-          };
-        }).toList();
-      });
+      _applyNotificationSnapshot(snap);
     } catch (e) {
       if (kDebugMode) debugPrint('[HomeScreen] notification load failed: $e');
     }
   }
 
-  /// Marks all visible delivered notifications as read so the Today badge
-  /// clears once the user has seen them. Batched Firestore write (queues
-  /// fine offline — local reads already include pending writes).
-  Future<void> _markNotificationsRead() async {
-    if (_recentNotifications.isEmpty) return;
-    for (var offset = 0; offset < _recentNotifications.length; offset += 450) {
-      final batch = FirebaseFirestore.instance.batch();
-      final chunk = _recentNotifications.skip(offset).take(450);
-      for (final notification in chunk) {
+  void _applyNotificationSnapshot(
+      QuerySnapshot<Map<String, dynamic>> snap) {
+    if (!mounted) return;
+    setState(() {
+      // Docs the user muted via notification prefs stay out of the cards.
+      _recentNotifications = unreadDeliveredNotifications(
+        snap.docs.map((doc) => {'id': doc.id, ...doc.data()}),
+      ).map((data) {
+        final notifData =
+            (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+        final type = AccountabilityNotificationService.canonicalTypeFromName(
+            (notifData['type'] ?? data['type'] ?? '').toString());
+        String action = 'feedback';
+        if (type == 'review_approved') action = 'approved';
+        if (type == 'review_rejected') action = 'rejected';
+        return {
+          'id': data['id'] as String? ?? '',
+          'reviewer': (data['title'] as String? ?? '').split(' ').first,
+          'task': data['body'] as String? ?? '',
+          'action': action,
+        };
+      }).toList();
+    });
+  }
+
+  /// Marks only the notifications shown in the inline cards as read.
+  Future<void> _markNotificationsRead(
+    List<Map<String, String>> surfacedNotifications,
+  ) async {
+    if (surfacedNotifications.isEmpty) return;
+    final surfacedIds = surfacedNotifications
+        .map((notification) => notification['id'])
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (surfacedIds.isEmpty) return;
+    final batch = FirebaseFirestore.instance.batch();
+    for (final notification in surfacedNotifications) {
         final id = notification['id'];
         if (id == null || id.isEmpty) continue;
         batch.update(
           FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
           {'isRead': true, 'readAt': Timestamp.now()},
         );
-      }
-      await batch.commit();
     }
-    if (mounted) setState(() => _recentNotifications.clear());
+    if (mounted) {
+      setState(() => _recentNotifications
+          .removeWhere((notification) => surfacedIds.contains(notification['id'])));
+    }
+    try {
+      await batch.commit();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not mark notifications as read: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _dismissNotification(Map<String, String> notification) async {
     final id = notification['id'];
     if (id == null || id.isEmpty) return;
+    final index = _recentNotifications.indexOf(notification);
+    if (mounted) {
+      setState(() => _recentNotifications.remove(notification));
+    }
     try {
       await FirebaseFirestore.instance
           .collection('fcm_notifications')
           .doc(id)
           .update({'isRead': true, 'readAt': Timestamp.now()});
-      if (mounted) setState(() => _recentNotifications.remove(notification));
     } catch (e) {
       if (mounted) {
+        setState(() {
+          if (!_recentNotifications.any((item) => item['id'] == id)) {
+            _recentNotifications.insert(
+              index.clamp(0, _recentNotifications.length),
+              notification,
+            );
+          }
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not update notification: $e')),
         );
@@ -250,6 +314,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationsSub?.cancel();
     _assignedByMeSub?.cancel();
     _myTasksSub?.cancel();
     _scrollController.dispose();
@@ -647,6 +713,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// bell badge goes to zero (BUG-01: badge must reflect unread state).
   Future<void> _openNotifications() async {
     final bloc = context.read<AccountabilityBloc>();
+    final surfacedNotifications = _recentNotifications.take(3).toList();
     final route = Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
@@ -658,17 +725,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-    try {
-      await _markNotificationsRead();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not mark notifications as read: $e')),
-        );
-      }
-    }
     await route;
-    if (mounted) await _loadRecentNotifications();
+    if (!mounted) return;
+    unawaited(_markNotificationsRead(surfacedNotifications));
+    unawaited(_loadRecentNotifications());
   }
 
   /// Saves a task toggle end-to-end. Shows a blocking progress dialog while

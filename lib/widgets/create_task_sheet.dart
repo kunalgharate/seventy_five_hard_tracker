@@ -204,6 +204,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       _titleError = null;
       _creating = true;
     });
+    final senderUid = _svc.currentUid;
 
     try {
       // Connectivity snapshot: drives the offline fallback paths below.
@@ -225,15 +226,27 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       String accountableUid = _svc.currentUid ?? '';
       String accountableName = _svc.currentUserDisplayName;
       String? accountableEmail;
+      var queuedOffline = false;
 
       // If reviewer selected, create partnership + task with reviewer
       if (_selectedReviewer != null) {
-        partnershipId = offline
-            ? _selectedPartnershipId
-            : await _svc.ensurePartnership(
-                _selectedReviewer!.uid,
-                _selectedReviewer!.displayName,
-              );
+        if (offline) {
+          partnershipId = _selectedPartnershipId;
+          queuedOffline = true;
+        } else {
+          _assertSenderUnchanged(senderUid);
+          try {
+            partnershipId = await _svc.ensurePartnership(
+              _selectedReviewer!.uid,
+              _selectedReviewer!.displayName,
+            );
+          } catch (e) {
+            if (await ConnectivityService().hasInternet()) rethrow;
+            partnershipId = _selectedPartnershipId;
+            queuedOffline = true;
+          }
+          _assertSenderUnchanged(senderUid);
+        }
         accountableUid = _selectedReviewer!.uid;
         accountableName = _selectedReviewer!.displayName;
       } else if (_emailInviteOnly) {
@@ -257,10 +270,6 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
         accountableName = email;
         accountableEmail = email;
       }
-
-      // Set when an offline creation is queued for replay instead of
-      // committed right away — switches the success messaging below.
-      bool queuedOffline = false;
 
       // ── Routine tasks must appear in the Habits tab ──
       // Create a local RegularTask so it shows up under "Your habits",
@@ -335,22 +344,28 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       // challenge (75 Hard) or the habit (Routine) created above.
       bool ok = true;
       final hasReviewer = _selectedReviewer != null || _emailInviteOnly;
+      Future<void> enqueueOfflineTask() async {
+        _assertSenderUnchanged(senderUid);
+        await OfflineTaskOutbox.instance.enqueue({
+          'senderUid': senderUid,
+          'accountableUid': accountableUid,
+          'accountableName': accountableName,
+          'partnershipId': partnershipId ?? '',
+          'title': title,
+          'description': _descCtrl.text.trim(),
+          'challengeId': challengeId,
+          'partnerUid': senderUid,
+          'taskType': _taskType == 'regular' ? 'regular' : 'hard',
+        });
+      }
+
       if (hasReviewer) {
-        if (offline && _selectedReviewer != null) {
-          await OfflineTaskOutbox.instance.enqueue({
-            'senderUid': _svc.currentUid,
-            'accountableUid': accountableUid,
-            'accountableName': accountableName,
-            'partnershipId': partnershipId ?? '',
-            'title': title,
-            'description': _descCtrl.text.trim(),
-            'challengeId': challengeId,
-            'partnerUid': _svc.currentUid,
-            'taskType': _taskType == 'regular' ? 'regular' : 'hard',
-          });
+        if (queuedOffline && _selectedReviewer != null) {
+          await enqueueOfflineTask();
           queuedOffline = true;
           ok = true;
         } else {
+          _assertSenderUnchanged(senderUid);
           final created = await _svc.createAccountabilityTask(
             accountableUid: accountableUid,
             accountableName: accountableName,
@@ -364,7 +379,16 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
             // taskType is persisted as 'hard' unless this is a routine task
             taskType: _taskType == 'regular' ? 'regular' : null,
           );
-          ok = created != null;
+          _assertSenderUnchanged(senderUid);
+          if (created == null &&
+              _selectedReviewer != null &&
+              !await ConnectivityService().hasInternet()) {
+            await enqueueOfflineTask();
+            queuedOffline = true;
+            ok = true;
+          } else {
+            ok = created != null;
+          }
         }
       }
 
@@ -408,6 +432,15 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           ),
         );
       }
+    }
+  }
+
+  void _assertSenderUnchanged(String? senderUid) {
+    if (senderUid == null ||
+        senderUid.isEmpty ||
+        _svc.currentUid != senderUid) {
+      throw StateError(
+          'Your signed-in account changed while creating the task.');
     }
   }
 

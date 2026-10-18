@@ -31,6 +31,7 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
+  Future<void>? _resumeSyncInFlight;
 
   late final List<Widget> _screens = [
     HomeScreen(
@@ -67,16 +68,41 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     unawaited(_syncLocalChanges());
   }
 
-  Future<void> _syncLocalChanges() async {
+  Future<void> _syncLocalChanges() {
+    final activeSync = _resumeSyncInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<void> sync;
+    sync = _performLocalSync().whenComplete(() {
+      if (identical(_resumeSyncInFlight, sync)) {
+        _resumeSyncInFlight = null;
+      }
+    });
+    _resumeSyncInFlight = sync;
+    return sync;
+  }
+
+  Future<void> _performLocalSync() async {
     try {
       if (!await ConnectivityService().hasInternet()) return;
       final db = DatabaseRepository();
       final taskRepo = RegularTaskRepository();
       await db.init();
       await taskRepo.init();
-      await CloudSyncService().autoSync(db, taskRepo);
-      await OfflineTaskOutbox.instance.flush();
+      final syncSucceeded =
+          await CloudSyncService().autoSyncWithResult(db, taskRepo);
+      final outboxResult = await OfflineTaskOutbox.instance.flushWithResult();
+      if (!syncSucceeded || !outboxResult.succeeded) {
+        ConnectivityService().requestReconnectRetry();
+        if (kDebugMode) {
+          debugPrint(
+            'Resume sync incomplete; pending work will retry on the next '
+            'resume or reconnect.',
+          );
+        }
+      }
     } catch (e) {
+      ConnectivityService().requestReconnectRetry();
       if (kDebugMode) debugPrint('Resume sync failed: $e');
     }
   }

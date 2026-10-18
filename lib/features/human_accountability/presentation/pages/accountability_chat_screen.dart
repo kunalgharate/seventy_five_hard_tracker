@@ -154,7 +154,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           ),
         );
         controller.dispose();
-        if (editedText == null) return;
+        if (editedText == null || editedText.trim().isEmpty) return;
         await _svc.editMessage(
           partnershipId: message.partnershipId,
           messageId: message.id,
@@ -165,8 +165,10 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Delete message?'),
-            content:
-                const Text('This message will be removed for both of you.'),
+            content: const Text(
+              'The chat message will be deleted. Any notification copies may '
+              'still be visible.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),

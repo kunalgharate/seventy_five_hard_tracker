@@ -46,6 +46,8 @@ class CloudSyncService {
 
   /// Derived AES-256 key. Derived from the Firebase UID on demand.
   enc.Key? _aesKey;
+  Future<bool>? _autoSyncInFlight;
+  Future<bool>? _syncToCloudInFlight;
 
   User? get currentUser => _auth.currentUser;
   bool get isSignedIn => _auth.currentUser != null;
@@ -255,9 +257,37 @@ class CloudSyncService {
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {
-    if (!isSignedIn) return;
-    if (!await hasConsentBeenGiven()) return;
-    await syncToCloud(db, taskRepo);
+    if (!await autoSyncWithResult(db, taskRepo)) {
+      throw StateError('Automatic cloud sync did not complete successfully.');
+    }
+  }
+
+  /// Runs auto-sync once when concurrent resume/reconnect requests overlap.
+  ///
+  /// A signed-out user or a user without cloud-sync consent has no sync work
+  /// to perform and is considered successful. Upload failures are reported.
+  Future<bool> autoSyncWithResult(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) {
+    final activeSync = _autoSyncInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<bool> sync;
+    sync = _runAutoSync(db, taskRepo).whenComplete(() {
+      if (identical(_autoSyncInFlight, sync)) _autoSyncInFlight = null;
+    });
+    _autoSyncInFlight = sync;
+    return sync;
+  }
+
+  Future<bool> _runAutoSync(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    if (!isSignedIn) return true;
+    if (!await hasConsentBeenGiven()) return true;
+    return syncToCloud(db, taskRepo);
   }
 
   // ── Sync to cloud ────────────────────────────────────────────────────────
@@ -271,6 +301,21 @@ class CloudSyncService {
   /// the derived key causes decryption to throw, preventing silent data
   /// corruption.
   Future<bool> syncToCloud(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) {
+    final activeSync = _syncToCloudInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<bool> sync;
+    sync = _syncToCloud(db, taskRepo).whenComplete(() {
+      if (identical(_syncToCloudInFlight, sync)) _syncToCloudInFlight = null;
+    });
+    _syncToCloudInFlight = sync;
+    return sync;
+  }
+
+  Future<bool> _syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {

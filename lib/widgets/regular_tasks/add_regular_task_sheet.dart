@@ -568,20 +568,19 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
 
     // If an accountability partner was selected, create the accountability task
     if (_selectedPartner != null && _selectedPartner!.partnerUid != null) {
-      // The doer is the other partnership member, so I review their work.
-      final doerUid = _selectedPartner!.partnerUid!;
-      final reviewerUid = _selectedPartner!.ownerUid == doerUid
-          ? _selectedPartner!.partnerUid
-          : _selectedPartner!.ownerUid;
-      AccountabilityService().createAccountabilityTask(
-        accountableUid: doerUid,
-        accountableName: _selectedPartner!.partnerName,
-        partnershipId: _selectedPartner!.id,
-        title: sanitizedTitle,
-        challengeId: taskId,
-        partnerUid: reviewerUid,
-        taskType: 'regular',
-      );
+      final currentUid = AccountabilityService().currentUid;
+      final doerUid = _selectedPartner!.uidOf(currentUid);
+      if (doerUid != null && currentUid != null) {
+        AccountabilityService().createAccountabilityTask(
+          accountableUid: doerUid,
+          accountableName: _selectedPartner!.partnerName,
+          partnershipId: _selectedPartner!.id,
+          title: sanitizedTitle,
+          challengeId: taskId,
+          partnerUid: currentUid,
+          taskType: 'regular',
+        );
+      }
     }
 
     Navigator.pop(context);

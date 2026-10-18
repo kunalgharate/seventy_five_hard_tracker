@@ -674,7 +674,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
     Color color;
     IconData icon;
 
-    if (accStatus == AccountabilityTaskStatus.pendingReview ||
+    if (accStatus == AccountabilityTaskStatus.requested &&
+        !widget.isEditable) {
+      text = 'Awaiting acceptance';
+      color = Colors.orange;
+      icon = Icons.hourglass_empty;
+    } else if (accStatus == AccountabilityTaskStatus.pendingReview ||
         proof == ProofStatus.submitted) {
       text = 'Awaiting review';
       color = Colors.orange;
@@ -900,8 +905,7 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
       switch (accStatus) {
         case AccountabilityTaskStatus.requested when !widget.isEditable:
-          // Non-editable past day — falls through to the generic 'Missed' check.
-          break;
+          return 'Missed';
         case AccountabilityTaskStatus.pending when !widget.isEditable:
           // Non-editable past day — falls through to the generic 'Missed' check.
           break;
@@ -909,6 +913,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
           return 'Pending — awaiting your acceptance';
         case AccountabilityTaskStatus.pending:
           return 'Accepted — tap to complete';
+        case AccountabilityTaskStatus.completed when !widget.isEditable:
+          return 'Missed';
         case AccountabilityTaskStatus.completed:
           return 'Completed ✓';
         case AccountabilityTaskStatus.approved:

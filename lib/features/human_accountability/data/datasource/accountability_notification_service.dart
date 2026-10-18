@@ -33,6 +33,14 @@ const Map<String, String> _canonicalTypeByName = {
   'partnerMessage': 'partner_message',
 };
 
+/// Names used by the older in-app accountability notification enum.
+/// Keep them mapped to their equivalent current FCM types so legacy callers
+/// and stored payloads continue to resolve to the same preference category.
+const Map<String, String> _legacyTypeAliases = {
+  'partnerReview': 'task_needs_review',
+  'progressSubmitted': 'task_needs_review',
+};
+
 extension AccountabilityNotificationTypeX on AccountabilityNotificationType {
   /// Canonical snake_case type string derived from this enum value.
   String get canonicalType =>
@@ -66,7 +74,7 @@ class AccountabilityNotificationService {
   /// `data.type`. Unknown values pass through unchanged (canonical strings
   /// contain no capitals and already match themselves).
   static String canonicalTypeFromName(String name) =>
-      _canonicalTypeByName[name] ?? name;
+      _canonicalTypeByName[name] ?? _legacyTypeAliases[name] ?? name;
 
   /// Inverse of [canonicalTypeFromName]: maps a canonical snake_case type
   /// back to the top-level enum name spelling notification prefs are keyed

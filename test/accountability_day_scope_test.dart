@@ -132,4 +132,44 @@ void main() {
       );
     });
   });
+
+  group('AccountabilityTask persisted proof votes', () {
+    test('round-trips reviewer UID arrays and uses them for quorum', () {
+      final vote = {
+        'uid': 'reviewer-1',
+        'name': 'Reviewer',
+        'timestamp': DateTime(2026, 10, 18),
+      };
+      final submitted = task(
+        status: AccountabilityTaskStatus.pendingReview,
+        proofStatus: ProofStatus.submitted,
+      ).copyWith(
+        requiredApprovals: 2,
+        approvals: [vote],
+        approvalUids: ['reviewer-1'],
+      );
+
+      expect(submitted.toFirestore()['rejectionUids'], isEmpty);
+      expect(submitted.toFirestore()['rejections'], isEmpty);
+
+      final restored = AccountabilityTask.fromFirestore(
+        submitted.toFirestore(),
+        id: submitted.id,
+      );
+
+      expect(restored.approvalUids, ['reviewer-1']);
+      expect(restored.rejectionUids, isEmpty);
+      expect(restored.hasApprovedBy('reviewer-1'), isTrue);
+      expect(restored.hasEnoughApprovals, isFalse);
+
+      final quorum = restored.copyWith(
+        approvals: [
+          ...restored.approvals,
+          {...vote, 'uid': 'reviewer-2'}
+        ],
+        approvalUids: [...restored.approvalUids, 'reviewer-2'],
+      );
+      expect(quorum.hasEnoughApprovals, isTrue);
+    });
+  });
 }

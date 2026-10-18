@@ -197,14 +197,27 @@ class RegularTaskOutcome extends AccountabilityState {
   final String taskId;
   final String? challengeId;
   final String outcome; // 'approved' | 'rejected'
+  final String taskOwnerUid;
+  final DateTime? reviewedAt;
+  final DateTime taskAssignedAt;
   const RegularTaskOutcome({
     required this.taskId,
     required this.challengeId,
     required this.outcome,
+    required this.taskOwnerUid,
+    required this.reviewedAt,
+    required this.taskAssignedAt,
   });
 
   @override
-  List<Object?> get props => [taskId, challengeId, outcome];
+  List<Object?> get props => [
+        taskId,
+        challengeId,
+        outcome,
+        taskOwnerUid,
+        reviewedAt?.toUtc().microsecondsSinceEpoch,
+        taskAssignedAt.toUtc().microsecondsSinceEpoch,
+      ];
 }
 
 /// Emitted when partner responsibilities are loaded.

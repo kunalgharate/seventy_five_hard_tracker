@@ -37,8 +37,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   bool _isCheckingMissedDays = false;
   bool _hasCheckedMissedDays = false;
 
-  /// Review outcome keys already consumed by [_onReviewOutcomeObserved]
-  /// ('identity:outcome') — each partner-review reaction handled exactly once.
+  /// Review outcome rounds already consumed by [_onReviewOutcomeObserved].
   final Set<String> _processedReviewOutcomes = {};
 
   Future<void> _journalLock = Future.value();
@@ -49,11 +48,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   //
   // Partner-review outcomes now reach this bloc for real: main.dart's
   // MaterialApp builder wraps a BlocListener<AccountabilityBloc> that forwards
-  // StreakImpacted (hard tasks) and RegularTaskOutcome (regular tasks) as
-  // [ReviewOutcomeObserved]. [_processedReviewOutcomes] consumes each outcome
-  // exactly once: a rejected hard task dispatches ResetChallenge (whole
-  // session when no challenge id is known), a rejected regular task
-  // un-completes that task for today.
+  // identified StreakReviewOutcome (hard tasks) and RegularTaskOutcome
+  // (regular tasks) as [ReviewOutcomeObserved]. Mutations are limited to a
+  // session owned by the task's assignedBy user and are deduped after save.
 
   ChallengeBloc({
     required DatabaseRepository repository,
@@ -251,7 +248,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         final endedSession = activeSession.copyWith(
           isActive: false,
           endDate: DateTime.now(),
-          failureReason: 'Manually restarted',
+          failureReason: manuallyRestartedReason,
         );
         await _repository.updateSession(endedSession);
       }
@@ -667,25 +664,58 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     ReviewOutcomeObserved event,
     Emitter<ChallengeState> emit,
   ) async {
-    // Consume each outcome exactly once — reviews can be re-observed (FCM,
-    // polling). Key off the strongest identifier available: taskId, then
-    // challengeId, then the streak value (StreakImpacted has no ids today).
-    final identity = event.taskId ??
-        event.challengeId ??
-        'streak-${event.newStreakDay ?? 'unknown'}';
-    final key = '$identity:${event.outcome}';
-    if (_processedReviewOutcomes.contains(key)) return;
-    _processedReviewOutcomes.add(key);
-
-    if (event.outcome != 'rejected') return;
+    if (event.outcome != 'rejected' ||
+        (event.taskType != 'hard' &&
+            event.taskType != 'soft' &&
+            event.taskType != 'regular') ||
+        event.taskId == null) {
+      return;
+    }
 
     try {
-      if (event.taskType == 'regular') {
-        final challengeId = event.challengeId;
-        if (challengeId == null) return;
+      final task = event.taskOwnerUid == null
+          ? await AccountabilityService().fetchTaskById(event.taskId!)
+          : null;
+      final ownerUid = event.taskOwnerUid ?? task?.assignedByUid;
+      final challengeId = event.challengeId ?? task?.challengeId;
+      final reviewedAt =
+          event.reviewedAt ?? task?.reviewedAt ?? task?.proofReviewedAt;
+      if (ownerUid == null || (task == null && event.taskOwnerUid == null)) {
+        return;
+      }
+      if (reviewedAt == null) return;
+      final resolvedEvent = event.reviewedAt == reviewedAt
+          ? event
+          : ReviewOutcomeObserved(
+              taskId: event.taskId,
+              challengeId: challengeId,
+              taskOwnerUid: ownerUid,
+              outcome: event.outcome,
+              taskType: event.taskType,
+              newStreakDay: event.newStreakDay,
+              reviewedAt: reviewedAt,
+              taskAssignedAt: task?.assignedAt ?? event.taskAssignedAt,
+            );
+      final key = resolvedEvent.dedupeKey;
+      if (resolvedEvent.reviewRoundId.isEmpty ||
+          _processedReviewOutcomes.contains(key)) {
+        return;
+      }
 
-        final activeSession = await _repository.getActiveSession();
-        if (activeSession == null) return;
+      final activeSession = await _repository.getActiveSession();
+      // The local session belongs to the signed-in user. A partner's review
+      // must never mutate the reviewer's session instead of the task owner's.
+      if (activeSession == null ||
+          !resolvedEvent.isForCurrentSession(activeSession)) {
+        return;
+      }
+
+      if (event.taskType == 'regular') {
+        if (challengeId == null) return;
+        final challenge = activeSession.challenges
+            .where((c) => c.id == challengeId)
+            .firstOrNull;
+        if (challenge == null || challenge.taskType != 'regular') return;
 
         // Invalidate today's completion of the rejected regular task, the
         // same way an owner-toggle un-complete persists progress.
@@ -710,31 +740,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             isCompleted: allCompleted,
           ),
         );
+        _processedReviewOutcomes.add(key);
         add(LoadChallengeData());
         return;
       }
 
-      // Hard ('75-hard') task rejected → same reset flow as ResetChallenge
-      // (no dialog/navigation there, so dispatching is safe). An id that
-      // isn't in the session is a stale review — ignore it; with no id the
-      // whole session resets (hard rejection = session over).
-      final activeSession = await _repository.getActiveSession();
-      if (activeSession == null) return;
+      // Hard ('75-hard') task rejected → same reset flow as ResetChallenge.
+      if (challengeId == null) return;
+      final challenge = activeSession.challenges
+          .where((c) => c.id == challengeId)
+          .firstOrNull;
+      if (challenge == null || challenge.taskType != 'hard') return;
+      if (activeSession.mode != ResetMode.hard) return;
 
-      final challenge = event.challengeId == null
-          ? null
-          : activeSession.challenges
-              .where((c) => c.id == event.challengeId)
-              .firstOrNull;
-
-      if (challenge == null && event.challengeId != null) return;
-
-      add(ResetChallenge(
-        reason: challenge != null
-            ? 'Accountability partner rejected task "${challenge.title}"'
-            : 'Accountability partner rejected task',
-        failedChallenges: challenge != null ? [challenge.title] : const [],
-      ));
+      await _onResetChallenge(
+          ResetChallenge(
+            reason: 'Accountability partner rejected task "${challenge.title}"',
+            failedChallenges: [challenge.title],
+          ),
+          emit);
+      final sessionAfterReset = await _repository.getActiveSession();
+      if (sessionAfterReset == null ||
+          sessionAfterReset.id != activeSession.id) {
+        _processedReviewOutcomes.add(key);
+      }
     } catch (e, stack) {
       // Background scoring hook — log only; never ChallengeError, which would
       // replace the whole Today screen with the "no active session" page.

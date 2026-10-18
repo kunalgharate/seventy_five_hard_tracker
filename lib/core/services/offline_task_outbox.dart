@@ -17,6 +17,16 @@ typedef OfflineTaskCreator = Future<bool> Function(
   String partnershipId,
 );
 
+class OfflineTaskFlushResult {
+  const OfflineTaskFlushResult({
+    required this.created,
+    required this.succeeded,
+  });
+
+  final int created;
+  final bool succeeded;
+}
+
 /// Offline outbox for Squad task creation.
 ///
 /// Squads tasks are Firestore-doc based, so creating one while Firebase is
@@ -43,6 +53,7 @@ class OfflineTaskOutbox {
   static final OfflineTaskOutbox instance = OfflineTaskOutbox();
 
   static const _kQueueKey = 'offline_task_outbox_v1';
+  static int _nextItemId = 0;
 
   final Future<bool> Function() _hasInternet;
   final bool Function() _isReady;
@@ -50,6 +61,7 @@ class OfflineTaskOutbox {
   final OfflineTaskPartnershipResolver _resolvePartnership;
   final OfflineTaskCreator _createTask;
   Future<void> _queueLock = Future<void>.value();
+  Future<OfflineTaskFlushResult>? _flushInFlight;
 
   static Future<bool> _createWithAccountabilityService(
     Map<String, dynamic> item,
@@ -113,8 +125,11 @@ class OfflineTaskOutbox {
       try {
         final prefs = await SharedPreferences.getInstance();
         final queue = _readQueue(prefs);
+        final outboxId =
+            '${DateTime.now().microsecondsSinceEpoch}_${_nextItemId++}';
         queue.add({
           ...payload,
+          '_outboxId': outboxId,
           'queuedAt': DateTime.now().toIso8601String(),
         });
         await _writeQueue(prefs, queue);
@@ -125,35 +140,70 @@ class OfflineTaskOutbox {
     });
   }
 
-  /// Replays queued task creations. An item is consumed only when its
-  /// creation succeeds or when the stored creator no longer matches the
-  /// signed-in account (stale payload from a previous user — never replayed
-  /// into the wrong account's squad).
+  /// Replays queued task creations without holding the queue lock while
+  /// waiting on network operations. This lets new tasks be enqueued while a
+  /// replay is in progress.
   ///
   /// Returns the number of tasks created.
-  Future<int> flush() => _withQueueLock(_flushQueuedTasks);
+  Future<int> flush() async => (await flushWithResult()).created;
 
-  Future<int> _flushQueuedTasks() async {
-    if (!await _hasInternet()) return 0;
-    final prefs = await SharedPreferences.getInstance();
-    final queue = _readQueue(prefs);
-    if (queue.isEmpty) return 0;
-    if (!_isReady()) return 0;
+  /// Flushes the queue and reports whether every pending operation completed.
+  ///
+  /// Items that fail remain queued and make [succeeded] false, allowing the
+  /// connectivity coordinator to retain its retry-pending state.
+  Future<OfflineTaskFlushResult> flushWithResult() {
+    final activeFlush = _flushInFlight;
+    if (activeFlush != null) return activeFlush;
+    late final Future<OfflineTaskFlushResult> flush;
+    flush = _flushQueuedTasks().whenComplete(() {
+      if (identical(_flushInFlight, flush)) _flushInFlight = null;
+    });
+    _flushInFlight = flush;
+    return flush;
+  }
 
-    final uid = _currentUid();
-    if (uid == null) return 0;
+  Future<OfflineTaskFlushResult> _flushQueuedTasks() async {
+    if (!await _hasInternet()) {
+      return const OfflineTaskFlushResult(created: 0, succeeded: false);
+    }
+    final queue = await _withQueueLock(() async {
+      final prefs = await SharedPreferences.getInstance();
+      final queuedItems = _readQueue(prefs);
+      var changed = false;
+      for (final item in queuedItems) {
+        if (item['_outboxId'] is! String) {
+          item['_outboxId'] =
+              '${DateTime.now().microsecondsSinceEpoch}_${_nextItemId++}';
+          changed = true;
+        }
+      }
+      if (changed) await _writeQueue(prefs, queuedItems);
+      return queuedItems;
+    });
+    if (queue.isEmpty) {
+      return const OfflineTaskFlushResult(created: 0, succeeded: true);
+    }
+    if (!_isReady()) {
+      return const OfflineTaskFlushResult(created: 0, succeeded: false);
+    }
 
-    final remaining = <Map<String, dynamic>>[];
     var created = 0;
+    var succeeded = true;
 
     for (final item in queue) {
+      final uid = _currentUid();
+      if (uid == null || !_isReady()) {
+        succeeded = false;
+        continue;
+      }
       final creator = (item['senderUid'] as String?) ?? '';
-      // Creator recorded (signed in when queued) but a different account is
-      // active now — the task was never meant for them; drop it.
-      if (creator.isNotEmpty && creator != uid) {
+      // Never invoke the resolver or creator without proving that the
+      // queued sender is still the signed-in account.
+      if (creator.isEmpty || creator != uid) {
         if (kDebugMode) {
-          debugPrint('[OfflineTaskOutbox] dropping stale task "$creator"');
+          debugPrint('[OfflineTaskOutbox] dropping invalid or stale task "$creator"');
         }
+        await _removeQueuedItem(item);
         continue;
       }
 
@@ -162,27 +212,54 @@ class OfflineTaskOutbox {
         final accountableUid = (item['accountableUid'] as String?) ?? '';
         final accountableName = (item['accountableName'] as String?) ?? '';
         if (partnershipId.isEmpty && accountableUid.isNotEmpty) {
+          if (!_isReady() || _currentUid() != creator) {
+            succeeded = false;
+            continue;
+          }
           partnershipId =
               await _resolvePartnership(accountableUid, accountableName) ?? '';
+          if (!_isReady() || _currentUid() != creator) {
+            succeeded = false;
+            continue;
+          }
           if (partnershipId.isEmpty) {
-            remaining.add(item);
+            succeeded = false;
             continue;
           }
         }
+        if (!_isReady() || _currentUid() != creator) {
+          succeeded = false;
+          continue;
+        }
         if (await _createTask(item, partnershipId)) {
           created++;
+          await _removeQueuedItem(item);
         } else {
-          remaining.add(item);
+          succeeded = false;
         }
       } catch (e) {
+        succeeded = false;
         if (kDebugMode) {
           debugPrint('[OfflineTaskOutbox] replay failed, keeping item: $e');
         }
-        remaining.add(item);
       }
     }
 
-    await _writeQueue(prefs, remaining);
-    return created;
+    final hasPendingItems = await _withQueueLock(() async {
+      final prefs = await SharedPreferences.getInstance();
+      return _readQueue(prefs).isNotEmpty;
+    });
+    if (hasPendingItems) succeeded = false;
+
+    return OfflineTaskFlushResult(created: created, succeeded: succeeded);
   }
+
+  Future<void> _removeQueuedItem(Map<String, dynamic> item) =>
+      _withQueueLock(() async {
+        final prefs = await SharedPreferences.getInstance();
+        final queue = _readQueue(prefs);
+        final id = item['_outboxId'];
+        queue.removeWhere((queued) => queued['_outboxId'] == id);
+        await _writeQueue(prefs, queue);
+      });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
@@ -168,6 +170,72 @@ void main() {
       expect(await outbox.flush(), 1);
       expect(createAttempts, 2);
       expect(prefs.getString('offline_task_outbox_v1'), isNull);
+    });
+
+    test('reports incomplete replay so reconnect work remains pending',
+        () async {
+      final outbox = OfflineTaskOutbox(
+        hasInternet: () async => true,
+        isReady: () => true,
+        currentUid: () => 'owner-1',
+        createTask: (_, __) async => false,
+      );
+      await outbox.enqueue({
+        'senderUid': 'owner-1',
+        'accountableUid': 'partner-1',
+        'accountableName': 'Partner',
+        'partnershipId': 'partnership-1',
+        'title': 'Still pending',
+      });
+
+      final result = await outbox.flushWithResult();
+
+      expect(result.created, 0);
+      expect(result.succeeded, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+          prefs.getString('offline_task_outbox_v1'), contains('Still pending'));
+    });
+
+    test('enqueue is not blocked behind an in-flight network replay', () async {
+      final resolverStarted = Completer<void>();
+      final finishResolver = Completer<String?>();
+      final outbox = OfflineTaskOutbox(
+        hasInternet: () async => true,
+        isReady: () => true,
+        currentUid: () => 'owner-1',
+        resolvePartnership: (_, __) {
+          resolverStarted.complete();
+          return finishResolver.future;
+        },
+        createTask: (_, __) async => true,
+      );
+      await outbox.enqueue({
+        'senderUid': 'owner-1',
+        'accountableUid': 'partner-1',
+        'accountableName': 'Partner',
+        'partnershipId': '',
+        'title': 'First task',
+      });
+
+      final flush = outbox.flushWithResult();
+      await resolverStarted.future;
+      await outbox.enqueue({
+        'senderUid': 'owner-1',
+        'accountableUid': 'partner-2',
+        'accountableName': 'Another partner',
+        'partnershipId': 'partnership-2',
+        'title': 'Enqueued during replay',
+      });
+      finishResolver.complete('partnership-1');
+
+      final result = await flush;
+      expect(result.succeeded, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString('offline_task_outbox_v1'),
+        contains('Enqueued during replay'),
+      );
     });
   });
 

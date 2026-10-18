@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seventy_five_hard_tracker/core/services/notification_preferences.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 
 void main() {
   group('NotificationPreferences.categoryForType', () {
@@ -14,6 +15,34 @@ void main() {
         expect(NotificationPreferences.categoryForType(t),
             NotificationPreferences.keyReviews);
       }
+    });
+
+    group('Accountability notification type compatibility', () {
+      test('legacy aliases map to current canonical types', () {
+        for (final alias in ['partnerReview', 'progressSubmitted']) {
+          final canonical =
+              AccountabilityNotificationService.canonicalTypeFromName(alias);
+          expect(canonical, 'task_needs_review');
+          final enumName =
+              AccountabilityNotificationService.enumNameFromCanonicalType(
+                  canonical);
+          expect(NotificationPreferences.categoryForType(enumName),
+              NotificationPreferences.keyReviews);
+        }
+      });
+
+      test('canonical types round-trip to their enum names', () {
+        for (final type in AccountabilityNotificationType.values) {
+          final canonical =
+              AccountabilityNotificationService.canonicalTypeFromName(
+                  type.name);
+          expect(
+            AccountabilityNotificationService.enumNameFromCanonicalType(
+                canonical),
+            type.name,
+          );
+        }
+      });
     });
 
     test('other known types map to their categories', () {

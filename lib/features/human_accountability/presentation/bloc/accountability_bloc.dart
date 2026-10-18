@@ -14,6 +14,57 @@ import 'package:seventy_five_hard_tracker/repositories/database_repository.dart'
 import 'accountability_event.dart';
 import 'accountability_state.dart';
 
+/// Carries the task identity across the local Bloc bridge without changing the
+/// public StreakImpacted state contract. The owner UID lets ChallengeBloc
+/// reject a reviewer's local session instead of mutating it by mistake.
+class StreakReviewOutcome extends StreakImpacted {
+  final String taskId;
+  final String? challengeId;
+  final String taskOwnerUid;
+  final String taskType;
+  final DateTime? reviewedAt;
+  final DateTime taskAssignedAt;
+
+  const StreakReviewOutcome({
+    required int newStreakDay,
+    required String reason,
+    required this.taskId,
+    required this.challengeId,
+    required this.taskOwnerUid,
+    required this.taskType,
+    required this.reviewedAt,
+    required this.taskAssignedAt,
+  }) : super(newStreakDay, reason);
+
+  @override
+  List<Object> get props => [
+        newStreakDay,
+        reason,
+        taskId,
+        challengeId ?? '',
+        taskOwnerUid,
+        taskType,
+        reviewedAt?.toUtc().microsecondsSinceEpoch ?? 0,
+        taskAssignedAt.toUtc().microsecondsSinceEpoch,
+      ];
+}
+
+StreakReviewOutcome createStreakReviewOutcome({
+      required AccountabilityTask task,
+      required int newStreakDay,
+      required String outcome,
+}) =>
+        StreakReviewOutcome(
+          newStreakDay: newStreakDay,
+          reason: outcome,
+          taskId: task.id,
+          challengeId: task.challengeId,
+          taskOwnerUid: task.assignedByUid,
+          taskType: task.taskType,
+          reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
+          taskAssignedAt: task.assignedAt,
+        );
+
 class AccountabilityBloc
     extends Bloc<AccountabilityEvent, AccountabilityState> {
   final AccountabilityService _service;
@@ -509,20 +560,34 @@ class AccountabilityBloc
     String outcome,
     Emitter<AccountabilityState> emit,
   ) async {
+    if (task.taskType != 'hard' &&
+        task.taskType != 'soft' &&
+        task.taskType != 'regular') {
+      return;
+    }
     // Regular tasks never touch the 75 Hard streak — their partner review
     // only completes/invalidates that regular task's day.
     if (task.taskType != 'regular') {
       final session = await _repository.getActiveSession();
-      final currentDay = session?.currentDay ?? 1;
-      final newStreak = _scoringEngine.compute75HardStreak(currentDay, outcome);
-      if (isClosed || session == null) return;
-      emit(StreakImpacted(newStreak, outcome));
+      final isOwnerSession = session?.ownerUid == task.assignedByUid;
+      final newStreak = isOwnerSession
+          ? _scoringEngine.compute75HardStreak(session!.currentDay, outcome)
+          : 0;
+      if (isClosed) return;
+      emit(createStreakReviewOutcome(
+        task: task,
+        newStreakDay: newStreak,
+        outcome: outcome,
+      ));
     } else {
       if (isClosed) return;
       emit(RegularTaskOutcome(
         taskId: task.id,
         challengeId: task.challengeId,
         outcome: outcome,
+        taskOwnerUid: task.assignedByUid,
+        reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
+        taskAssignedAt: task.assignedAt,
       ));
     }
   }

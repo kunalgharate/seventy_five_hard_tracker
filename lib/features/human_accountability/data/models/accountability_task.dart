@@ -175,6 +175,11 @@ class AccountabilityTask extends Equatable {
   /// Each entry: { 'uid': string, 'name': string, 'timestamp': Timestamp, 'comment': string }
   final List<Map<String, dynamic>> rejections;
 
+  /// Append-only reviewer IDs for the current proof submission. These mirror
+  /// the vote records so Firestore Rules can enforce one vote per reviewer.
+  final List<String> approvalUids;
+  final List<String> rejectionUids;
+
   const AccountabilityTask({
     required this.id,
     required this.assignedByUid,
@@ -207,6 +212,8 @@ class AccountabilityTask extends Equatable {
     this.reviewerEmails = const [],
     this.approvals = const [],
     this.rejections = const [],
+    this.approvalUids = const [],
+    this.rejectionUids = const [],
   });
 
   bool get isApproved => status == AccountabilityTaskStatus.approved;
@@ -264,13 +271,15 @@ class AccountabilityTask extends Equatable {
   bool get isRegular => taskType == 'regular';
 
   /// Whether enough reviewers have approved to auto-complete.
-  bool get hasEnoughApprovals => approvals.length >= requiredApprovals;
+  bool get hasEnoughApprovals => approvalUids.length >= requiredApprovals;
 
   /// Whether this reviewer (by UID) has already approved.
-  bool hasApprovedBy(String uid) => approvals.any((a) => a['uid'] == uid);
+  bool hasApprovedBy(String uid) =>
+      approvalUids.contains(uid) || approvals.any((a) => a['uid'] == uid);
 
   /// Whether this reviewer (by UID) has already rejected.
-  bool hasRejectedBy(String uid) => rejections.any((r) => r['uid'] == uid);
+  bool hasRejectedBy(String uid) =>
+      rejectionUids.contains(uid) || rejections.any((r) => r['uid'] == uid);
 
   /// Whether the task has any reviewers assigned.
   bool get hasReviewers =>
@@ -301,6 +310,8 @@ class AccountabilityTask extends Equatable {
     List<String>? reviewerEmails,
     List<Map<String, dynamic>>? approvals,
     List<Map<String, dynamic>>? rejections,
+    List<String>? approvalUids,
+    List<String>? rejectionUids,
   }) =>
       AccountabilityTask(
         id: id,
@@ -334,6 +345,8 @@ class AccountabilityTask extends Equatable {
         reviewerEmails: reviewerEmails ?? this.reviewerEmails,
         approvals: approvals ?? this.approvals,
         rejections: rejections ?? this.rejections,
+        approvalUids: approvalUids ?? this.approvalUids,
+        rejectionUids: rejectionUids ?? this.rejectionUids,
       );
 
   static DateTime? _parseDate(dynamic v) {
@@ -393,6 +406,10 @@ class AccountabilityTask extends Equatable {
                 ?.map((e) => Map<String, dynamic>.from(e as Map))
                 .toList() ??
             const [],
+        approvalUids:
+            (d['approvalUids'] as List<dynamic>?)?.cast<String>() ?? const [],
+        rejectionUids:
+            (d['rejectionUids'] as List<dynamic>?)?.cast<String>() ?? const [],
       );
 
   Map<String, dynamic> toFirestore() => {
@@ -436,6 +453,8 @@ class AccountabilityTask extends Equatable {
         'reviewerEmails': reviewerEmails,
         'approvals': approvals,
         'rejections': rejections,
+        'approvalUids': approvalUids,
+        'rejectionUids': rejectionUids,
       };
 
   @override
@@ -470,5 +489,7 @@ class AccountabilityTask extends Equatable {
         reviewerEmails,
         approvals,
         rejections,
+        approvalUids,
+        rejectionUids,
       ];
 }

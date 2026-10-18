@@ -800,7 +800,11 @@ class _HistoryCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    isApproved ? 'Approved' : 'Rejected',
+                    isExpired
+                        ? 'Expired'
+                        : isApproved
+                            ? 'Approved'
+                            : 'Rejected',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,

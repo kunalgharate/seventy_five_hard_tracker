@@ -104,7 +104,7 @@ void main() async {
 
   // Reconnect hook: when the device regains internet, push local changes to
   // the cloud (BUG-06) and flush any tasks queued while offline.
-  connectivity.onInternetRestored = _onInternetRestored;
+  connectivity.onInternetRestoredWithResult = _onInternetRestored;
   connectivity.startListening(); // retries when internet comes back
 
   // ── Start review expiry timer if user is signed in ──
@@ -132,14 +132,16 @@ void main() async {
 /// Pushes local changes to the cloud (autoSync — the missing half of the
 /// old "Auto-syncs when online" promise) and flushes tasks queued for
 /// creation while the device was offline.
-Future<void> _onInternetRestored() async {
+Future<bool> _onInternetRestored() async {
   final db = DatabaseRepository();
   final taskRepo = RegularTaskRepository();
   await db.init();
   await taskRepo.init();
 
-  await CloudSyncService().autoSync(db, taskRepo);
-  await OfflineTaskOutbox.instance.flush();
+  final syncSucceeded =
+      await CloudSyncService().autoSyncWithResult(db, taskRepo);
+  final outboxResult = await OfflineTaskOutbox.instance.flushWithResult();
+  return syncSucceeded && outboxResult.succeeded;
 }
 
 class MyApp extends StatelessWidget {
@@ -183,7 +185,12 @@ class MyApp extends StatelessWidget {
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
-        // Cross-BLoC bridge: a partner's review reaction drives ChallengeBloc —
+        // In-process bridge: a partner's review reaction carries task
+        // ownership metadata. ChallengeBloc refuses to mutate a reviewer's
+        // session; owner devices also observe persisted decisions through the
+        // assignedByMe task stream in HomeScreen.
+        //
+        // A partner's review reaction drives ChallengeBloc —
         // StreakImpacted (hard tasks) resets the session on 'rejected',
         // RegularTaskOutcome (regular tasks) un-completes the task for today.
         // Exactly-once consumption is enforced in ChallengeBloc itself.
@@ -191,19 +198,30 @@ class MyApp extends StatelessWidget {
             BlocListener<AccountabilityBloc, AccountabilityState>(
           listener: (context, state) {
             if (state is StreakImpacted) {
+              final outcome = state is StreakReviewOutcome ? state : null;
               if (state.reason == 'rejected') {
                 context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                      taskType: 'hard',
+                      taskId: outcome?.taskId,
+                      challengeId: outcome?.challengeId,
+                      taskOwnerUid: outcome?.taskOwnerUid,
+                      taskType: outcome?.taskType ?? 'hard',
                       outcome: 'rejected',
                       newStreakDay: state.newStreakDay,
+                      reviewedAt: outcome?.reviewedAt,
+                      taskAssignedAt: outcome?.taskAssignedAt,
                     ));
               } else if (state.reason == 'approved') {
                 // Approved needs no session mutation — register the outcome
                 // so exactly-once ingestion stays symmetric.
                 context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                      taskType: 'hard',
+                      taskId: outcome?.taskId,
+                      challengeId: outcome?.challengeId,
+                      taskOwnerUid: outcome?.taskOwnerUid,
+                      taskType: outcome?.taskType ?? 'hard',
                       outcome: 'approved',
                       newStreakDay: state.newStreakDay,
+                      reviewedAt: outcome?.reviewedAt,
+                      taskAssignedAt: outcome?.taskAssignedAt,
                     ));
               }
               // 'expired' is emitted via TasksExpired elsewhere — not consumed.
@@ -212,6 +230,9 @@ class MyApp extends StatelessWidget {
               context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
                     taskId: state.taskId,
                     challengeId: state.challengeId,
+                    taskOwnerUid: state.taskOwnerUid,
+                    reviewedAt: state.reviewedAt,
+                    taskAssignedAt: state.taskAssignedAt,
                     taskType: 'regular',
                     outcome: 'rejected',
                   ));
