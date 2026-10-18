@@ -812,12 +812,19 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                   subtitle: Text(p.role.label),
                   onTap: () async {
                     Navigator.pop(context);
+                    // The doer is the partnership member that is not me;
+                    // the reviewer is therefore me (the other member).
+                    final doerUid = p.partnerUid ?? '';
+                    final reviewerUid =
+                        p.ownerUid == doerUid ? p.partnerUid : p.ownerUid;
                     final createdTask = await svc.createAccountabilityTask(
                       partnershipId: p.id,
                       title: task.title,
                       challengeId: task.id,
-                      accountableUid: p.partnerUid ?? '',
+                      accountableUid: doerUid,
                       accountableName: p.partnerName,
+                      partnerUid: doerUid.isEmpty ? null : reviewerUid,
+                      taskType: 'regular',
                     );
                     if (createdTask != null && mounted) {
                       setState(() {

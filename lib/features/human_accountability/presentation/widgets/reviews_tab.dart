@@ -685,6 +685,10 @@ class _HistoryCard extends StatelessWidget {
       task.status == AccountabilityTaskStatus.approved ||
       task.proofStatus == ProofStatus.approved;
 
+  bool get _isExpired =>
+      task.status == AccountabilityTaskStatus.expired ||
+      task.reviewDecision == 'expired';
+
   DateTime? get _reviewedAt => task.reviewedAt ?? task.proofReviewedAt;
 
   String get _reviewerName {
@@ -714,8 +718,14 @@ class _HistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isApproved = _isApproved;
-    final color = isApproved ? Colors.green : Colors.red;
-    final icon = isApproved ? Icons.check_circle : Icons.cancel;
+    final isExpired = _isExpired;
+    final color =
+        isApproved ? Colors.green : isExpired ? Colors.orange : Colors.red;
+    final icon = isApproved
+        ? Icons.check_circle
+        : isExpired
+            ? Icons.schedule
+            : Icons.cancel;
     final myUid = AccountabilityService().currentUid;
     final isMyTask = task.assignedByUid == myUid;
     final reviewedAt = _reviewedAt;
@@ -747,11 +757,15 @@ class _HistoryCard extends StatelessWidget {
                     isMyTask
                         ? isApproved
                             ? 'Approved by $reviewer'
-                            : 'Rejected by $reviewer — resubmit proof'
+                            : isExpired
+                                ? 'Expired — no review decision in time'
+                                : 'Rejected by $reviewer — resubmit proof'
                         : isApproved
                             ? 'You approved '
                                 '${task.assignedByName}\'s task'
-                            : 'You rejected '
+                            : isExpired
+                                ? 'Expired — ${task.assignedByName}\'s task'
+                                : 'You rejected '
                                 '${task.assignedByName}\'s task',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),

@@ -498,6 +498,35 @@ class AccountabilityBloc
     }
   }
 
+  /// Single scoring boundary for review outcomes: derives the real streak
+  /// from the persisted session and branches on the task's own type.
+  ///
+  /// Emits [StreakImpacted] for 75 Hard tasks (anything that isn't
+  /// taskType='regular' — legacy docs use 'hard') and [RegularTaskOutcome]
+  /// for regular tasks. Called only after the review-completed state.
+  Future<void> _recordReviewOutcome(
+    AccountabilityTask task,
+    String outcome,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    // Regular tasks never touch the 75 Hard streak — their partner review
+    // only completes/invalidates that regular task's day.
+    if (task.taskType != 'regular') {
+      final session = await _repository.getActiveSession();
+      final currentDay = session?.currentDay ?? 1;
+      final newStreak = _scoringEngine.compute75HardStreak(currentDay, outcome);
+      if (isClosed || session == null) return;
+      emit(StreakImpacted(newStreak, outcome));
+    } else {
+      if (isClosed) return;
+      emit(RegularTaskOutcome(
+        taskId: task.id,
+        challengeId: task.challengeId,
+        outcome: outcome,
+      ));
+    }
+  }
+
   Future<void> _onApproveTaskReview(
     ApproveTaskReview event,
     Emitter<AccountabilityState> emit,
@@ -530,13 +559,8 @@ class AccountabilityBloc
       emit(TaskReviewCompleted(task.id, 'approved',
           comment: event.improvementNote));
 
-      // Compute streak impact
-      final newStreak = _scoringEngine.compute75HardStreak(
-        1, // TODO: pass actual current streak from ChallengeBloc
-        'approved',
-      );
-      if (isClosed) return;
-      emit(StreakImpacted(newStreak, 'approved'));
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'approved', emit);
     } catch (e) {
       emit(AccountabilityError('Approve task failed: $e'));
     }
@@ -575,13 +599,8 @@ class AccountabilityBloc
       emit(TaskReviewCompleted(task.id, 'rejected',
           comment: event.improvementNote));
 
-      // Compute streak impact — rejected resets streak
-      final newStreak = _scoringEngine.compute75HardStreak(
-        1, // TODO: pass actual current streak from ChallengeBloc
-        'rejected',
-      );
-      if (isClosed) return;
-      emit(StreakImpacted(newStreak, 'rejected'));
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'rejected', emit);
     } catch (e) {
       emit(AccountabilityError('Reject task failed: $e'));
     }
@@ -820,13 +839,9 @@ class AccountabilityBloc
         challengeId: task.challengeId,
       ));
       if (autoCompleted) {
-        // Compute streak impact — same update the approve-task path triggers.
-        final newStreak = _scoringEngine.compute75HardStreak(
-          1, // TODO: pass actual current streak from ChallengeBloc
-          'approved',
-        );
-        if (isClosed) return;
-        emit(StreakImpacted(newStreak, 'approved'));
+        // Score the outcome against the real streak / task type — same
+        // update the approve-task path triggers.
+        await _recordReviewOutcome(task, 'approved', emit);
       }
       add(LoadReviewTabData());
     } catch (e) {
@@ -865,13 +880,8 @@ class AccountabilityBloc
       if (isClosed) return;
       emit(ProofRejected(task.id, comment: event.comment));
 
-      // Compute streak impact — rejected resets streak.
-      final newStreak = _scoringEngine.compute75HardStreak(
-        1, // TODO: pass actual current streak from ChallengeBloc
-        'rejected',
-      );
-      if (isClosed) return;
-      emit(StreakImpacted(newStreak, 'rejected'));
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'rejected', emit);
       add(LoadReviewTabData());
     } catch (e) {
       if (isClosed) return;

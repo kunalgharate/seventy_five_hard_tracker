@@ -18,6 +18,16 @@ class ConnectivityService {
   final Connectivity _connectivity = Connectivity();
   StreamSubscription? _subscription;
   bool _firebaseInitialized = false;
+  bool _lastHadInternet = false;
+
+  /// Suppressed until the first connectivity event arrives, so the callback
+  /// doesn't fire on app start (initial state is not a "restored" state).
+  bool _lastHadInternetSet = false;
+
+  /// Invoked once per device-none→internet transition. Lets callers run
+  /// reconnect-time work (cloud sync, outbox flush) without the service
+  /// knowing about them.
+  Future<void> Function()? onInternetRestored;
 
   bool get isFirebaseReady => _firebaseInitialized;
 
@@ -30,6 +40,9 @@ class ConnectivityService {
       return false;
     }
   }
+
+  /// Public connectivity check for feature-level offline handling.
+  Future<bool> hasInternet() => _hasInternet();
 
   /// Try to init Firebase. Only attempts if internet is available.
   /// Returns true if successful, false otherwise.
@@ -91,6 +104,13 @@ class ConnectivityService {
       if (hasInternet && !_firebaseInitialized) {
         initFirebase();
       }
+      // Fire reconnect work (sync, outbox flush) on none→internet
+      // transitions only, so connectivity churn doesn't spam uploads.
+      if (hasInternet && !_lastHadInternet && _lastHadInternetSet) {
+        unawaited(onInternetRestored?.call());
+      }
+      _lastHadInternet = hasInternet;
+      _lastHadInternetSet = true;
     });
   }
 

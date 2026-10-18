@@ -37,41 +37,23 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   bool _isCheckingMissedDays = false;
   bool _hasCheckedMissedDays = false;
 
+  /// Review outcome keys already consumed by [_onReviewOutcomeObserved]
+  /// ('identity:outcome') — each partner-review reaction handled exactly once.
+  final Set<String> _processedReviewOutcomes = {};
+
   Future<void> _journalLock = Future.value();
 
   DatabaseRepository get repository => _repository;
 
-  // ── ACCOUNTABILITY SCORING INTEGRATION POINT ────────────────────────────────
+  // ── ACCOUNTABILITY SCORING INTEGRATION ──────────────────────────────────────
   //
-  // When a task with taskType='hard' is rejected or expired by the accountability
-  // partner, the 75 Hard streak should reset. Integration approach:
-  //
-  // 1. The AccountabilityBloc emits StreakImpacted(newStreakDay, reason) when a
-  //    review outcome impacts scoring (reason = 'rejected' or 'expired').
-  //
-  // 2. To connect the two BLoCs, use one of these patterns:
-  //    a) Stream-based: Expose a Stream<StreakImpacted> from AccountabilityBloc.
-  //       Subscribe here in ChallengeBloc's constructor and dispatch ResetChallenge
-  //       when reason == 'rejected' || reason == 'expired'.
-  //    b) Shared service: A ReviewScoringService that both BLoCs depend on.
-  //       AccountabilityBloc writes outcomes; ChallengeBloc listens for resets.
-  //    c) Parent-level BlocListener: In the widget tree (e.g., MyApp or
-  //       MainNavigationScreen), add a BlocListener<AccountabilityBloc> that
-  //       dispatches ResetChallenge to ChallengeBloc on StreakImpacted events.
-  //
-  // 3. The ResetChallenge event already handles streak reset logic (marks session
-  //    inactive, records failure reason). Dispatch it like:
-  //      challengeBloc.add(ResetChallenge(
-  //        reason: 'Accountability partner rejected task',
-  //        failedChallenges: [taskTitle],
-  //      ));
-  //
-  // 4. For regular tasks (taskType='regular'), rejection/expiry only marks the day
-  //    incomplete — no streak reset needed. This is handled in the completion
-  //    percentage calculation, not here.
-  //
-  // TODO: Wire up cross-BLoC communication once widget integration is complete.
-  // ────────────────────────────────────────────────────────────────────────────
+  // Partner-review outcomes now reach this bloc for real: main.dart's
+  // MaterialApp builder wraps a BlocListener<AccountabilityBloc> that forwards
+  // StreakImpacted (hard tasks) and RegularTaskOutcome (regular tasks) as
+  // [ReviewOutcomeObserved]. [_processedReviewOutcomes] consumes each outcome
+  // exactly once: a rejected hard task dispatches ResetChallenge (whole
+  // session when no challenge id is known), a rejected regular task
+  // un-completes that task for today.
 
   ChallengeBloc({
     required DatabaseRepository repository,
@@ -88,6 +70,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<AddTaskNote>(_onAddTaskNote);
     on<UpdateChallenge>(_onUpdateChallenge);
     on<ResetChallenge>(_onResetChallenge);
+    on<ReviewOutcomeObserved>(_onReviewOutcomeObserved);
     on<CompleteChallenge>(_onCompleteChallenge);
     on<UpdateChallengeReminder>(_onUpdateChallengeReminder);
     on<AddTaskPhoto>(_onAddTaskPhoto);
@@ -201,6 +184,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         final endedSession = activeSession.copyWith(
           isActive: false,
           endDate: DateTime.now(),
+          failureReason: 'Started a new challenge',
         );
         await _repository.updateSession(endedSession);
       }
@@ -271,6 +255,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         final endedSession = activeSession.copyWith(
           isActive: false,
           endDate: DateTime.now(),
+          failureReason: 'Manually restarted',
         );
         await _repository.updateSession(endedSession);
       }
@@ -678,6 +663,89 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     }
   }
 
+  /// Consumes a partner-review outcome forwarded from AccountabilityBloc by
+  /// main.dart's BlocListener. Approved outcomes are a no-op (the daily
+  /// completion flow already counted the streak/day); rejections either reset
+  /// the session (hard tasks) or invalidate today's completion (regular).
+  Future<void> _onReviewOutcomeObserved(
+    ReviewOutcomeObserved event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    // Consume each outcome exactly once — reviews can be re-observed (FCM,
+    // polling). Key off the strongest identifier available: taskId, then
+    // challengeId, then the streak value (StreakImpacted has no ids today).
+    final identity = event.taskId ??
+        event.challengeId ??
+        'streak-${event.newStreakDay ?? 'unknown'}';
+    final key = '$identity:${event.outcome}';
+    if (_processedReviewOutcomes.contains(key)) return;
+    _processedReviewOutcomes.add(key);
+
+    if (event.outcome != 'rejected') return;
+
+    try {
+      if (event.taskType == 'regular') {
+        final challengeId = event.challengeId;
+        if (challengeId == null) return;
+
+        final activeSession = await _repository.getActiveSession();
+        if (activeSession == null) return;
+
+        // Invalidate today's completion of the rejected regular task, the
+        // same way an owner-toggle un-complete persists progress.
+        final today = DateTime.now();
+        final progress = _repository.getDailyProgress(today);
+        if (progress == null ||
+            progress.challengeCompletions[challengeId] != true) {
+          return;
+        }
+
+        final updatedCompletions =
+            Map<String, bool>.from(progress.challengeCompletions);
+        updatedCompletions[challengeId] = false;
+
+        final allCompleted = activeSession.challenges
+            .where((c) => c.taskType != 'regular')
+            .every((c) => updatedCompletions[c.id] == true);
+
+        await _repository.saveDailyProgress(
+          progress.copyWith(
+            challengeCompletions: updatedCompletions,
+            isCompleted: allCompleted,
+          ),
+        );
+        add(LoadChallengeData());
+        return;
+      }
+
+      // Hard ('75-hard') task rejected → same reset flow as ResetChallenge
+      // (no dialog/navigation there, so dispatching is safe). An id that
+      // isn't in the session is a stale review — ignore it; with no id the
+      // whole session resets (hard rejection = session over).
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      final challenge = event.challengeId == null
+          ? null
+          : activeSession.challenges
+              .where((c) => c.id == event.challengeId)
+              .firstOrNull;
+
+      if (challenge == null && event.challengeId != null) return;
+
+      add(ResetChallenge(
+        reason: challenge != null
+            ? 'Accountability partner rejected task "${challenge.title}"'
+            : 'Accountability partner rejected task',
+        failedChallenges: challenge != null ? [challenge.title] : const [],
+      ));
+    } catch (e, stack) {
+      // Background scoring hook — log only; never ChallengeError, which would
+      // replace the whole Today screen with the "no active session" page.
+      unawaited(_analytics.logError(e, stack));
+    }
+  }
+
   Future<void> _onCompleteChallenge(
     CompleteChallenge event,
     Emitter<ChallengeState> emit,
@@ -1010,6 +1078,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final endedSession = activeSession.copyWith(
         isActive: false,
         endDate: DateTime.now(),
+        failureReason: 'Challenge ended manually',
       );
       await _repository.updateSession(endedSession);
       add(LoadChallengeData());

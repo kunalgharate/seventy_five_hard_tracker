@@ -191,6 +191,22 @@ class StreakImpacted extends AccountabilityState {
   List<Object> get props => [newStreakDay, reason];
 }
 
+/// Regular-task review outcome (taskType='regular') — these complete or
+/// invalidate one regular day instead of moving the 75 Hard streak.
+class RegularTaskOutcome extends AccountabilityState {
+  final String taskId;
+  final String? challengeId;
+  final String outcome; // 'approved' | 'rejected'
+  const RegularTaskOutcome({
+    required this.taskId,
+    required this.challengeId,
+    required this.outcome,
+  });
+
+  @override
+  List<Object?> get props => [taskId, challengeId, outcome];
+}
+
 /// Emitted when partner responsibilities are loaded.
 class MyResponsibilitiesLoaded extends AccountabilityState {
   final List<AccountabilityTask> responsibilities;

@@ -42,6 +42,11 @@ class AccountabilityService {
     }
   }
 
+  /// Public readiness check — Firebase initialized AND a signed-in user.
+  /// Used by offline flows (e.g. the task outbox) to decide whether a
+  /// replay can proceed.
+  bool get isReady => _isReady;
+
   String? get currentUid => _auth.currentUser?.uid;
 
   /// Lower-cased email of the signed-in user, or '' when unavailable.
@@ -1080,6 +1085,11 @@ class AccountabilityService {
 
   /// Creates a task request. Status starts as [AccountabilityTaskStatus.requested].
   /// The partner must accept before it becomes active (pending).
+  ///
+  /// [partnerUid] is the UID that must REVIEW the task (the accountability
+  /// partner relative to the doer); without it the review queues
+  /// (partnerUid == myUid) and review-time notifications never see the task.
+  /// [taskType] is 'hard' (75 Hard) or 'regular'; score branching reads it.
   Future<AccountabilityTask?> createAccountabilityTask({
     required String accountableUid,
     required String accountableName,
@@ -1090,6 +1100,8 @@ class AccountabilityService {
     String? challengeId,
     List<String>? accountableUserIds,
     String? accountableEmail,
+    String? partnerUid,
+    String? taskType,
   }) async {
     if (!_isReady) return null;
     // An empty accountableUid makes the task invisible to everyone — unless
@@ -1122,6 +1134,8 @@ class AccountabilityService {
             ? const []
             : (accountableUserIds ?? [accountableUid]),
         accountableEmail: accountableEmail,
+        partnerUid: partnerUid,
+        taskType: taskType ?? 'hard',
       );
       await ref.set(task.toFirestore());
       // Join the task's FCM topic on the owner's device now; assigned
@@ -1452,11 +1466,22 @@ class AccountabilityService {
       final ids =
           (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
       if (!ids.contains(uid)) ids.add(uid);
-      await ref.update({
+      final update = <String, dynamic>{
         'status': AccountabilityTaskStatus.pending.name,
         'accountableUid': uid,
         'accountableUserIds': ids,
-      });
+      };
+      // Email-claimed tasks have no reviewer yet. The creator reviews the
+      // acceptor's work — backfilling here makes submitForReview notifications
+      // and the review queues (partnerUid == uid) reach them.
+      final partnerUid = data['partnerUid'] as String?;
+      if (partnerUid == null || partnerUid.isEmpty) {
+        final creatorUid = data['assignedByUid'] as String?;
+        if (creatorUid != null && creatorUid.isNotEmpty) {
+          update['partnerUid'] = creatorUid;
+        }
+      }
+      await ref.update(update);
       if (kDebugMode) {
         debugPrint('[AccountabilityService] acceptTaskRequest: $taskId');
       }
@@ -1700,19 +1725,70 @@ class AccountabilityService {
   }
 
   /// Real-time stream of tasks for a partnership.
+  ///
+  /// The security rules reject an unscoped partnershipId-only snapshot query
+  /// (permission-denied) — same reason fetchTasksForPartnership runs scoped
+  /// queries. So listen to three scoped snapshot streams — tasks I assigned,
+  /// tasks I'm accountable for, and tasks I must review — merge them into one
+  /// output, and dedupe by doc id with a latest-wins map (self-assigned tasks
+  /// match two of the scopes).
   Stream<List<AccountabilityTask>> tasksStream(String partnershipId) {
     if (!_isReady) return const Stream.empty();
-    return _db
-        .collection('accountability_tasks')
-        .where('partnershipId', isEqualTo: partnershipId)
-        .snapshots()
-        .map((snap) {
-      final tasks = snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+    final myUid = currentUid!;
+    final base = _db.collection('accountability_tasks');
+
+    // Subscriptions start paused so the Firestore listeners only attach when
+    // the returned stream is actually listened to (matching the lazy
+    // behavior of raw .snapshots()).
+    final subs = <StreamSubscription<
+        QuerySnapshot<Map<String, dynamic>>>>[];
+    final controller = StreamController<List<AccountabilityTask>>(
+      onListen: () {
+        for (final sub in subs) {
+          sub.resume();
+        }
+      },
+      onCancel: () async {
+        for (final sub in subs) {
+          await sub.cancel();
+        }
+        subs.clear();
+      },
+    );
+
+    // Latest doc snapshot per id across all three roles; self-assigned
+    // tasks (assignedByUid == accountableUid) otherwise appear twice.
+    final latest = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+
+    void emit() {
+      final tasks = latest.values
+          .map((d) => AccountabilityTask.fromFirestore(d.data()!, id: d.id))
           .toList();
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
-      return tasks;
-    });
+      if (!controller.isClosed) controller.add(tasks);
+    }
+
+    for (final uidField in ['assignedByUid', 'accountableUid', 'partnerUid']) {
+      final sub = base
+          .where('partnershipId', isEqualTo: partnershipId)
+          .where(uidField, isEqualTo: myUid)
+          .snapshots()
+          .listen((snap) {
+        for (final doc in snap.docs) {
+          latest[doc.id] = doc;
+        }
+        emit();
+      }, onError: (Object e) {
+        if (kDebugMode) {
+          debugPrint('[AccountabilityService] tasksStream($uidField) error: $e');
+        }
+        if (!controller.isClosed) controller.addError(e);
+      });
+      sub.pause();
+      subs.add(sub);
+    }
+
+    return controller.stream;
   }
 
   // ── Phase 1: Users collection ────────────────────────────────────────────
@@ -2765,35 +2841,43 @@ class AccountabilityService {
   /// Submits a task for partner review. Sets status to pendingReview,
   /// records submittedAt and expiresAt (now + 24h).
   ///
-  /// Returns the updated task, or null on failure.
+  /// Runs in a transaction so a concurrent expiry batch can't overwrite a
+  /// review submitted in-flight.
+  ///
+  /// Returns the updated task, or null on failure/invalid transition.
   Future<AccountabilityTask?> submitForReview(String taskId) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
-      final doc = await ref.get();
-      if (!doc.exists) return null;
-
-      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
-
-      // Validate: only the accountable user can submit for review
-      if (task.accountableUid != currentUid) return null;
-      // Validate: must be in pending/accepted state
-      if (task.status != AccountabilityTaskStatus.pending) return null;
-
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
 
-      await ref.update({
-        'status': 'pendingReview',
-        'submittedAt': Timestamp.fromDate(now),
-        'expiresAt': Timestamp.fromDate(expiresAt),
-      });
+      final submitted = await _db.runTransaction<AccountabilityTask?>(
+        (txn) async {
+          final doc = await txn.get(ref);
+          if (!doc.exists) return null;
+          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
-      return task.copyWith(
-        status: AccountabilityTaskStatus.pendingReview,
-        submittedAt: now,
-        expiresAt: expiresAt,
+          // Validate: only the accountable user can submit for review
+          if (task.accountableUid != uid) return null;
+          // Validate: must be in pending/accepted state
+          if (task.status != AccountabilityTaskStatus.pending) return null;
+
+          txn.update(ref, {
+            'status': 'pendingReview',
+            'submittedAt': Timestamp.fromDate(now),
+            'expiresAt': Timestamp.fromDate(expiresAt),
+          });
+
+          return task.copyWith(
+            status: AccountabilityTaskStatus.pendingReview,
+            submittedAt: now,
+            expiresAt: expiresAt,
+          );
+        },
       );
+      return submitted;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] submitForReview error: $e');
@@ -2804,6 +2888,9 @@ class AccountabilityService {
 
   /// Partner approves a task. Validates that the caller is the assigned partner.
   ///
+  /// Runs in a transaction so a concurrent expiry can't overwrite the
+  /// review decision (TOCTOU on the get-then-update it replaces).
+  ///
   /// Returns the updated task, or null on failure/unauthorized.
   Future<AccountabilityTask?> approveTask(
     String taskId, {
@@ -2811,45 +2898,50 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
-      final doc = await ref.get();
-      if (!doc.exists) return null;
-
-      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
-
-      // Validate: only the partner can approve
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
-        return null;
-      }
-      // Validate: must be in pendingReview state
-      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
-      // Validate: not already reviewed
-      if (task.reviewedAt != null) return null;
-      // Validate: not expired
-      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
-        return null;
-      }
-
       final now = DateTime.now();
-      final updateData = <String, dynamic>{
-        'status': 'approved',
-        'reviewedAt': Timestamp.fromDate(now),
-        'reviewDecision': 'approved',
-        'completedAt': Timestamp.fromDate(now),
-      };
-      if (improvementNote != null && improvementNote.length <= 500) {
-        updateData['reviewComment'] = improvementNote;
-      }
 
-      await ref.update(updateData);
+      final approved = await _db.runTransaction<AccountabilityTask?>(
+        (txn) async {
+          final doc = await txn.get(ref);
+          if (!doc.exists) return null;
+          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
-      return task.copyWith(
-        status: AccountabilityTaskStatus.approved,
-        reviewedAt: now,
-        reviewDecision: 'approved',
-        reviewComment: improvementNote,
-        completedAt: now,
+          // Validate: only the partner can approve
+          if (task.partnerUid != uid && task.assignedByUid != uid) {
+            return null;
+          }
+          // Validate: must be in pendingReview state
+          if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+          // Validate: not already reviewed
+          if (task.reviewedAt != null) return null;
+          // Validate: not expired
+          if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+            return null;
+          }
+
+          final updateData = <String, dynamic>{
+            'status': 'approved',
+            'reviewedAt': Timestamp.fromDate(now),
+            'reviewDecision': 'approved',
+            'completedAt': Timestamp.fromDate(now),
+          };
+          if (improvementNote != null && improvementNote.length <= 500) {
+            updateData['reviewComment'] = improvementNote;
+          }
+          txn.update(ref, updateData);
+
+          return task.copyWith(
+            status: AccountabilityTaskStatus.approved,
+            reviewedAt: now,
+            reviewDecision: 'approved',
+            reviewComment: improvementNote,
+            completedAt: now,
+          );
+        },
       );
+      return approved;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] approveTask error: $e');
@@ -2860,6 +2952,9 @@ class AccountabilityService {
 
   /// Partner rejects a task. Validates that the caller is the assigned partner.
   ///
+  /// Runs in a transaction so a concurrent expiry can't overwrite the
+  /// review decision (TOCTOU on the get-then-update it replaces).
+  ///
   /// Returns the updated task, or null on failure/unauthorized.
   Future<AccountabilityTask?> rejectTask(
     String taskId, {
@@ -2867,43 +2962,48 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
-      final doc = await ref.get();
-      if (!doc.exists) return null;
-
-      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
-
-      // Validate: only the partner can reject
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
-        return null;
-      }
-      // Validate: must be in pendingReview state
-      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
-      // Validate: not already reviewed
-      if (task.reviewedAt != null) return null;
-      // Validate: not expired
-      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
-        return null;
-      }
-
       final now = DateTime.now();
-      final updateData = <String, dynamic>{
-        'status': 'rejected',
-        'reviewedAt': Timestamp.fromDate(now),
-        'reviewDecision': 'rejected',
-      };
-      if (improvementNote != null && improvementNote.length <= 500) {
-        updateData['reviewComment'] = improvementNote;
-      }
 
-      await ref.update(updateData);
+      final rejected = await _db.runTransaction<AccountabilityTask?>(
+        (txn) async {
+          final doc = await txn.get(ref);
+          if (!doc.exists) return null;
+          final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
-      return task.copyWith(
-        status: AccountabilityTaskStatus.rejected,
-        reviewedAt: now,
-        reviewDecision: 'rejected',
-        reviewComment: improvementNote,
+          // Validate: only the partner can reject
+          if (task.partnerUid != uid && task.assignedByUid != uid) {
+            return null;
+          }
+          // Validate: must be in pendingReview state
+          if (task.status != AccountabilityTaskStatus.pendingReview) return null;
+          // Validate: not already reviewed
+          if (task.reviewedAt != null) return null;
+          // Validate: not expired
+          if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+            return null;
+          }
+
+          final updateData = <String, dynamic>{
+            'status': 'rejected',
+            'reviewedAt': Timestamp.fromDate(now),
+            'reviewDecision': 'rejected',
+          };
+          if (improvementNote != null && improvementNote.length <= 500) {
+            updateData['reviewComment'] = improvementNote;
+          }
+          txn.update(ref, updateData);
+
+          return task.copyWith(
+            status: AccountabilityTaskStatus.rejected,
+            reviewedAt: now,
+            reviewDecision: 'rejected',
+            reviewComment: improvementNote,
+          );
+        },
       );
+      return rejected;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] rejectTask error: $e');
@@ -3034,10 +3134,10 @@ class AccountabilityService {
     }
   }
 
-  /// Fetches completed review history (approved/rejected) for the current
-  /// user — both as owner and reviewer. Limited to last 50.
+  /// Fetches completed review history (approved/rejected/expired) for the
+  /// current user — both as owner and reviewer. Limited to last 50.
   ///
-  /// Review events are matched on status (approved/rejected) OR proofStatus,
+  /// Review events are matched on status (approved/rejected/expired) OR proofStatus,
   /// because `reviewTaskProof` finalizes approvals as status 'completed' and
   /// rejections as status 'pending'. Sorting happens in memory: docs approved
   /// that way never get a `reviewedAt`, which orderBy would silently drop.
@@ -3053,10 +3153,10 @@ class AccountabilityService {
       final snaps = await Future.wait([
         tasks
             .where('assignedByUid', isEqualTo: uid)
-            .where('status', whereIn: ['approved', 'rejected']).get(),
+            .where('status', whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks
             .where('accountableUserIds', arrayContains: uid)
-            .where('status', whereIn: ['approved', 'rejected']).get(),
+            .where('status', whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks
             .where('assignedByUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)

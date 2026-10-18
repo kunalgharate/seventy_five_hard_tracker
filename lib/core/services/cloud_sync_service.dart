@@ -247,11 +247,15 @@ class CloudSyncService {
   // ── Auto-sync ────────────────────────────────────────────────────────────
 
   /// Silently syncs if signed in and consent was given.
+  ///
+  /// Called on connectivity restore and app-resume. The AES key is derived
+  /// inside [syncToCloud] — no pre-check here, so a restored-for-nine-lives
+  /// session (no in-memory key yet) still syncs on reconnect.
   Future<void> autoSync(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {
-    if (!isSignedIn || _aesKey == null) return;
+    if (!isSignedIn) return;
     if (!await hasConsentBeenGiven()) return;
     await syncToCloud(db, taskRepo);
   }

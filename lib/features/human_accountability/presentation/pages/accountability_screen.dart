@@ -21,6 +21,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/streak_escalation_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -47,6 +48,10 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
   int _reviewBadgeCount = 0;
+
+  /// True while a manual refresh (top-right button) has a load in flight —
+  /// drives the inline spinner on the Refresh button.
+  bool _isRefreshing = false;
 
   /// Last successfully loaded payload. The bloc emits transient action
   /// states (EmailInviteSent, TaskRequestAccepted, Loading, …) between
@@ -133,11 +138,15 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: () => context.read<AccountabilityBloc>().add(
-                  LoadAccountabilityData(),
-                ),
+            onPressed: _onRefreshPressed,
           ),
         ],
       ),
@@ -322,7 +331,31 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
     );
   }
 
+  /// Manual refresh (top-right button). Fetches fresh squad data with a
+  /// visible spinner. Offline, keeps the cached list visible instead of
+  /// letting the load replace it with an empty payload — fetchers swallow
+  /// errors and return empty lists when offline.
+  Future<void> _onRefreshPressed() async {
+    if (_isRefreshing) return;
+    if (!await ConnectivityService().hasInternet()) {
+      if (!mounted) return;
+      _showSnack(
+        'You\'re offline — showing your latest saved squad data.',
+        isSuccess: false,
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _isRefreshing = true);
+    context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+  }
+
   void _handleStateChange(BuildContext context, AccountabilityState state) {
+    // End the manual-refresh spinner as soon as the reload lands or fails.
+    if (_isRefreshing &&
+        (state is AccountabilityLoaded || state is AccountabilityError)) {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
     // Refresh the review badge once per successful load (not on every
     // transient state — that caused extra Firestore reads and rebuilds).
     if (state is AccountabilityLoaded) {
@@ -2487,6 +2520,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                   description: descCtrl.text.trim().isEmpty
                                       ? null
                                       : descCtrl.text.trim(),
+                                  // The task creator reviews the assignee's work.
+                                  partnerUid:
+                                      AccountabilityService().currentUid,
                                 );
                                 if (ctx.mounted) Navigator.pop(ctx);
                                 // Refresh the task list in the card

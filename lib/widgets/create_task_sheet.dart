@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
@@ -198,6 +200,9 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
     });
 
     try {
+      // Connectivity snapshot: drives the offline fallback paths below.
+      final offline = !await ConnectivityService().hasInternet();
+
       String? partnershipId;
       String accountableUid = _svc.currentUid ?? '';
       String accountableName = _svc.currentUserDisplayName;
@@ -215,6 +220,17 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
         // ── Direct assignment by email (teacher / manager / coach) ──
         // Invite them and address the task to that email in one step. They
         // will see "invited you to review this task" once they join.
+        if (offline && !_svc.isReady) {
+          setState(() => _creating = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'You\'re offline — assigning a task by email needs internet. Try again when reconnected.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
         final email = _emailCtrl.text.trim().toLowerCase();
         if (!email.contains('@')) {
           setState(() {
@@ -232,6 +248,10 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
         accountableName = email;
         accountableEmail = email;
       }
+
+      // Set when an offline creation is queued for replay instead of
+      // committed right away — switches the success messaging below.
+      bool queuedOffline = false;
 
       // ── Routine tasks must appear in the Habits tab ──
       // Create a local RegularTask so it shows up under "Your habits",
@@ -315,8 +335,32 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           title: title,
           description: _descCtrl.text.trim(),
           challengeId: challengeId,
+          // The doer is the other partnership member, so I review their work.
+          partnerUid: _svc.currentUid,
+          // taskType is persisted as 'hard' unless this is a routine task
+          taskType: _taskType == 'regular' ? 'regular' : null,
         );
         ok = created != null;
+
+        // Offline fallback: queue the assignment for replay on reconnect
+        // (same flow as CloudSync/BUG-06) instead of failing outright. The
+        // local challenge/habit above is already persisted, so the user's
+        // own side keeps working; only the partner-facing assignment waits.
+        if (!ok && offline && _selectedReviewer != null) {
+          await OfflineTaskOutbox.instance.enqueue({
+            'senderUid': _svc.currentUid,
+            'accountableUid': accountableUid,
+            'accountableName': accountableName,
+            'partnershipId': partnershipId ?? '',
+            'title': title,
+            'description': _descCtrl.text.trim(),
+            'challengeId': challengeId,
+            'partnerUid': _svc.currentUid,
+            'taskType': _taskType == 'regular' ? 'regular' : 'hard',
+          });
+          queuedOffline = mounted;
+          ok = true;
+        }
       }
 
       if (!mounted) return;
@@ -325,16 +369,19 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_emailInviteOnly
-                ? 'Task assigned to ${_emailCtrl.text.trim()} — '
-                    'they\'ll accept it after they join.'
-                : _selectedReviewer != null
-                    ? 'Task created! ${_selectedReviewer!.displayName} '
-                        'will be asked to review.'
-                    : _taskType == 'regular'
-                        ? 'Routine task added to your Habits!'
-                        : 'Task added to today\'s challenge!'),
-            backgroundColor: Colors.green,
+            content: Text(queuedOffline
+                ? 'Saved offline — "${_selectedReviewer!.displayName}" '
+                    'will be asked to review when you\'re back online.'
+                : _emailInviteOnly
+                    ? 'Task assigned to ${_emailCtrl.text.trim()} — '
+                        'they\'ll accept it after they join.'
+                    : _selectedReviewer != null
+                        ? 'Task created! ${_selectedReviewer!.displayName} '
+                            'will be asked to review.'
+                        : _taskType == 'regular'
+                            ? 'Routine task added to your Habits!'
+                            : 'Task added to today\'s challenge!'),
+            backgroundColor: queuedOffline ? Colors.orange : Colors.green,
           ),
         );
         Navigator.pop(context, true);

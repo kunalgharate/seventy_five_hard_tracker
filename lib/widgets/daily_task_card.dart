@@ -690,7 +690,8 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       text = 'Tap to resubmit proof';
       color = Colors.red;
       icon = Icons.refresh;
-    } else if (accStatus == AccountabilityTaskStatus.requested) {
+    } else if (accStatus == AccountabilityTaskStatus.requested &&
+        widget.isEditable) {
       text = 'Waiting for reviewer';
       color = Colors.blue;
       icon = Icons.person_add;
@@ -885,10 +886,12 @@ class _DailyTaskCardState extends State<DailyTaskCard>
 
     // Show accountability task status when applicable — BEFORE generic checks
     // so pendingReview/approved override the raw isCompleted flag.
+    // pending/requested stay gated behind isEditable — no fake "tap" labels on missed days.
     final accStatus = widget.accountabilityStatus;
     if (accStatus != null) {
       // For creator with pending accepted task and proof required, show upload prompt
       if (accStatus == AccountabilityTaskStatus.pending &&
+          widget.isEditable &&
           (_hasAccountabilityConnection || _hasAccountabilityTask) &&
           !widget.isReviewOnly &&
           (proofStatus == null || proofStatus == ProofStatus.notRequired)) {
@@ -896,6 +899,14 @@ class _DailyTaskCardState extends State<DailyTaskCard>
       }
 
       switch (accStatus) {
+        case AccountabilityTaskStatus.requested
+            when !widget.isEditable:
+          // Non-editable past day — falls through to the generic 'Missed' check.
+          break;
+        case AccountabilityTaskStatus.pending
+            when !widget.isEditable:
+          // Non-editable past day — falls through to the generic 'Missed' check.
+          break;
         case AccountabilityTaskStatus.requested:
           return 'Pending — awaiting your acceptance';
         case AccountabilityTaskStatus.pending:

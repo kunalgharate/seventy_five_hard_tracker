@@ -261,6 +261,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
       if (otherUid == null) continue;
 
+      // The reviewer is the partnership member that is NOT the doer —
+      // the task creator (me) reviews the partner's work.
+      final reviewerUid =
+          partner.ownerUid == otherUid ? partner.partnerUid : partner.ownerUid;
+
       // Fire-and-forget — don't block navigation
       svc.createAccountabilityTask(
         accountableUid: otherUid,
@@ -269,6 +274,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         title: challenge.title.trim(),
         description: 'Daily challenge task from 75 Hard',
         challengeId: challenge.id,
+        partnerUid: reviewerUid,
+        // taskType is persisted as 'hard' unless this IS a routine task
+        taskType: challenge.taskType == 'regular' ? 'regular' : null,
       );
     }
 

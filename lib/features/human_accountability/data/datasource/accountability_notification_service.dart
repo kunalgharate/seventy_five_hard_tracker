@@ -16,6 +16,29 @@ enum AccountabilityNotificationType {
   partnerMessage,
 }
 
+/// Canonical snake_case spelling of each [AccountabilityNotificationType]
+/// (enum name → snake_case, so `reviewReminder20h` → `review_reminder_20h`).
+/// Single source of truth for both the Firestore doc `type` field and the
+/// push payload `data.type`.
+const Map<String, String> _canonicalTypeByName = {
+  'invitationReceived': 'invitation_received',
+  'invitationAccepted': 'invitation_accepted',
+  'invitationDeclined': 'invitation_declined',
+  'taskNeedsReview': 'task_needs_review',
+  'taskAssigned': 'task_assigned',
+  'reviewApproved': 'review_approved',
+  'reviewRejected': 'review_rejected',
+  'reviewReminder20h': 'review_reminder_20h',
+  'reviewExpired': 'review_expired',
+  'partnerMessage': 'partner_message',
+};
+
+extension AccountabilityNotificationTypeX on AccountabilityNotificationType {
+  /// Canonical snake_case type string derived from this enum value.
+  String get canonicalType =>
+      AccountabilityNotificationService.canonicalTypeFromName(name);
+}
+
 /// Writes FCM notification documents to Firestore.
 ///
 /// Since Cloud Functions are unavailable, notifications are delivered via:
@@ -37,6 +60,30 @@ class AccountabilityNotificationService {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
+  /// Maps any stored type spelling (legacy camelCase enum name or canonical
+  /// snake_case) to the canonical snake_case form — single source of truth
+  /// for both the Firestore doc's `type` field and the push payload's
+  /// `data.type`. Unknown values pass through unchanged (canonical strings
+  /// contain no capitals and already match themselves).
+  static String canonicalTypeFromName(String name) =>
+      _canonicalTypeByName[name] ?? name;
+
+  /// Inverse of [canonicalTypeFromName]: maps a canonical snake_case type
+  /// back to the top-level enum name spelling notification prefs are keyed
+  /// on (e.g. 'review_reminder_20h' → 'reviewReminder20h'). Names without
+  /// '_' are legacy camelCase enum names and pass through untouched.
+  static String enumNameFromCanonicalType(String canonical) {
+    if (!canonical.contains('_')) return canonical;
+    final words =
+        canonical.split('_').where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return canonical;
+    final enumName = StringBuffer(words.first);
+    for (final word in words.skip(1)) {
+      enumName.write(word[0].toUpperCase() + word.substring(1));
+    }
+    return enumName.toString();
+  }
+
   /// Sends a notification by writing to the fcm_notifications collection.
   Future<void> sendNotification({
     required String recipientUid,
@@ -55,13 +102,17 @@ class AccountabilityNotificationService {
         // Stamp the authenticated sender so security rules can verify the
         // sender is not being spoofed.
         'senderUid': _auth.currentUser!.uid,
-        'type': type.name,
+        // Canonical snake_case type — mirrors the payload's data.type.
+        'type': type.canonicalType,
         'title': title,
         'body': body,
         'data': data ?? {},
         if (channel != null && channel.isNotEmpty) 'channel': channel,
         'createdAt': FieldValue.serverTimestamp(),
         'delivered': false,
+        // Unread until the recipient views/dismisses it on the Today
+        // screen — drives the unread bell badge (home_screen).
+        'isRead': false,
       });
     } catch (e) {
       if (kDebugMode) {
@@ -88,7 +139,8 @@ class AccountabilityNotificationService {
             ? '$senderName invited you to review \'$taskName\''
             : '$senderName invited you to be their accountability partner',
         data: {
-          'type': 'invitation_received',
+          'type':
+              AccountabilityNotificationType.invitationReceived.canonicalType,
           if (taskId != null) 'taskId': taskId,
           'partnershipId': partnershipId,
         },
@@ -107,7 +159,8 @@ class AccountabilityNotificationService {
         title: 'Invitation Accepted',
         body: '$partnerName accepted your invitation',
         data: {
-          'type': 'invitation_accepted',
+          'type':
+              AccountabilityNotificationType.invitationAccepted.canonicalType,
           'partnershipId': partnershipId,
         },
         channel: 'invite_$partnershipId',
@@ -125,7 +178,8 @@ class AccountabilityNotificationService {
         title: 'Invitation Declined',
         body: '$partnerName declined your invitation',
         data: {
-          'type': 'invitation_declined',
+          'type':
+              AccountabilityNotificationType.invitationDeclined.canonicalType,
           'partnershipId': partnershipId,
         },
         channel: 'invite_$partnershipId',
@@ -144,7 +198,8 @@ class AccountabilityNotificationService {
         title: 'New Task Assigned',
         body: '$ownerName assigned \'$taskName\' to you',
         data: {
-          'type': 'task_assigned',
+          'type':
+              AccountabilityNotificationType.taskAssigned.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -163,7 +218,8 @@ class AccountabilityNotificationService {
         title: '$ownerName\'s Task',
         body: '\'$taskName\' needs your review',
         data: {
-          'type': 'task_needs_review',
+          'type':
+              AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -181,7 +237,8 @@ class AccountabilityNotificationService {
         title: 'Task Approved ✅',
         body: 'Your partner approved \'$taskName\'',
         data: {
-          'type': 'review_approved',
+          'type':
+              AccountabilityNotificationType.reviewApproved.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -202,7 +259,8 @@ class AccountabilityNotificationService {
             ? 'Your partner rejected \'$taskName\': $comment'
             : 'Your partner rejected \'$taskName\'',
         data: {
-          'type': 'review_rejected',
+          'type':
+              AccountabilityNotificationType.reviewRejected.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -220,7 +278,8 @@ class AccountabilityNotificationService {
         title: 'Review Reminder ⏰',
         body: 'Only 4 hours left to review \'$taskName\'',
         data: {
-          'type': 'review_reminder',
+          'type':
+              AccountabilityNotificationType.reviewReminder20h.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -238,7 +297,8 @@ class AccountabilityNotificationService {
         title: 'Review Expired',
         body: 'Review window closed — \'$taskName\' marked incomplete',
         data: {
-          'type': 'review_expired',
+          'type':
+              AccountabilityNotificationType.reviewExpired.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -258,8 +318,11 @@ class AccountabilityNotificationService {
         type: AccountabilityNotificationType.taskNeedsReview,
         title: 'Review Request',
         body: '$ownerName wants you to review \'$taskName\'',
+        // Phase-4 conveniences reuse a parent enum value above; the payload
+        // type still travels as that enum's canonical string.
         data: {
-          'type': 'review_requested',
+          'type':
+              AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -278,7 +341,8 @@ class AccountabilityNotificationService {
         title: 'Request Accepted',
         body: '$reviewerName accepted your review request for \'$taskName\'',
         data: {
-          'type': 'request_accepted',
+          'type':
+              AccountabilityNotificationType.invitationAccepted.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -297,7 +361,8 @@ class AccountabilityNotificationService {
         title: 'Request Declined',
         body: '$reviewerName declined your review request for \'$taskName\'',
         data: {
-          'type': 'request_declined',
+          'type':
+              AccountabilityNotificationType.invitationDeclined.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -317,7 +382,8 @@ class AccountabilityNotificationService {
         title: 'Proof Submitted',
         body: '$ownerName submitted proof for \'$taskName\'',
         data: {
-          'type': 'proof_submitted',
+          'type':
+              AccountabilityNotificationType.taskNeedsReview.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -341,7 +407,8 @@ class AccountabilityNotificationService {
             ? '$reviewerName approved \'$taskName\' — task completed!'
             : '$reviewerName approved your proof for \'$taskName\'',
         data: {
-          'type': 'proof_approved',
+          'type':
+              AccountabilityNotificationType.reviewApproved.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -361,7 +428,8 @@ class AccountabilityNotificationService {
         title: 'Task Needs Work',
         body: '$reviewerName rejected \'$taskName\': $comment',
         data: {
-          'type': 'proof_rejected',
+          'type':
+              AccountabilityNotificationType.reviewRejected.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',

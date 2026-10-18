@@ -202,8 +202,12 @@ service cloud.firestore {
 }
     // ── accountability_tasks ──────────────────────────────────────
     // Read restricted to: task creator (assignedByUid), accountable user,
-    // or the assigned reviewing partner (partnerUid).
-    // Only the creator can create. Creator, accountable user, or partner can update.
+    // or the assigned reviewing partner (partnerUid). Only the creator can create.
+    // Updates are field-level (rules_version 2): every allowed transition is
+    // gated by a diff().affectedKeys() whitelist mirroring the field sets its
+    // writer in accountability_service.dart uses. Ownership fields
+    // (assignedByUid, accountableUid, partnerUid, accountableUserIds) are
+    // immutable outside identity claim/accept, and review fields are one-shot.
     match /accountability_tasks/{taskId} {
       allow read: if request.auth != null
                   && (resource.data.assignedByUid == request.auth.uid
@@ -216,17 +220,167 @@ service cloud.firestore {
                           && resource.data.accountableEmail == request.auth.token.email));
       allow create: if request.auth != null
                     && request.resource.data.assignedByUid == request.auth.uid;
-      allow update: if request.auth != null
-                    && (resource.data.accountableUid == request.auth.uid
-                        || resource.data.assignedByUid == request.auth.uid
-                        || resource.data.partnerUid == request.auth.uid
-                        || (request.auth.uid in resource.data.accountableUserIds)
-                        // Claim: only fills in my own uid, addressed to my email
-                        || (resource.data.accountableEmail is string
-                            && resource.data.accountableEmail == request.auth.token.email
-                            && request.resource.data.accountableUid == request.auth.uid
-                            && request.resource.data.assignedByUid == resource.data.assignedByUid
-                            && request.resource.data.accountableEmail == resource.data.accountableEmail));
+
+      // Whitelist per transition, traced to its writer(s):
+      //   claim     claimTasksAssignedToMyEmail → accountableUid[+accountableUserIds]
+      //   submit    submitForReview            → status, submittedAt, expiresAt
+      //   review    approveTask / rejectTask   → status, reviewDecision,
+      //                                            reviewComment, reviewedAt,
+      //                                            completedAt
+      //   expire    review_expiry_service      → status, reviewDecision, reviewedAt
+      //   accept    acceptTaskRequest          → status, accountableUid,
+      //                                            accountableUserIds
+      //   r-accept  acceptReviewRequest        → status  (/ declineReviewRequest)
+      //   decline   declineTaskRequest /
+      //             cancelAccountabilityTask   → status
+      //   complete  completeAccountabilityTask /
+      //             uncompleteAccountabilityTask → status, completedAt
+      //   p-submit  submitTaskProof /
+      //             submitProofForReview       → proofStatus, proofUrl,
+      //                                            proofSubmittedAt (+ submit set)
+      //   p-review  reviewTaskProof / approveProof / rejectProof → approvals,
+      //             rejections, proofStatus, proofReviewComment,
+      //             proofReviewedAt, status, reviewDecision, reviewedAt,
+      //             completedAt
+      allow update: if request.auth != null && (
+        // Claim: the addressed email holder fills in ONLY their own
+        // identity — own uid (and self-entry in accountableUserIds);
+        // assigner and address stay untouched (claimTasksAssignedToMyEmail).
+        (resource.data.accountableEmail is string
+            && resource.data.accountableEmail == request.auth.token.email
+            && request.resource.data.accountableUid == request.auth.uid
+            && request.resource.data.assignedByUid == resource.data.assignedByUid
+            && request.resource.data.accountableEmail == resource.data.accountableEmail
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['accountableUid', 'accountableUserIds'])
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['accountableUserIds'])
+                || request.auth.uid in request.resource.data.accountableUserIds))
+        // Submit for review: the accountable doer flips pending →
+        // pendingReview (submitForReview) — submission stamps only, and it
+        // cannot touch review fields, so the doer can never self-approve.
+        || (resource.data.status == 'pending'
+            && resource.data.accountableUid == request.auth.uid
+            && request.resource.data.status == 'pendingReview'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'submittedAt', 'expiresAt']))
+        // Review decision: partner or assigner decides an in-flight review
+        // (approveTask / rejectTask). Allowed only while status is still
+        // pendingReview, so a finalized review can never be rewritten.
+        || ((resource.data.partnerUid == request.auth.uid
+                || resource.data.assignedByUid == request.auth.uid)
+            && resource.data.status == 'pendingReview'
+            && (request.resource.data.status == 'approved'
+                || request.resource.data.status == 'rejected')
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'reviewDecision', 'reviewComment',
+                             'reviewedAt', 'completedAt']))
+        // Expire: the accountable doer may mark an OVERDUE review expired
+        // (review_expiry_service) — never before expiresAt passes, so they
+        // cannot dodge a live review.
+        || (resource.data.accountableUid == request.auth.uid
+            && resource.data.status == 'pendingReview'
+            && resource.data.expiresAt != null
+            && request.time > resource.data.expiresAt
+            && request.resource.data.status == 'expired'
+            && request.resource.data.reviewDecision == 'expired'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'reviewDecision', 'reviewedAt']))
+        // Accept a requested task (acceptTaskRequest): the addressed doer
+        // claims themselves as accountable — own uid and joins
+        // accountableUserIds, requested → pending; ownership untouched.
+        || ((resource.data.accountableUid == request.auth.uid
+                || (resource.data.accountableEmail is string
+                    && resource.data.accountableEmail
+                           == request.auth.token.email))
+            && resource.data.status == 'requested'
+            && request.resource.data.status == 'pending'
+            && request.resource.data.accountableUid == request.auth.uid
+            && request.auth.uid in request.resource.data.accountableUserIds
+            && request.resource.data.assignedByUid == resource.data.assignedByUid
+            && request.resource.data.accountableEmail
+                   == resource.data.accountableEmail
+            && request.resource.data.partnerUid == resource.data.partnerUid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'accountableUid', 'accountableUserIds']))
+        // Review request: a listed reviewer (never the assigner) accepts
+        // requested → pending (acceptReviewRequest) or declines
+        // requested → declined (declineReviewRequest), removing exactly
+        // their own uid from accountableUserIds.
+        || (resource.data.accountableUserIds != null
+            && request.auth.uid in resource.data.accountableUserIds
+            && resource.data.assignedByUid != request.auth.uid
+            && resource.data.status == 'requested'
+            && request.resource.data.assignedByUid == resource.data.assignedByUid
+            && ((request.resource.data.status == 'pending'
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status']))
+                || (request.resource.data.status == 'declined'
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status', 'accountableUserIds'])
+                    && !(request.auth.uid
+                             in request.resource.data.accountableUserIds)
+                    && request.resource.data.accountableUserIds.size()
+                           == resource.data.accountableUserIds.size() - 1)))
+        // Decline / cancel (declineTaskRequest / cancelAccountabilityTask):
+        // the doer declines their request, the assigner cancels theirs —
+        // status only.
+        || (request.resource.data.status == 'declined'
+            && (resource.data.accountableUid == request.auth.uid
+                || resource.data.assignedByUid == request.auth.uid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status']))
+        // Self complete/uncomplete (completeAccountabilityTask /
+        // uncompleteAccountabilityTask): the doer manages their own task's
+        // completion — status and completedAt only.
+        || (resource.data.accountableUid == request.auth.uid
+            && (request.resource.data.status == 'completed'
+                || request.resource.data.status == 'pending')
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'completedAt']))
+        // Proof submission: the owner (assignedByUid) attaches their proof
+        // (submitTaskProof / submitProofForReview); status, when touched,
+        // may only go to pendingReview.
+        || (resource.data.assignedByUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['proofStatus', 'proofUrl', 'proofSubmittedAt',
+                             'status', 'submittedAt', 'expiresAt'])
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['proofStatus'])
+                || request.resource.data.proofStatus == 'submitted')
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['status'])
+                || request.resource.data.status == 'pendingReview'))
+        // Proof review: reviewers vote and finalize (reviewTaskProof /
+        // approveProof / rejectProof) — partner or accountable users, NEVER
+        // the owner; only while proofStatus is still 'submitted', which
+        // freezes the proof once a final decision is written.
+        || (resource.data.proofStatus == 'submitted'
+            && resource.data.assignedByUid != request.auth.uid
+            && (resource.data.partnerUid == request.auth.uid
+                || resource.data.accountableUid == request.auth.uid
+                || (resource.data.accountableUserIds != null
+                    && request.auth.uid in resource.data.accountableUserIds))
+            && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['approvals', 'rejections', 'proofStatus',
+                             'proofReviewComment', 'proofReviewedAt',
+                             'status', 'reviewDecision', 'reviewedAt',
+                             'completedAt'])
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['proofStatus'])
+                || (request.resource.data.proofStatus == 'approved'
+                    || request.resource.data.proofStatus == 'rejected'))
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['status'])
+                || (request.resource.data.status == 'approved'
+                    || request.resource.data.status == 'rejected'
+                    || request.resource.data.status == 'completed'
+                    || request.resource.data.status == 'pending'))
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                     .hasAny(['reviewDecision'])
+                || (request.resource.data.reviewDecision == 'approved'
+                    || request.resource.data.reviewDecision
+                           == 'rejected'))));
       allow delete: if request.auth != null
                     && resource.data.assignedByUid == request.auth.uid;
     }

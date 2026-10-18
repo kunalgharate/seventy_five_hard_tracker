@@ -6,11 +6,14 @@ class ReviewScoringEngine {
 
   /// Computes the 75 Hard streak after a review outcome.
   ///
-  /// - approved → currentStreak + 1
+  /// - approved → keep the streak (the day's completion flow already
+  ///   increments it)
   /// - rejected or expired → reset to 1 (Day 1)
+  /// - pending (anything else) → keep the streak untouched
   int compute75HardStreak(int currentStreak, String outcome) {
-    if (outcome == 'approved') return currentStreak + 1;
-    return 1; // reset on rejection or expiry
+    // Reuse the reset rule: only rejected/expiry are terminal failures.
+    if (triggers75HardReset(outcome)) return 1;
+    return currentStreak; // pending keeps the streak; approved handled by daily completion flow
   }
 
   /// Whether a Regular task day counts as complete based on outcome.

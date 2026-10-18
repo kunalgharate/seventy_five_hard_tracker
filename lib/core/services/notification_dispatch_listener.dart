@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 
 import 'fcm_service.dart';
 import 'notification_preferences.dart';
@@ -75,12 +76,17 @@ class NotificationDispatchListener {
       final notifData =
           (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       final channel = data['channel'] as String? ?? doc.id;
-      // The snake_case data type drives navigation; fall back to the
-      // enum name for docs written before `data.type` existed.
-      final type = notifData['type'] ?? data['type'] ?? '';
-      // Prefs are keyed on the top-level enum name (e.g. 'taskNeedsReview').
-      final enabled = await NotificationPreferences.instance
-          .isTypeEnabled((data['type'] ?? '').toString());
+      // One canonical snake_case type drives navigation. Prefer the payload
+      // type; fall back to the top-level field for docs written before
+      // `data.type` existed — legacy docs store the camelCase enum name
+      // there, and both spellings normalize to the same canonical value.
+      final type = AccountabilityNotificationService.canonicalTypeFromName(
+          (notifData['type'] ?? data['type'] ?? '').toString());
+      // Prefs are keyed on the top-level enum name (e.g. 'taskNeedsReview');
+      // fresh docs carry the canonical snake_case form, so normalize back.
+      final enabled = await NotificationPreferences.instance.isTypeEnabled(
+          AccountabilityNotificationService.enumNameFromCanonicalType(
+              (data['type'] ?? '').toString()));
       final payload = <String, dynamic>{
         ...notifData,
         'type': type,

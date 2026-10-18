@@ -329,8 +329,11 @@ class FcmService {
     }
   }
 
-  bool _isPartnerMessage(String type) =>
-      type == 'partner_message' || type == 'partnerMessage';
+  // Payload types are canonical snake_case (single source of truth in
+  // AccountabilityNotificationService); the legacy camelCase 'partnerMessage'
+  // spelling only ever appeared on legacy doc top-level fields, which the
+  // dispatch listener normalizes before the payload is queued here.
+  bool _isPartnerMessage(String type) => type == 'partner_message';
 
   bool _isReviewType(String type) =>
       type.startsWith('task') ||

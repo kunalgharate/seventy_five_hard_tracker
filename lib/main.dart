@@ -28,8 +28,10 @@ import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'features/human_accountability/presentation/bloc/accountability_state.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
+import 'core/services/offline_task_outbox.dart';
 import 'core/services/data_ownership.dart';
 import 'core/services/fcm_service.dart';
 import 'core/theme/figma_tokens.dart';
@@ -102,6 +104,10 @@ void main() async {
   }
   connectivity.startListening(); // retries when internet comes back
 
+  // Reconnect hook: when the device regains internet, push local changes to
+  // the cloud (BUG-06) and flush any tasks queued while offline.
+  connectivity.onInternetRestored = _onInternetRestored;
+
   // ── Start review expiry timer if user is signed in ──
   // Checks for overdue partner reviews every 5 minutes and on app start.
   if (FirebaseAuth.instance.currentUser != null) {
@@ -119,6 +125,26 @@ void main() async {
 
   runApp(MyApp(
       smartNotifications: smartNotifications, connectivity: connectivity));
+}
+
+/// Runs once per none→internet transition (set as
+/// [ConnectivityService.onInternetRestored]).
+///
+/// Pushes local changes to the cloud (autoSync — the missing half of the
+/// old "Auto-syncs when online" promise) and flushes tasks queued for
+/// creation while the device was offline.
+Future<void> _onInternetRestored() async {
+  try {
+    final db = DatabaseRepository();
+    final taskRepo = RegularTaskRepository();
+    await db.init();
+    await taskRepo.init();
+
+    await CloudSyncService().autoSync(db, taskRepo);
+    await OfflineTaskOutbox.instance.flush();
+  } catch (e) {
+    if (kDebugMode) print('🔄 Reconnect work failed: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -162,6 +188,42 @@ class MyApp extends StatelessWidget {
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
+        // Cross-BLoC bridge: a partner's review reaction drives ChallengeBloc —
+        // StreakImpacted (hard tasks) resets the session on 'rejected',
+        // RegularTaskOutcome (regular tasks) un-completes the task for today.
+        // Exactly-once consumption is enforced in ChallengeBloc itself.
+        builder: (context, child) =>
+            BlocListener<AccountabilityBloc, AccountabilityState>(
+          listener: (context, state) {
+            if (state is StreakImpacted) {
+              if (state.reason == 'rejected') {
+                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                      taskType: 'hard',
+                      outcome: 'rejected',
+                      newStreakDay: state.newStreakDay,
+                    ));
+              } else if (state.reason == 'approved') {
+                // Approved needs no session mutation — register the outcome
+                // so exactly-once ingestion stays symmetric.
+                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                      taskType: 'hard',
+                      outcome: 'approved',
+                      newStreakDay: state.newStreakDay,
+                    ));
+              }
+              // 'expired' is emitted via TasksExpired elsewhere — not consumed.
+            } else if (state is RegularTaskOutcome &&
+                state.outcome == 'rejected') {
+              context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                    taskId: state.taskId,
+                    challengeId: state.challengeId,
+                    taskType: 'regular',
+                    outcome: 'rejected',
+                  ));
+            }
+          },
+          child: child,
+        ),
         home: const InitialScreen(),
         navigatorObservers: connectivity.isFirebaseReady
             ? [AnalyticsService().getObserver()]
@@ -433,8 +495,8 @@ class _InitialScreenState extends State<InitialScreen>
     if (state == AppLifecycleState.resumed) {
       SimpleBackgroundCheckService().checkOnAppOpen();
       // Check for expired accountability tasks when app resumes
+      // (CheckExpiredTasks already runs the expiry query via the service).
       if (FirebaseAuth.instance.currentUser != null) {
-        ReviewExpiryService().checkAndExpireTasks();
         if (mounted) {
           context.read<AccountabilityBloc>().add(CheckExpiredTasks());
         }
@@ -460,6 +522,11 @@ class _InitialScreenState extends State<InitialScreen>
 
     await bloc.repository.init();
     await taskRepo.init();
+
+    // Replay Squad-task creations queued while offline (BUG-03). An
+    // online-start never fires the reconnect hook, so run it here too.
+    unawaited(
+        OfflineTaskOutbox.instance.flush().catchError((_) => 0));
 
     // If user is signed in but has NO local data, restore from cloud.
     User? currentUser;

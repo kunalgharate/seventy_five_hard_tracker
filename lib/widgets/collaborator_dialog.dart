@@ -311,6 +311,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             description: 'Collaborator task from Daily Mettle',
             challengeId: widget.taskId,
             accountableUserIds: allUids,
+            // The task creator reviews the collaborator's work.
+            partnerUid: myUid,
           );
           if (task != null) {
             debugPrint('[CollaboratorDialog] Created accountability task:');

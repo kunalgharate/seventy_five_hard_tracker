@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 /// Client-side service that detects and expires overdue partner reviews.
 ///
 /// Since Cloud Functions are unavailable, expiry runs on the client:
-/// 1. On app open: query all pendingReview tasks past expiresAt → batch-update to expired
+/// 1. On app open: query all pendingReview tasks past expiresAt → transaction per task
 /// 2. Periodic timer: every 5 minutes while app is foregrounded
 /// 3. Precise timer: scheduled for the exact expiresAt of a newly submitted task
 class ReviewExpiryService {
@@ -23,7 +23,8 @@ class ReviewExpiryService {
   String? get _uid => _auth.currentUser?.uid;
 
   /// Queries Firestore for tasks in pendingReview status where expiresAt < now.
-  /// Batch-updates them to expired. Returns the list of expired task IDs.
+  /// Expires each of them in its own transaction (so a review submitted
+  /// concurrently is never overwritten) and returns the expired task IDs.
   Future<List<String>> checkAndExpireTasks() async {
     if (!_isReady) return [];
 
@@ -31,7 +32,7 @@ class ReviewExpiryService {
       final now = DateTime.now();
       final uid = _uid!;
 
-      // Find tasks where I'm the owner or the accountable user that are overdue
+      // Find tasks where I'm the accountable user that are overdue
       final snap = await _db
           .collection('accountability_tasks')
           .where('status', isEqualTo: 'pendingReview')
@@ -41,27 +42,39 @@ class ReviewExpiryService {
 
       if (snap.docs.isEmpty) return [];
 
-      final batch = _db.batch();
       final expiredIds = <String>[];
-
       for (final doc in snap.docs) {
-        batch.update(doc.reference, {
-          'status': 'expired',
-          'reviewedAt': FieldValue.serverTimestamp(),
-          'reviewDecision': 'expired',
+        final expired = await _db.runTransaction<bool>((txn) async {
+          // Fresh re-read inside the transaction: if the partner submitted a
+          // review or already decided since the query ran, 'status' won't
+          // still be pendingReview and we must not clobber it with 'expired'.
+          final fresh = await txn.get(doc.reference);
+          if (!fresh.exists) return false;
+          if (fresh.data()!['status'] != 'pendingReview') return false;
+          txn.update(doc.reference, {
+            'status': 'expired',
+            'reviewedAt': FieldValue.serverTimestamp(),
+            'reviewDecision': 'expired',
+          });
+          return true;
         });
-        expiredIds.add(doc.id);
+        if (expired) expiredIds.add(doc.id);
       }
 
-      await batch.commit();
-
-      if (kDebugMode && expiredIds.isNotEmpty) {
+      if (expiredIds.isNotEmpty) {
         debugPrint('[ReviewExpiry] Expired ${expiredIds.length} overdue tasks');
       }
 
       return expiredIds;
     } catch (e) {
-      if (kDebugMode) debugPrint('[ReviewExpiry] Check failed: $e');
+      // Missing composite index (failed-precondition) or rules rejections
+      // (permission-denied) are setup problems, not "nothing to expire" —
+      // surface them instead of the empty-list fallback.
+      if (e is FirebaseException &&
+          (e.code == 'failed-precondition' || e.code == 'permission-denied')) {
+        rethrow;
+      }
+      debugPrint('[ReviewExpiry] Check failed: $e');
       return [];
     }
   }

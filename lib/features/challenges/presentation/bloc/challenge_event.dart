@@ -179,3 +179,27 @@ class EndActiveSession extends ChallengeEvent {
   @override
   List<Object> get props => const [];
 }
+
+/// A partner-review outcome for one of this user's tasks, forwarded from
+/// AccountabilityBloc by main.dart's BlocListener. [taskType] is 'hard' for
+/// StreakImpacted states (which carry no task ids) and 'regular' for
+/// RegularTaskOutcome states.
+class ReviewOutcomeObserved extends ChallengeEvent {
+  final String? taskId;
+  final String? challengeId;
+  final String outcome; // 'approved' | 'rejected'
+  final String taskType; // 'hard' | 'regular'
+  final int? newStreakDay;
+
+  const ReviewOutcomeObserved({
+    this.taskId,
+    this.challengeId,
+    required this.outcome,
+    required this.taskType,
+    this.newStreakDay,
+  });
+
+  @override
+  List<Object?> get props =>
+      [taskId, challengeId, outcome, taskType, newStreakDay];
+}

@@ -7,14 +7,26 @@ void main() {
   final rng = Random(42); // fixed seed for reproducibility
 
   group('ReviewScoringEngine — Property-Based Tests', () {
-    // Property 13: Streak increment on approval (75 Hard)
-    test('Property: approved always increments streak by exactly 1', () {
+    // Property 13: Approved keeps the streak — the day's completion flow
+    // already increments it, so a review must not double-count the day.
+    test('Property: approved keeps the streak unchanged', () {
       for (int i = 0; i < 200; i++) {
         final currentStreak = rng.nextInt(500) + 1; // 1–500
         final result = engine.compute75HardStreak(currentStreak, 'approved');
-        expect(result, equals(currentStreak + 1),
+        expect(result, equals(currentStreak),
             reason:
-                'approved should always increment: $currentStreak → ${currentStreak + 1}');
+                'approved should keep the streak: $currentStreak → $currentStreak');
+      }
+    });
+
+    // Property: pending (any non-terminal outcome) preserves the streak
+    test('Property: pending always preserves the streak', () {
+      for (int i = 0; i < 200; i++) {
+        final currentStreak = rng.nextInt(500) + 1;
+        final result = engine.compute75HardStreak(currentStreak, 'pending');
+        expect(result, equals(currentStreak),
+            reason:
+                'pending must not reset: $currentStreak must stay, got $result');
       }
     });
 

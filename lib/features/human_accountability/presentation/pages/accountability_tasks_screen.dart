@@ -403,6 +403,8 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       title: title,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       dueDate: _dueDate,
+      // The task creator reviews the assignee's work.
+      partnerUid: _svc.currentUid,
     );
     if (!mounted) return;
     setState(() => _submitting = false);

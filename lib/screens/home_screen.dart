@@ -17,6 +17,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/challe
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
@@ -163,31 +164,63 @@ class _HomeScreenState extends State<HomeScreen> {
       final svc = AccountabilityService();
       final uid = svc.currentUid;
       if (uid == null) return;
+      // Unread-only feed: docs the recipient has already seen (surfaced or
+      // dismissed) fall out, so the bell badge reaches zero (BUG-01).
+      // Counted over a wider window than the 3 inline cards.
       final snap = await FirebaseFirestore.instance
           .collection('fcm_notifications')
           .where('recipientUid', isEqualTo: uid)
           .where('delivered', isEqualTo: true)
           .orderBy('createdAt', descending: true)
-          .limit(3)
+          .limit(50)
           .get();
       if (!mounted) return;
       setState(() {
         // Docs the user muted via notification prefs stay out of the cards.
         _recentNotifications = snap.docs
             .where((d) => d.data()['suppressedByPrefs'] != true)
+            .where((d) => d.data()['isRead'] != true)
             .map((d) {
           final data = d.data();
-          final type = data['type'] as String? ?? '';
+          // Canonical snake_case type — payload type first, legacy camelCase
+          // enum-name top level normalized the same way as delivery.
+          final notifData =
+              (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+          final type = AccountabilityNotificationService.canonicalTypeFromName(
+              (notifData['type'] ?? data['type'] ?? '').toString());
           String action = 'feedback';
-          if (type.contains('approved')) action = 'approved';
-          if (type.contains('rejected')) action = 'rejected';
+          if (type == 'review_approved') action = 'approved';
+          if (type == 'review_rejected') action = 'rejected';
           return {
+            'id': d.id,
             'reviewer': (data['title'] as String? ?? '').split(' ').first,
             'task': data['body'] as String? ?? '',
             'action': action,
           };
         }).toList();
       });
+    } catch (_) {}
+  }
+
+  /// Marks all visible delivered notifications as read so the Today badge
+  /// clears once the user has seen them. Batched Firestore write (queues
+  /// fine offline — local reads already include pending writes).
+  Future<void> _markNotificationsRead() async {
+    try {
+      final svc = AccountabilityService();
+      final uid = svc.currentUid;
+      if (uid == null) return;
+      if (_recentNotifications.isEmpty) return;
+      final batch = FirebaseFirestore.instance.batch();
+      for (final n in _recentNotifications) {
+        final id = n['id'];
+        if (id == null || id.isEmpty) continue;
+        batch.update(
+          FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
+          {'isRead': true, 'readAt': Timestamp.now()},
+        );
+      }
+      await batch.commit();
     } catch (_) {}
   }
 
@@ -482,6 +515,18 @@ class _HomeScreenState extends State<HomeScreen> {
             action: n['action'] ?? 'approved',
             comment: n['comment'],
             onDismiss: () {
+              // Persist the dismissal so the notification stays read and
+              // the badge drops — previously this only removed the local
+              // card and it reappeared on the next reload (BUG-01).
+              final id = n['id'];
+              if (id != null && id.isNotEmpty) {
+                try {
+                  FirebaseFirestore.instance
+                      .collection('fcm_notifications')
+                      .doc(id)
+                      .update({'isRead': true, 'readAt': Timestamp.now()});
+                } catch (_) {}
+              }
               setState(() => _recentNotifications.remove(n));
             },
           )),
@@ -595,6 +640,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Opens the app's notification surface — the Reviews screen, the same
   /// destination the Squad top-right button and notification taps use.
+  /// Returning from it marks the surfaced notifications as read so the
+  /// bell badge goes to zero (BUG-01: badge must reflect unread state).
   void _openNotifications() {
     final bloc = context.read<AccountabilityBloc>();
     Navigator.of(context)
@@ -609,7 +656,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         )
-        .then((_) => _loadRecentNotifications());
+        .then((_) async {
+          await _markNotificationsRead();
+          if (mounted) await _loadRecentNotifications();
+        });
   }
 
   /// Saves a task toggle end-to-end. Shows a blocking progress dialog while
