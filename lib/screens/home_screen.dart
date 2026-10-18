@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:equatable/equatable.dart';
 import 'package:seventy_five_hard_tracker/widgets/greeting_header.dart';
 import 'package:seventy_five_hard_tracker/widgets/challenge_hero_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/review_notification_card.dart';
@@ -33,6 +34,50 @@ import 'package:seventy_five_hard_tracker/services/smart_notification_service.da
 import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
+
+class _DisciplineScoreInputSignature extends Equatable {
+  _DisciplineScoreInputSignature({
+    required this.sessionId,
+    required this.startDate,
+    required this.totalDaysTarget,
+    required this.today,
+    required List<String> nonRegularChallengeIds,
+    required List<_DisciplineProgressSignature> progress,
+  })  : nonRegularChallengeIds = List.unmodifiable(nonRegularChallengeIds),
+        progress = List.unmodifiable(progress);
+
+  final String sessionId;
+  final DateTime startDate;
+  final int totalDaysTarget;
+  final DateTime today;
+  final List<String> nonRegularChallengeIds;
+  final List<_DisciplineProgressSignature> progress;
+
+  @override
+  List<Object?> get props => [
+        sessionId,
+        startDate,
+        totalDaysTarget,
+        today,
+        nonRegularChallengeIds,
+        progress,
+      ];
+}
+
+class _DisciplineProgressSignature extends Equatable {
+  _DisciplineProgressSignature({
+    required this.date,
+    required this.isCompleted,
+    required List<String> completedChallengeIds,
+  }) : completedChallengeIds = List.unmodifiable(completedChallengeIds);
+
+  final DateTime date;
+  final bool isCompleted;
+  final List<String> completedChallengeIds;
+
+  @override
+  List<Object?> get props => [date, isCompleted, completedChallengeIds];
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onGoToSquad});
@@ -72,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Last successfully loaded state, kept so a transient error emission
   /// (e.g. a denied task toggle) never blanks the Today screen.
   ChallengeLoaded? _lastLoadedState;
+
+  _DisciplineScoreInputSignature? _lastDisciplineScoreInputSignature;
 
   /// Recent review notifications for inline display.
   List<Map<String, String>> _recentNotifications = [];
@@ -421,80 +468,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         },
       ),
-      body: BlocConsumer<ChallengeBloc, ChallengeState>(
+      body: BlocListener<DisciplineScoreBloc, DisciplineScoreState>(
+        listenWhen: (previous, current) =>
+            previous is! DisciplineScoreInitial &&
+            current is DisciplineScoreInitial,
         listener: (context, state) {
-          // Use addPostFrameCallback to avoid setState during build
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return; // Safety check
-
-            if (state is ChallengeLoaded && state.hasActiveSession) {
-              _lastLoadedState = state;
-              // Reset selected day to today when a new session becomes active
-              // (e.g. after restarting from history)
-              final today = DateTime.now();
-              if (!_isSameDay(_selectedDay, today)) {
-                setState(() {
-                  _selectedDay = today;
-                });
-              }
-              // Load accountability statuses only once per session —
-              // not on every ChallengeLoaded emission (e.g. task toggles),
-              // which would cause repeated Firestore reads and rebuilds.
-              // Mark as loaded only after success so failures can be retried.
-              final sessionId = state.activeSession!.id;
-              if (_accountabilityLoadedSessionId != sessionId) {
-                _loadAccountabilityStatuses(
-                  state.activeSession!.challenges,
-                ).then((_) {
-                  _accountabilityLoadedSessionId = sessionId;
-                });
-              }
-            } else if (state is ChallengeLoaded) {
-              // No active session (sign-out / account switch cleared local
-              // data) — drop the cached snapshot so stale data can never
-              // reappear behind a later error/loading emission.
-              _lastLoadedState = null;
-            } else if (state is ChallengeError) {
-              if (_errorSnackClaimed) {
-                // Already surfaced by the toggle path — just reset the flag.
-                _errorSnackClaimed = false;
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(state.message),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            } else if (state is ChallengeReset) {
-              _showResetDialog(state);
-            } else if (state is ChallengeCompleted) {
-              _showCompletionDialog(state.completedSession);
-            }
-          });
+          _lastDisciplineScoreInputSignature = null;
         },
-        builder: (context, state) {
-          if (state is ChallengeLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+        child: BlocConsumer<ChallengeBloc, ChallengeState>(
+          listener: (context, state) {
+            // Use addPostFrameCallback to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return; // Safety check
 
-          if (state is ChallengeLoaded) {
-            if (!state.hasActiveSession) {
-              return _buildNoActiveSession();
+              if (state is ChallengeLoaded && state.hasActiveSession) {
+                _lastLoadedState = state;
+                // Reset selected day to today when a new session becomes active
+                // (e.g. after restarting from history)
+                final today = DateTime.now();
+                if (!_isSameDay(_selectedDay, today)) {
+                  setState(() {
+                    _selectedDay = today;
+                  });
+                }
+                // Load accountability statuses only once per session —
+                // not on every ChallengeLoaded emission (e.g. task toggles),
+                // which would cause repeated Firestore reads and rebuilds.
+                // Mark as loaded only after success so failures can be retried.
+                final sessionId = state.activeSession!.id;
+                if (_accountabilityLoadedSessionId != sessionId) {
+                  _loadAccountabilityStatuses(
+                    state.activeSession!.challenges,
+                  ).then((_) {
+                    _accountabilityLoadedSessionId = sessionId;
+                  });
+                }
+              } else if (state is ChallengeLoaded) {
+                // No active session (sign-out / account switch cleared local
+                // data) — drop the cached snapshot so stale data can never
+                // reappear behind a later error/loading emission.
+                _lastLoadedState = null;
+              } else if (state is ChallengeError) {
+                if (_errorSnackClaimed) {
+                  // Already surfaced by the toggle path — just reset the flag.
+                  _errorSnackClaimed = false;
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } else if (state is ChallengeReset) {
+                _showResetDialog(state);
+              } else if (state is ChallengeCompleted) {
+                _showCompletionDialog(state.completedSession);
+              }
+            });
+          },
+          builder: (context, state) {
+            if (state is ChallengeLoading) {
+              return const Center(child: CircularProgressIndicator());
             }
 
-            return _buildActiveSession(state);
-          }
+            if (state is ChallengeLoaded) {
+              if (!state.hasActiveSession) {
+                return _buildNoActiveSession();
+              }
 
-          // Error / loading / initial — keep showing the last good screen so
-          // a failed action never makes every task vanish.
-          final cached = _lastLoadedState;
-          if (cached != null && cached.hasActiveSession) {
-            return _buildActiveSession(cached);
-          }
+              return _buildActiveSession(state);
+            }
 
-          return _buildNoActiveSession();
-        },
+            // Error / loading / initial — keep showing the last good screen so
+            // a failed action never makes every task vanish.
+            final cached = _lastLoadedState;
+            if (cached != null && cached.hasActiveSession) {
+              return _buildActiveSession(cached);
+            }
+
+            return _buildNoActiveSession();
+          },
+        ),
       ),
     );
   }
@@ -545,19 +600,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildActiveSession(ChallengeLoaded state) {
     final session = state.activeSession!;
+    final nonRegularChallengeIds = session.challenges
+        .where((challenge) => challenge.taskType != 'regular')
+        .map((challenge) => challenge.id)
+        .toList();
+    final nonRegularChallengeIdSet = nonRegularChallengeIds.toSet();
+    final scoreInputs = _DisciplineScoreInputSignature(
+      sessionId: session.id,
+      startDate: _normalizeDate(session.startDate),
+      totalDaysTarget: session.totalDaysTarget,
+      today: _normalizeDate(DateTime.now()),
+      nonRegularChallengeIds: nonRegularChallengeIds,
+      progress: state.currentProgress.map((dayProgress) {
+        final completedChallengeIds = dayProgress.challengeCompletions.entries
+            .where((entry) =>
+                entry.value && nonRegularChallengeIdSet.contains(entry.key))
+            .map((entry) => entry.key)
+            .toList()
+          ..sort();
+        return _DisciplineProgressSignature(
+          date: _normalizeDate(dayProgress.date),
+          isCompleted: dayProgress.isCompleted,
+          completedChallengeIds: completedChallengeIds,
+        );
+      }).toList(),
+    );
     final daysSinceStart =
         DateTime.now().difference(session.startDate).inDays + 1;
     final currentDay = daysSinceStart > 75 ? 75 : daysSinceStart;
 
-    // Trigger discipline score calculation whenever session data changes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
-              session: session,
-              progress: state.currentProgress,
-            ));
-      }
-    });
+    // Score inputs are stable across unrelated widget rebuilds. Dispatch only
+    // when the session, score-relevant progress, or current day changes.
+    if (scoreInputs != _lastDisciplineScoreInputSignature) {
+      _lastDisciplineScoreInputSignature = scoreInputs;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && scoreInputs == _lastDisciplineScoreInputSignature) {
+          context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
+                session: session,
+                progress: state.currentProgress,
+              ));
+        }
+      });
+    }
 
     // --- Compute task data once ---
     if (_selectedDay.isBefore(session.startDate)) {
@@ -566,6 +650,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final allProgress = state.currentProgress;
     final selectedProgress =
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
+    final streaks = _computeStreaks(allProgress);
     final isToday = _isSameDay(_selectedDay, DateTime.now());
     final isFutureDate =
         _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
@@ -586,8 +671,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ChallengeHeroCard(
         currentDay: currentDay,
         totalDays: session.totalDaysTarget,
-        currentStreak: _computeCurrentStreak(allProgress),
-        bestStreak: _computeBestStreak(allProgress),
+        currentStreak: streaks.current,
+        bestStreak: streaks.best,
       ),
       const SizedBox(height: 8),
 
@@ -1173,32 +1258,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  int _computeCurrentStreak(List<DailyProgress> progress) {
-    int streak = 0;
+  ({int current, int best}) _computeStreaks(List<DailyProgress> progress) {
     final sorted = [...progress]..sort((a, b) => b.date.compareTo(a.date));
-    for (final p in sorted) {
-      if (p.isCompleted) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  int _computeBestStreak(List<DailyProgress> progress) {
+    var current = 0;
     int best = 0;
-    int current = 0;
-    final sorted = [...progress]..sort((a, b) => a.date.compareTo(b.date));
+    var sequence = 0;
+    var scanningCurrent = true;
+
     for (final p in sorted) {
       if (p.isCompleted) {
-        current++;
-        if (current > best) best = current;
+        sequence++;
+        if (sequence > best) best = sequence;
+        if (scanningCurrent) current++;
       } else {
-        current = 0;
+        sequence = 0;
+        scanningCurrent = false;
       }
     }
-    return best;
+    return (current: current, best: best);
   }
 
   bool _isSameDay(DateTime a, DateTime b) {

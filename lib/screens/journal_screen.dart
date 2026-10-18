@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/voice_input.dart';
@@ -9,6 +10,14 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/journa
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+
+class _JournalEntriesByDay {
+  const _JournalEntriesByDay({required this.entries, required this.days});
+
+  final Map<DateTime, List<JournalEntry>> entries;
+  final List<DateTime> days;
+}
 
 /// Journal screen — mood tracking + daily reflections.
 ///
@@ -28,6 +37,8 @@ class _JournalScreenState extends State<JournalScreen> {
   final _proudCtrl = TextEditingController();
   bool _saving = false;
   bool _composerExpanded = true;
+  List<(DateTime, String)>? _cachedJournalSignature;
+  _JournalEntriesByDay? _cachedJournalEntries;
 
   // Figma mood row: 5 moods, color-coded green → red.
   static const _moods = [
@@ -74,6 +85,47 @@ class _JournalScreenState extends State<JournalScreen> {
     }
   }
 
+  _JournalEntriesByDay _journalEntriesFor(List<DailyProgress> progress) {
+    final signature = <(DateTime, String)>[
+      for (final day in progress)
+        if (day.journalNote != null && day.journalNote!.isNotEmpty)
+          (day.date, day.journalNote!),
+    ];
+    final cachedEntries = _cachedJournalEntries;
+    final cachedSignature = _cachedJournalSignature;
+    if (cachedEntries != null &&
+        cachedSignature != null &&
+        listEquals(signature, cachedSignature)) {
+      return cachedEntries;
+    }
+
+    final entriesByDay = <DateTime, List<JournalEntry>>{};
+    for (final dayProgress in progress) {
+      final note = dayProgress.journalNote;
+      if (note == null || note.isEmpty) continue;
+      final entries = JournalEntry.decode(note, fallbackDate: dayProgress.date);
+      if (entries.isEmpty) continue;
+      final day = DateTime(
+        dayProgress.date.year,
+        dayProgress.date.month,
+        dayProgress.date.day,
+      );
+      entriesByDay.putIfAbsent(day, () => []).addAll(entries);
+    }
+
+    for (final entries in entriesByDay.values) {
+      entries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    final days = entriesByDay.keys.toList()..sort((a, b) => b.compareTo(a));
+    final result = _JournalEntriesByDay(
+      entries: entriesByDay,
+      days: days,
+    );
+    _cachedJournalSignature = signature;
+    _cachedJournalEntries = result;
+    return result;
+  }
+
   @override
   void dispose() {
     _reflectionCtrl.dispose();
@@ -91,192 +143,212 @@ class _JournalScreenState extends State<JournalScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: const CustomAppBar(title: 'Daily journal', centerTitle: false),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
-        children: [
-          // ── New entry composer (collapses to a compact affordance
-          // after each successful save; entries below stay newest-first) ──
-          if (!_composerExpanded)
-            FigmaCard(
-              onTap: () => setState(() => _composerExpanded = true),
-              padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
-              radius: 20,
-              child: Row(
-                children: [
-                  const Icon(Icons.add_circle_outline, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text('Add entry',
-                        style: FigmaTokens.heading(15, color: textColor)),
-                  ),
-                  const Icon(Icons.expand_more,
-                      color: FigmaTokens.muted, size: 22),
-                ],
-              ),
-            )
-          else
-            FigmaCard(
-              padding: const EdgeInsets.all(17),
-              radius: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('How are you feeling?',
-                            style: FigmaTokens.heading(16, color: textColor)),
-                      ),
-                      IconButton(
-                        onPressed: () =>
-                            setState(() => _composerExpanded = false),
-                        icon: const Icon(Icons.expand_less, size: 22),
-                        color: FigmaTokens.muted,
-                        tooltip: 'Minimize',
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: _moods.map((m) {
-                      final selected = _selectedMood == m.$1;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedMood = m.$1),
-                        child: Column(
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // ── New entry composer (collapses to a compact affordance
+                // after each successful save; entries below stay newest-first) ──
+                if (!_composerExpanded)
+                  FigmaCard(
+                    onTap: () => setState(() => _composerExpanded = true),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 17, vertical: 14),
+                    radius: 20,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.add_circle_outline, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text('Add entry',
+                              style: FigmaTokens.heading(15, color: textColor)),
+                        ),
+                        const Icon(Icons.expand_more,
+                            color: FigmaTokens.muted, size: 22),
+                      ],
+                    ),
+                  )
+                else
+                  FigmaCard(
+                    padding: const EdgeInsets.all(17),
+                    radius: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              width: 38,
-                              height: 38,
-                              transform: selected
-                                  ? (Matrix4.identity()
-                                    ..scaleByDouble(1.12, 1.12, 1.12, 1.0))
-                                  : Matrix4.identity(),
-                              transformAlignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: m.$3,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: selected ? m.$3 : Colors.transparent,
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: cardBg,
-                                    spreadRadius: selected ? 4 : 6,
-                                    blurRadius: 0,
-                                  ),
-                                ],
-                              ),
+                            Expanded(
+                              child: Text('How are you feeling?',
+                                  style: FigmaTokens.heading(16,
+                                      color: textColor)),
                             ),
-                            const SizedBox(height: 6),
-                            Text(m.$2,
-                                style: FigmaTokens.body(9,
-                                    weight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color:
-                                        selected ? m.$3 : FigmaTokens.muted)),
+                            IconButton(
+                              onPressed: () =>
+                                  setState(() => _composerExpanded = false),
+                              icon: const Icon(Icons.expand_less, size: 22),
+                              color: FigmaTokens.muted,
+                              tooltip: 'Minimize',
+                              constraints: const BoxConstraints(
+                                  minWidth: 32, minHeight: 32),
+                              padding: EdgeInsets.zero,
+                            ),
                           ],
                         ),
-                      );
-                    }).toList(),
+                        const SizedBox(height: 15),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: _moods.map((m) {
+                            final selected = _selectedMood == m.$1;
+                            return GestureDetector(
+                              onTap: () => setState(() => _selectedMood = m.$1),
+                              child: Column(
+                                children: [
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    width: 38,
+                                    height: 38,
+                                    transform: selected
+                                        ? (Matrix4.identity()
+                                          ..scaleByDouble(
+                                              1.12, 1.12, 1.12, 1.0))
+                                        : Matrix4.identity(),
+                                    transformAlignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: m.$3,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: selected
+                                            ? m.$3
+                                            : Colors.transparent,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: cardBg,
+                                          spreadRadius: selected ? 4 : 6,
+                                          blurRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(m.$2,
+                                      style: FigmaTokens.body(9,
+                                          weight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: selected
+                                              ? m.$3
+                                              : FigmaTokens.muted)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 20),
+                        _FieldLabel(
+                          label: "What's on your mind?",
+                          textColor: textColor,
+                          controller: _reflectionCtrl,
+                        ),
+                        const SizedBox(height: 7),
+                        _JournalField(
+                          controller: _reflectionCtrl,
+                          hint:
+                              "Write or dictate today's progress, challenges, or anything you want to remember...",
+                          minLines: 4,
+                          maxLines: 6,
+                          isDark: isDark,
+                          textColor: textColor,
+                        ),
+                        const SizedBox(height: 15),
+                        _FieldLabel(
+                          label: "One thing I'm proud of",
+                          textColor: textColor,
+                          controller: _proudCtrl,
+                        ),
+                        const SizedBox(height: 7),
+                        _JournalField(
+                          controller: _proudCtrl,
+                          hint: 'I showed up even when it was difficult.',
+                          minLines: 1,
+                          maxLines: 2,
+                          isDark: isDark,
+                          textColor: textColor,
+                        ),
+                        const SizedBox(height: 18),
+                        FigmaGradientButton(
+                          label: 'Save reflection',
+                          icon: Icons.menu_book,
+                          loading: _saving,
+                          onTap: _save,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  _FieldLabel(
-                    label: "What's on your mind?",
-                    textColor: textColor,
-                    controller: _reflectionCtrl,
-                  ),
-                  const SizedBox(height: 7),
-                  _JournalField(
-                    controller: _reflectionCtrl,
-                    hint:
-                        "Write or dictate today's progress, challenges, or anything you want to remember...",
-                    minLines: 4,
-                    maxLines: 6,
-                    isDark: isDark,
-                    textColor: textColor,
-                  ),
-                  const SizedBox(height: 15),
-                  _FieldLabel(
-                    label: "One thing I'm proud of",
-                    textColor: textColor,
-                    controller: _proudCtrl,
-                  ),
-                  const SizedBox(height: 7),
-                  _JournalField(
-                    controller: _proudCtrl,
-                    hint: 'I showed up even when it was difficult.',
-                    minLines: 1,
-                    maxLines: 2,
-                    isDark: isDark,
-                    textColor: textColor,
-                  ),
-                  const SizedBox(height: 18),
-                  FigmaGradientButton(
-                    label: 'Save reflection',
-                    icon: Icons.menu_book,
-                    loading: _saving,
-                    onTap: _save,
-                  ),
-                ],
-              ),
-            ),
 
-          // ── Entries grouped by date (accordions) ──
-          const FigmaSectionHead(title: 'Entries by date', note: null),
+                // ── Entries grouped by date (accordions) ──
+                const FigmaSectionHead(title: 'Entries by date', note: null),
+              ]),
+            ),
+          ),
           BlocBuilder<ChallengeBloc, ChallengeState>(
             builder: (context, state) {
               if (state is! ChallengeLoaded) {
-                return const SizedBox.shrink();
+                return const SliverToBoxAdapter(child: SizedBox.shrink());
               }
               // Group every entry under its calendar day, newest day first.
-              final byDay = <DateTime, List<JournalEntry>>{};
-              final dayOf = <DateTime, DateTime>{};
-              for (final p in state.currentProgress) {
-                if (p.journalNote == null || p.journalNote!.isEmpty) continue;
-                final entries =
-                    JournalEntry.decode(p.journalNote!, fallbackDate: p.date);
-                if (entries.isEmpty) continue;
-                final day = DateTime(p.date.year, p.date.month, p.date.day);
-                dayOf[day] = day;
-                byDay.putIfAbsent(day, () => []).addAll(entries);
-              }
-              final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+              final journalEntries = _journalEntriesFor(state.currentProgress);
+              final byDay = journalEntries.entries;
+              final days = journalEntries.days;
               if (days.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: Center(
-                    child: Text(
-                      'No journal entries yet.\nStart writing today!',
-                      textAlign: TextAlign.center,
-                      style: FigmaTokens.body(13, color: FigmaTokens.muted),
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 20),
+                      child: Center(
+                        child: Text(
+                          'No journal entries yet.\nStart writing today!',
+                          textAlign: TextAlign.center,
+                          style: FigmaTokens.body(13, color: FigmaTokens.muted),
+                        ),
+                      ),
                     ),
                   ),
                 );
               }
               final now = DateTime.now();
               final today = DateTime(now.year, now.month, now.day);
-              return Column(
-                children: [
-                  for (int i = 0; i < days.length; i++)
-                    _DayAccordion(
-                      day: days[i],
-                      entries: (byDay[days[i]]!
-                        ..sort((a, b) => b.createdAt.compareTo(a.createdAt))),
-                      initiallyExpanded: days[i] == today || i == 0,
-                      onEdit: (entry) => _openEditor(days[i], entry),
-                      onDelete: (entry) => _confirmDelete(days[i], entry),
-                    ),
-                ],
+              final dayIndexByKey = <Key, int>{
+                for (var i = 0; i < days.length; i++)
+                  ValueKey<int>(days[i].millisecondsSinceEpoch): i,
+              };
+              return SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final day = days[index];
+                      return _DayAccordion(
+                        key: ValueKey<int>(day.millisecondsSinceEpoch),
+                        day: day,
+                        entries: byDay[day]!,
+                        initiallyExpanded: day == today || index == 0,
+                        onEdit: (entry) => _openEditor(day, entry),
+                        onDelete: (entry) => _confirmDelete(day, entry),
+                      );
+                    },
+                    childCount: days.length,
+                    findChildIndexCallback: (key) => dayIndexByKey[key],
+                  ),
+                ),
               );
             },
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 30)),
         ],
       ),
     );
@@ -355,6 +427,7 @@ class _DayAccordion extends StatelessWidget {
   final void Function(JournalEntry) onDelete;
 
   const _DayAccordion({
+    super.key,
     required this.day,
     required this.entries,
     this.initiallyExpanded = false,
@@ -389,6 +462,7 @@ class _DayAccordion extends StatelessWidget {
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
+            key: PageStorageKey<int>(day.millisecondsSinceEpoch),
             initiallyExpanded: initiallyExpanded,
             tilePadding: const EdgeInsets.symmetric(horizontal: 8),
             childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
