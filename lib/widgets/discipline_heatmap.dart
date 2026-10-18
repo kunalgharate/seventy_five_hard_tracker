@@ -70,7 +70,7 @@ class DisciplineHeatmap extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 12),
@@ -103,15 +103,19 @@ class DisciplineHeatmap extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            const Text('Less ',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text('Less ',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
             _buildHeatBox(0.0, null),
             _buildHeatBox(0.25, null),
             _buildHeatBox(0.5, null),
             _buildHeatBox(0.75, null),
             _buildHeatBox(1.0, null),
-            const Text(' More',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(' More',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         )
       ],

@@ -27,6 +27,17 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
   bool _sending = false;
   int _previousMessageCount = 0;
 
+  /// Cached message stream. Creating it in build() resubscribes on every
+  /// rebuild (keyboard open/close, setState) — flashing the loading spinner
+  /// and dropping already-loaded messages — which reads as broken messaging.
+  late final Stream<List<AccountabilityMessage>> _messages;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = _svc.messagesStream(widget.partner.id);
+  }
+
   String get _myUid => AccountabilityService().currentUid ?? '';
 
   @override
@@ -57,25 +68,132 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 
   Future<void> _send() async {
     final text = _textCtrl.text.trim();
-    if (text.isEmpty || widget.partner.partnerUid == null) return;
+    if (text.isEmpty) return;
+
+    final partnerUid = widget.partner.partnerUid;
+    final receiverUid = widget.partner.ownerUid == _myUid
+        ? partnerUid
+        : widget.partner.ownerUid;
+    if (partnerUid == null || receiverUid == null || receiverUid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Cannot message: partner has not linked yet')),
+      );
+      return;
+    }
 
     setState(() => _sending = true);
     _textCtrl.clear();
 
-    // Determine receiver: if I am the owner, send to partnerUid; otherwise send to ownerUid
-    final receiverUid = widget.partner.ownerUid == _myUid
-        ? widget.partner.partnerUid!
-        : widget.partner.ownerUid;
-
-    await _svc.sendMessage(
-      receiverUid: receiverUid,
-      partnershipId: widget.partner.id,
-      text: text,
-      type: _selectedType,
-    );
-
-    if (mounted) setState(() => _sending = false);
+    try {
+      await _svc.sendMessage(
+        receiverUid: receiverUid,
+        partnershipId: widget.partner.id,
+        text: text,
+        type: _selectedType,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _textCtrl.text = text;
+      _textCtrl.selection = TextSelection.collapsed(offset: text.length);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
     _scrollToBottom();
+  }
+
+  Future<void> _showMessageActions(AccountabilityMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit message'),
+              onTap: () => Navigator.pop(context, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Delete message'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    try {
+      if (action == 'edit') {
+        final controller = TextEditingController(text: message.text);
+        final editedText = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Edit message'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 4,
+              minLines: 1,
+              decoration: const InputDecoration(labelText: 'Message'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, controller.text.trim()),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+        controller.dispose();
+        if (editedText == null || editedText.trim().isEmpty) return;
+        await _svc.editMessage(
+          partnershipId: message.partnershipId,
+          messageId: message.id,
+          text: editedText,
+        );
+      } else {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete message?'),
+            content: const Text(
+              'The chat message will be deleted. Any notification copies may '
+              'still be visible.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        await _svc.deleteMessage(
+          partnershipId: message.partnershipId,
+          messageId: message.id,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not $action message: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -91,7 +209,7 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           // Messages
           Expanded(child: _buildMessageList()),
           // Input
-          _buildInput(),
+          SafeArea(top: false, child: _buildInput()),
         ],
       ),
     );
@@ -141,10 +259,22 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 
   Widget _buildMessageList() {
     return StreamBuilder<List<AccountabilityMessage>>(
-      stream: _svc.messagesStream(widget.partner.id),
+      stream: _messages,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Couldn\'t load messages: ${snap.error}',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ),
+          );
         }
         final messages = snap.data ?? [];
         if (messages.isEmpty) {
@@ -171,8 +301,13 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
           controller: _scrollCtrl,
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           itemCount: messages.length,
-          itemBuilder: (_, i) =>
-              _MessageBubble(msg: messages[i], myUid: _myUid),
+          itemBuilder: (_, i) => _MessageBubble(
+            msg: messages[i],
+            myUid: _myUid,
+            onLongPress: messages[i].senderUid == _myUid
+                ? () => _showMessageActions(messages[i])
+                : null,
+          ),
         );
       },
     );
@@ -247,86 +382,95 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
 class _MessageBubble extends StatelessWidget {
   final AccountabilityMessage msg;
   final String myUid;
+  final VoidCallback? onLongPress;
 
-  const _MessageBubble({required this.msg, required this.myUid});
+  const _MessageBubble({
+    required this.msg,
+    required this.myUid,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isMe = msg.senderUid == myUid;
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (!isMe)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 2),
-                child: Text(
-                  msg.senderName,
-                  style: TextStyle(
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (!isMe)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 2),
+                  child: Text(
+                    msg.senderName,
+                    style: TextStyle(
                       fontSize: 11,
                       color: Colors.grey[600],
-                      fontWeight: FontWeight.w500),
-                ),
-              ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isMe ? AppColors.primary : Colors.grey[100],
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Type badge
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 4),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: isMe
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
+                      fontWeight: FontWeight.w500,
                     ),
-                    child: Text(
-                      '${msg.type.emoji} ${msg.type.label}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isMe ? Colors.white70 : AppColors.primary,
-                        fontWeight: FontWeight.w500,
+                  ),
+                ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isMe ? AppColors.primary : Colors.grey[100],
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMe ? 16 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 16),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isMe
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${msg.type.emoji} ${msg.type.label}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMe ? Colors.white70 : AppColors.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    msg.text,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isMe ? Colors.white : Colors.black87,
+                    Text(
+                      msg.text,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isMe ? Colors.white : Colors.black87,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
-              child: Text(
-                DateFormat('h:mm a').format(msg.createdAt),
-                style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+                child: Text(
+                  DateFormat('h:mm a').format(msg.createdAt),
+                  style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

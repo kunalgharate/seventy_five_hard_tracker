@@ -139,7 +139,7 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
 
   String? _validateEmail(String value) {
     final email = value.trim();
-    if (email.isEmpty) return null;
+    if (email.isEmpty) return 'Please enter an email address';
     final emailRegex =
         RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     if (!emailRegex.hasMatch(email)) {
@@ -164,7 +164,6 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       setState(() => _emailError = error);
       return;
     }
-    if (email.isEmpty) return;
 
     setState(() {
       _lookingUp = true;
@@ -237,6 +236,16 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
 
   Future<void> _save() async {
     if (_owner == null) return;
+    if (!_hasChanges) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No changes to save.'),
+          backgroundColor: Colors.blueGrey,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
 
     if (widget.taskId.isEmpty) {
@@ -302,6 +311,8 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             description: 'Collaborator task from Daily Mettle',
             challengeId: widget.taskId,
             accountableUserIds: allUids,
+            // The task creator reviews the collaborator's work.
+            partnerUid: myUid,
           );
           if (task != null) {
             debugPrint('[CollaboratorDialog] Created accountability task:');
@@ -394,10 +405,17 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildOwnerSection(),
-                    if (_collaborators.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _buildCollaboratorsList(),
-                    ],
+                    const SizedBox(height: 12),
+                    if (_collaborators.isNotEmpty)
+                      _buildCollaboratorsList()
+                    else
+                      Text(
+                        'No collaborators selected',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     _buildAddSection(),
                   ],

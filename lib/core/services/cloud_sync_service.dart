@@ -8,6 +8,8 @@ import 'package:pointycastle/export.dart' as pc;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/core/services/data_ownership.dart';
+import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 
 /// Keys for SharedPreferences
 const _kLastSyncTime = 'lastSyncTime';
@@ -44,6 +46,8 @@ class CloudSyncService {
 
   /// Derived AES-256 key. Derived from the Firebase UID on demand.
   enc.Key? _aesKey;
+  Future<bool>? _autoSyncInFlight;
+  Future<bool>? _syncToCloudInFlight;
 
   User? get currentUser => _auth.currentUser;
   bool get isSignedIn => _auth.currentUser != null;
@@ -137,8 +141,72 @@ class CloudSyncService {
   }
 
   Future<void> signOut() async {
+    // Cross-account isolation: drop this device's push token from the
+    // outgoing account BEFORE auth is revoked — security rules only let the
+    // owner update their `users` doc, so this would fail after sign-out.
+    try {
+      await FcmService.instance.unregisterCurrentDeviceToken();
+    } catch (_) {}
+    try {
+      // Also drop the Google account so the next sign-in cannot silently
+      // re-authenticate as the previous user.
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
+    // Drop the device-local Firestore disk cache so this account's offline
+    // data can't be read by the next account signed in on this device.
+    try {
+      await _firestore.clearPersistence();
+    } catch (_) {}
     await _auth.signOut();
     _aesKey = null;
+  }
+
+  /// Removes all device-local user data and ownership markers. Used on
+  /// sign-out and account switches so one account's data is never visible,
+  /// uploaded, or published under another account.
+  Future<void> clearLocalData(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    await db.clearAllData();
+    await taskRepo.clearAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLastSyncTime);
+    await DataOwnership.clear();
+  }
+
+  /// Reconciles device-local data with the signed-in account after a
+  /// sign-in: another account's data is wiped (never uploaded) and this
+  /// account's cloud backup restored if needed; matching data is uploaded.
+  Future<({bool restored, bool uploaded})> reconcileOnSignIn(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    final uid = currentUser?.uid;
+    if (uid == null) return (restored: false, uploaded: false);
+
+    if (await DataOwnership.ownedByOther(uid)) {
+      await clearLocalData(db, taskRepo);
+    }
+
+    final hasLocal =
+        db.getAllSessions().isNotEmpty || taskRepo.getAllTasks().isNotEmpty;
+    if (hasLocal) {
+      final uploaded = await syncToCloud(db, taskRepo);
+      return (restored: false, uploaded: uploaded);
+    }
+
+    final cloudData = await syncFromCloud();
+    final sessions = (cloudData?['sessions'] as List?) ?? [];
+    if (cloudData != null && sessions.isNotEmpty) {
+      await db.restoreFromJson(cloudData);
+      await taskRepo.restoreFromJson(cloudData);
+      await DataOwnership.claim(uid);
+      return (restored: true, uploaded: false);
+    }
+
+    await DataOwnership.claim(uid);
+    return (restored: false, uploaded: false);
   }
 
   // ── User profile ─────────────────────────────────────────────────────────
@@ -181,13 +249,45 @@ class CloudSyncService {
   // ── Auto-sync ────────────────────────────────────────────────────────────
 
   /// Silently syncs if signed in and consent was given.
+  ///
+  /// Called on connectivity restore and app-resume. The AES key is derived
+  /// inside [syncToCloud] — no pre-check here, so a restored-for-nine-lives
+  /// session (no in-memory key yet) still syncs on reconnect.
   Future<void> autoSync(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {
-    if (!isSignedIn || _aesKey == null) return;
-    if (!await hasConsentBeenGiven()) return;
-    await syncToCloud(db, taskRepo);
+    if (!await autoSyncWithResult(db, taskRepo)) {
+      throw StateError('Automatic cloud sync did not complete successfully.');
+    }
+  }
+
+  /// Runs auto-sync once when concurrent resume/reconnect requests overlap.
+  ///
+  /// A signed-out user or a user without cloud-sync consent has no sync work
+  /// to perform and is considered successful. Upload failures are reported.
+  Future<bool> autoSyncWithResult(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) {
+    final activeSync = _autoSyncInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<bool> sync;
+    sync = _runAutoSync(db, taskRepo).whenComplete(() {
+      if (identical(_autoSyncInFlight, sync)) _autoSyncInFlight = null;
+    });
+    _autoSyncInFlight = sync;
+    return sync;
+  }
+
+  Future<bool> _runAutoSync(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    if (!isSignedIn) return true;
+    if (!await hasConsentBeenGiven()) return true;
+    return syncToCloud(db, taskRepo);
   }
 
   // ── Sync to cloud ────────────────────────────────────────────────────────
@@ -203,12 +303,30 @@ class CloudSyncService {
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
+  ) {
+    final activeSync = _syncToCloudInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<bool> sync;
+    sync = _syncToCloud(db, taskRepo).whenComplete(() {
+      if (identical(_syncToCloudInFlight, sync)) _syncToCloudInFlight = null;
+    });
+    _syncToCloudInFlight = sync;
+    return sync;
+  }
+
+  Future<bool> _syncToCloud(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
   ) async {
     _ensureKey();
     if (!isSignedIn || _aesKey == null) return false;
 
     try {
       final uid = currentUser!.uid;
+
+      // Never upload local data that belongs to a different account.
+      if (await DataOwnership.ownedByOther(uid)) return false;
 
       // Gather ALL challenge sessions + their full progress history
       final sessions = db.getAllSessions();
@@ -246,6 +364,7 @@ class CloudSyncService {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLastSyncTime, DateTime.now().toIso8601String());
+      await DataOwnership.claim(uid);
 
       if (kDebugMode) debugPrint('[CloudSync] Sync complete (GCM)');
       return true;

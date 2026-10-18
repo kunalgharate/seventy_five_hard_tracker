@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/partner_task_details_dialog.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import 'package:seventy_five_hard_tracker/widgets/create_task_sheet.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +21,8 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/streak_escalation_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/utils/online_refresh.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -46,6 +49,10 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   StreamSubscription<List<AccountabilityTask>>? _tasksStreamSub;
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeStreamSub;
   int _reviewBadgeCount = 0;
+
+  /// True while a manual refresh (top-right button) has a load in flight —
+  /// drives the inline spinner on the Refresh button.
+  bool _isRefreshing = false;
 
   /// Last successfully loaded payload. The bloc emits transient action
   /// states (EmailInviteSent, TaskRequestAccepted, Loading, …) between
@@ -132,11 +139,15 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: () => context.read<AccountabilityBloc>().add(
-                  LoadAccountabilityData(),
-                ),
+            onPressed: _onRefreshPressed,
           ),
         ],
       ),
@@ -321,7 +332,50 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
     );
   }
 
+  /// Manual refresh (top-right button). Fetches fresh squad data with a
+  /// visible spinner. Offline, keeps the cached list visible instead of
+  /// letting the load replace it with an empty payload — fetchers swallow
+  /// errors and return empty lists when offline.
+  Future<void> _onRefreshPressed() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    var loadDispatched = false;
+    try {
+      final refreshed = await refreshWhenOnline(
+        hasInternet: ConnectivityService().hasInternet,
+        refresh: () async {
+          if (!mounted) return;
+          context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+          loadDispatched = true;
+        },
+      );
+      if (!refreshed) {
+        if (!mounted) return;
+        setState(() => _isRefreshing = false);
+        _showSnack(
+          'You\'re offline — showing your latest saved squad data.',
+          isSuccess: false,
+        );
+      }
+    } catch (_) {
+      if (mounted && !loadDispatched) {
+        setState(() => _isRefreshing = false);
+      }
+      rethrow;
+    } finally {
+      // The bloc listener owns spinner cleanup after a dispatched load.
+      if (mounted && !loadDispatched && _isRefreshing) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
   void _handleStateChange(BuildContext context, AccountabilityState state) {
+    // End the manual-refresh spinner as soon as the reload lands or fails.
+    if (_isRefreshing &&
+        (state is AccountabilityLoaded || state is AccountabilityError)) {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
     // Refresh the review badge once per successful load (not on every
     // transient state — that caused extra Firestore reads and rebuilds).
     if (state is AccountabilityLoaded) {
@@ -439,13 +493,23 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.copy, color: AppColors.primary),
-                    onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: partner.inviteCode),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Code copied!')),
-                      );
+                    onPressed: () async {
+                      try {
+                        await Clipboard.setData(
+                          ClipboardData(text: partner.inviteCode),
+                        );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Code copied!')),
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Couldn\'t copy the code'),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ],
@@ -1575,18 +1639,27 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               else ...[
                 ...() {
                   final myUid = AccountabilityService().currentUid;
+                  final friendUid = widget.partner.uidOf(myUid);
+                  // Only tasks that came FROM this friend: the friend is
+                  // the submitter/owner, or the friend submitted it and it
+                  // is awaiting MY review. The user's own tasks
+                  // (assignedByUid == me) never render in a partner card.
                   final visibleTasks = _accountabilityTasks
                       .where(
                         (t) =>
                             t.partnershipId == widget.partner.id &&
-                            (t.assignedByUid == myUid ||
-                                t.accountableUid == myUid ||
-                                t.accountableUserIds.contains(myUid) ||
-                                t.partnerUid == myUid),
+                            (t.assignedByUid == friendUid ||
+                                (t.assignedByUid != myUid &&
+                                    t.partnerUid == myUid &&
+                                    (t.status ==
+                                            AccountabilityTaskStatus
+                                                .pendingReview ||
+                                        t.proofStatus ==
+                                            ProofStatus.submitted))),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
-                    return [
+                    return <Widget>[
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1614,13 +1687,12 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                       ),
                     ];
                   }
-                  return visibleTasks.map((task) {
-                    // Approved counts as done on BOTH sides — owner and
-                    // reviewer see the same checked checkbox.
-                    final isCompleted =
-                        task.status == AccountabilityTaskStatus.completed ||
-                            task.status == AccountabilityTaskStatus.approved ||
-                            task.proofStatus == ProofStatus.approved;
+                  return visibleTasks.map<Widget>((task) {
+                    // Done-state is scoped to TODAY: an approval from a
+                    // previous day renders as needing new proof, with the
+                    // submit/review action visible again — owner and
+                    // reviewer see the same state on both sides.
+                    final isCompleted = task.isDoneToday;
                     final proofStatus = task.proofStatus;
                     final myUid = AccountabilityService().currentUid;
                     final iAmOwner = task.assignedByUid == myUid;
@@ -1628,82 +1700,87 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                         (task.accountableUid == myUid ||
                             task.accountableUserIds.contains(myUid) ||
                             task.partnerUid == myUid);
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isCompleted
-                            ? Colors.green.withValues(alpha: 0.06)
-                            : Colors.orange.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isCompleted
-                              ? Colors.green.withValues(alpha: 0.3)
-                              : Colors.orange.withValues(alpha: 0.25),
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => PartnerTaskDetailsDialog.show(context, task),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              // Checkbox for every review task — owner taps to
-                              // submit proof, reviewer taps to review. Once
-                              // approved it stays checked on both sides.
-                              Checkbox(
-                                value: isCompleted,
-                                activeColor: Colors.green,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                onChanged: isCompleted
-                                    ? null
-                                    : (_) => _onTaskCheckboxTapped(
-                                          context,
-                                          task,
-                                          iAmOwner: iAmOwner,
-                                          iAmReviewer: iAmReviewer,
-                                        ),
-                              ),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task.title,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    if (task.description != null &&
-                                        task.description!.isNotEmpty)
-                                      Text(
-                                        task.description!,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[500],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              _buildPartnerTaskStatusChip(
-                                isCompleted,
-                                proofStatus,
-                                task.status,
-                              ),
-                            ],
+                        decoration: BoxDecoration(
+                          color: isCompleted
+                              ? Colors.green.withValues(alpha: 0.06)
+                              : Colors.orange.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isCompleted
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.orange.withValues(alpha: 0.25),
                           ),
-                          if (!isCompleted)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: _buildPartnerTaskAction(task),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                // Checkbox for every review task — owner taps to
+                                // submit proof, reviewer taps to review. Once
+                                // approved it stays checked on both sides.
+                                Checkbox(
+                                  value: isCompleted,
+                                  activeColor: Colors.green,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  onChanged: isCompleted
+                                      ? null
+                                      : (_) => _onTaskCheckboxTapped(
+                                            context,
+                                            task,
+                                            iAmOwner: iAmOwner,
+                                            iAmReviewer: iAmReviewer,
+                                          ),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        task.title,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      if (task.description != null &&
+                                          task.description!.isNotEmpty)
+                                        Text(
+                                          task.description!,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey[500],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                _buildPartnerTaskStatusChip(
+                                  isCompleted,
+                                  proofStatus,
+                                  task.status,
+                                ),
+                              ],
                             ),
-                        ],
+                            if (!isCompleted)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: _buildPartnerTaskAction(task),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   });
@@ -1722,9 +1799,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     ProofStatus? proofStatus,
     AccountabilityTaskStatus status,
   ) {
-    if (isCompleted ||
-        status == AccountabilityTaskStatus.completed ||
-        status == AccountabilityTaskStatus.approved) {
+    // `isCompleted` is the date-scoped done-state (task.isDoneToday):
+    // previous-day approvals fall through to the branches below.
+    if (isCompleted) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -1737,7 +1814,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
             Icon(Icons.check_circle, size: 12, color: Colors.green[700]),
             const SizedBox(width: 3),
             Text(
-              status == AccountabilityTaskStatus.approved ? 'Approved' : 'Completed',
+              status == AccountabilityTaskStatus.approved
+                  ? 'Approved'
+                  : 'Completed',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -1834,7 +1913,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         ),
       );
     }
-    if (proofStatus == ProofStatus.approved) {
+    // Proof-approved only counts when done today (isCompleted above);
+    // a previous day's approval falls through to "Needs proof" below.
+    if (isCompleted && proofStatus == ProofStatus.approved) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -1879,6 +1960,27 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
               ),
             ),
           ],
+        ),
+      );
+    }
+    // Approved on a previous day (isCompleted above is date-scoped):
+    // the task needs today's proof, not a green chip.
+    if (status == AccountabilityTaskStatus.approved ||
+        status == AccountabilityTaskStatus.completed ||
+        proofStatus == ProofStatus.approved) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          'Needs proof',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.orange[700],
+          ),
         ),
       );
     }
@@ -2438,6 +2540,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                   description: descCtrl.text.trim().isEmpty
                                       ? null
                                       : descCtrl.text.trim(),
+                                  // The task creator reviews the assignee's work.
+                                  partnerUid:
+                                      AccountabilityService().currentUid,
                                 );
                                 if (ctx.mounted) Navigator.pop(ctx);
                                 // Refresh the task list in the card
@@ -2626,56 +2731,94 @@ class _PendingInviteCard extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 6),
-                  // Invite code with copy
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: partner.inviteCode),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Invite code copied!')),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.orange.withValues(alpha: 0.4),
+                  // Invite code with copy (code invites only — email invites
+                  // carry no code, so show the recipient instead of an empty
+                  // box whose "copy" would silently copy nothing).
+                  if (partner.inviteCode.isNotEmpty)
+                    GestureDetector(
+                      onTap: () async {
+                        try {
+                          await Clipboard.setData(
+                            ClipboardData(text: partner.inviteCode),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Invite code copied!')),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Couldn\'t copy — long-press the code to copy it manually.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.key_outlined,
+                              size: 13,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              partner.inviteCode,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 3,
+                                color: Colors.orange[800],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.copy,
+                              size: 12,
+                              color: Colors.orange,
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.key_outlined,
-                            size: 13,
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            partner.inviteCode,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 3,
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.email_outlined,
+                          size: 13,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            partner.partnerEmail ?? 'Invite sent',
+                            style: TextStyle(
+                              fontSize: 12,
                               color: Colors.orange[800],
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(
-                            Icons.copy,
-                            size: 12,
-                            color: Colors.orange,
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ),
                 ],
               ),
             ),
@@ -3982,16 +4125,26 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                     Center(
                       child: TextButton.icon(
                         onPressed: () {
+                          // Capture the bloc and a still-mounted ancestor
+                          // context BEFORE popping: the sheet's own context
+                          // is deactivated by the pop, and reusing it for the
+                          // next sheet (or for context.read inside its
+                          // builder) throws and leaves a blank sheet.
+                          final bloc = context.read<AccountabilityBloc>();
+                          final parentContext = Navigator.of(context).context;
                           Navigator.pop(context);
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => BlocProvider.value(
-                              value: context.read<AccountabilityBloc>(),
-                              child: const _InvitePartnerSheet(),
-                            ),
-                          );
+                          Future.microtask(() {
+                            if (!parentContext.mounted) return;
+                            showModalBottomSheet(
+                              context: parentContext,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (_) => BlocProvider.value(
+                                value: bloc,
+                                child: const _InvitePartnerSheet(),
+                              ),
+                            );
+                          });
                         },
                         icon: Icon(
                           Icons.tag,

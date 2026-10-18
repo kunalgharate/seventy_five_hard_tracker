@@ -44,6 +44,14 @@
       "collectionGroup": "accountability_tasks",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "partnershipId", "order": "ASCENDING" },
+        { "fieldPath": "partnerUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountability_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "challengeId", "order": "ASCENDING" },
         { "fieldPath": "assignedByUid", "order": "ASCENDING" }
       ]

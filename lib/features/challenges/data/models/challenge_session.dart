@@ -9,6 +9,25 @@ enum ResetMode {
   soft // Missed tasks tracked but no reset
 }
 
+const manuallyRestartedReason = 'Manually restarted';
+
+String challengeResetReasonLabel(String? reason) {
+  final normalized = reason?.trim();
+  return normalized == null || normalized.isEmpty
+      ? 'Reason not recorded'
+      : normalized;
+}
+
+ChallengeSession endSessionForManualRestart(
+  ChallengeSession session, {
+  DateTime? endedAt,
+}) =>
+    session.copyWith(
+      isActive: false,
+      endDate: endedAt ?? DateTime.now(),
+      failureReason: manuallyRestartedReason,
+    );
+
 @HiveType(typeId: 2)
 class ChallengeSession extends Equatable {
   @HiveField(0)
@@ -44,6 +63,12 @@ class ChallengeSession extends Equatable {
   @HiveField(10)
   final int totalDaysTarget; // 75 for hard, flexible for soft
 
+  /// UID of the account that owns this session. Null = legacy/local-only
+  /// data created before ownership stamping (adopted by the signed-in
+  /// account at app start via DataOwnership).
+  @HiveField(11)
+  final String? ownerUid;
+
   const ChallengeSession({
     required this.id,
     required this.challenges,
@@ -56,6 +81,7 @@ class ChallengeSession extends Equatable {
     this.failedChallenges,
     this.resetMode = 'hard',
     this.totalDaysTarget = 75,
+    this.ownerUid,
   });
 
   ResetMode get mode => resetMode == 'soft' ? ResetMode.soft : ResetMode.hard;
@@ -72,6 +98,7 @@ class ChallengeSession extends Equatable {
     List<String>? failedChallenges,
     String? resetMode,
     int? totalDaysTarget,
+    String? ownerUid,
   }) {
     return ChallengeSession(
       id: id ?? this.id,
@@ -85,6 +112,7 @@ class ChallengeSession extends Equatable {
       failedChallenges: failedChallenges ?? this.failedChallenges,
       resetMode: resetMode ?? this.resetMode,
       totalDaysTarget: totalDaysTarget ?? this.totalDaysTarget,
+      ownerUid: ownerUid ?? this.ownerUid,
     );
   }
 
@@ -100,6 +128,7 @@ class ChallengeSession extends Equatable {
         'failedChallenges': failedChallenges,
         'resetMode': resetMode,
         'totalDaysTarget': totalDaysTarget,
+        'ownerUid': ownerUid,
       };
 
   factory ChallengeSession.fromJson(Map<String, dynamic> json) {
@@ -119,6 +148,7 @@ class ChallengeSession extends Equatable {
       failedChallenges: (json['failedChallenges'] as List?)?.cast<String>(),
       resetMode: json['resetMode'] as String? ?? 'hard',
       totalDaysTarget: json['totalDaysTarget'] as int? ?? 75,
+      ownerUid: json['ownerUid'] as String?,
     );
   }
 
@@ -134,6 +164,7 @@ class ChallengeSession extends Equatable {
         failureReason,
         failedChallenges,
         resetMode,
-        totalDaysTarget
+        totalDaysTarget,
+        ownerUid,
       ];
 }

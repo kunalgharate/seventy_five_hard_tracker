@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
@@ -12,6 +13,57 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/mod
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'accountability_event.dart';
 import 'accountability_state.dart';
+
+/// Carries the task identity across the local Bloc bridge without changing the
+/// public StreakImpacted state contract. The owner UID lets ChallengeBloc
+/// reject a reviewer's local session instead of mutating it by mistake.
+class StreakReviewOutcome extends StreakImpacted {
+  final String taskId;
+  final String? challengeId;
+  final String taskOwnerUid;
+  final String taskType;
+  final DateTime? reviewedAt;
+  final DateTime taskAssignedAt;
+
+  const StreakReviewOutcome({
+    required int newStreakDay,
+    required String reason,
+    required this.taskId,
+    required this.challengeId,
+    required this.taskOwnerUid,
+    required this.taskType,
+    required this.reviewedAt,
+    required this.taskAssignedAt,
+  }) : super(newStreakDay, reason);
+
+  @override
+  List<Object> get props => [
+        newStreakDay,
+        reason,
+        taskId,
+        challengeId ?? '',
+        taskOwnerUid,
+        taskType,
+        reviewedAt?.toUtc().microsecondsSinceEpoch ?? 0,
+        taskAssignedAt.toUtc().microsecondsSinceEpoch,
+      ];
+}
+
+StreakReviewOutcome createStreakReviewOutcome({
+  required AccountabilityTask task,
+  required int newStreakDay,
+  required String outcome,
+}) =>
+    StreakReviewOutcome(
+      newStreakDay: newStreakDay,
+      reason: outcome,
+      taskId: task.id,
+      challengeId: task.challengeId,
+      taskOwnerUid: task.assignedByUid,
+      taskType: task.taskType,
+      reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
+      taskAssignedAt: task.assignedAt,
+    );
 
 class AccountabilityBloc
     extends Bloc<AccountabilityEvent, AccountabilityState> {
@@ -421,6 +473,7 @@ class AccountabilityBloc
         final challengeId = task?.challengeId;
         debugPrint(
             '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
+        if (task != null) _subscribeTaskChannels([task.id]);
 
         if (isClosed) return;
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
@@ -496,6 +549,49 @@ class AccountabilityBloc
     }
   }
 
+  /// Single scoring boundary for review outcomes: derives the real streak
+  /// from the persisted session and branches on the task's own type.
+  ///
+  /// Emits [StreakImpacted] for 75 Hard tasks (anything that isn't
+  /// taskType='regular' — legacy docs use 'hard') and [RegularTaskOutcome]
+  /// for regular tasks. Called only after the review-completed state.
+  Future<void> _recordReviewOutcome(
+    AccountabilityTask task,
+    String outcome,
+    Emitter<AccountabilityState> emit,
+  ) async {
+    if (task.taskType != 'hard' &&
+        task.taskType != 'soft' &&
+        task.taskType != 'regular') {
+      return;
+    }
+    // Regular tasks never touch the 75 Hard streak — their partner review
+    // only completes/invalidates that regular task's day.
+    if (task.taskType != 'regular') {
+      final session = await _repository.getActiveSession();
+      final isOwnerSession = session?.ownerUid == task.assignedByUid;
+      final newStreak = isOwnerSession
+          ? _scoringEngine.compute75HardStreak(session!.currentDay, outcome)
+          : 0;
+      if (isClosed) return;
+      emit(createStreakReviewOutcome(
+        task: task,
+        newStreakDay: newStreak,
+        outcome: outcome,
+      ));
+    } else {
+      if (isClosed) return;
+      emit(RegularTaskOutcome(
+        taskId: task.id,
+        challengeId: task.challengeId,
+        outcome: outcome,
+        taskOwnerUid: task.assignedByUid,
+        reviewedAt: task.reviewedAt ?? task.proofReviewedAt,
+        taskAssignedAt: task.assignedAt,
+      ));
+    }
+  }
+
   Future<void> _onApproveTaskReview(
     ApproveTaskReview event,
     Emitter<AccountabilityState> emit,
@@ -523,17 +619,13 @@ class AccountabilityBloc
           debugPrint('[AccountabilityBloc] Notification failed: $e');
         }
       }
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       emit(TaskReviewCompleted(task.id, 'approved',
           comment: event.improvementNote));
 
-      // Compute streak impact
-      final newStreak = _scoringEngine.compute75HardStreak(
-        1, // TODO: pass actual current streak from ChallengeBloc
-        'approved',
-      );
-      if (isClosed) return;
-      emit(StreakImpacted(newStreak, 'approved'));
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'approved', emit);
     } catch (e) {
       emit(AccountabilityError('Approve task failed: $e'));
     }
@@ -567,17 +659,13 @@ class AccountabilityBloc
           debugPrint('[AccountabilityBloc] Notification failed: $e');
         }
       }
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       emit(TaskReviewCompleted(task.id, 'rejected',
           comment: event.improvementNote));
 
-      // Compute streak impact — rejected resets streak
-      final newStreak = _scoringEngine.compute75HardStreak(
-        1, // TODO: pass actual current streak from ChallengeBloc
-        'rejected',
-      );
-      if (isClosed) return;
-      emit(StreakImpacted(newStreak, 'rejected'));
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'rejected', emit);
     } catch (e) {
       emit(AccountabilityError('Reject task failed: $e'));
     }
@@ -627,6 +715,14 @@ class AccountabilityBloc
 
   // ── Phase 4: Multi-reviewer review system handlers ────────────────────
 
+  /// Joins the FCM topic of every task I'm attached to (owner or reviewer)
+  /// so a future server-side sender can broadcast to all of them.
+  void _subscribeTaskChannels(Iterable<String> taskIds) {
+    for (final id in taskIds) {
+      FcmService.instance.subscribeToTaskChannel(id);
+    }
+  }
+
   Future<void> _onLoadReviewTabData(
     LoadReviewTabData event,
     Emitter<AccountabilityState> emit,
@@ -645,6 +741,11 @@ class AccountabilityBloc
         myPendingTasks: results[2],
         reviewHistory: results[3],
       ));
+      // I'm a reviewer of these tasks — join their channels.
+      _subscribeTaskChannels([
+        ...results[0].map((t) => t.id),
+        ...results[1].map((t) => t.id),
+      ]);
     } catch (e) {
       if (isClosed) return;
       emit(AccountabilityError('Failed to load reviews: $e'));
@@ -662,6 +763,7 @@ class AccountabilityBloc
         // Notify the task owner
         final task = await _service.fetchTaskById(event.taskId);
         if (task != null) {
+          _subscribeTaskChannels([task.id]);
           try {
             await _notificationService.notifyRequestAccepted(
               recipientUid: task.assignedByUid,
@@ -731,9 +833,14 @@ class AccountabilityBloc
       }
 
       // Notify all accepted reviewers
-      final reviewerUids = task.accountableUserIds
-          .where((uid) => uid != task.assignedByUid)
-          .toList();
+      final reviewerUids = <String>{
+        ...task.accountableUserIds,
+        // Legacy docs list reviewers only in partnerUid/accountableUid —
+        // mirror AccountabilityService._isReviewerOf so nobody is missed.
+        if (task.partnerUid != null && task.partnerUid!.isNotEmpty)
+          task.partnerUid!,
+        if (task.accountableUid.isNotEmpty) task.accountableUid,
+      }.where((uid) => uid != task.assignedByUid).toList();
       if (reviewerUids.isNotEmpty) {
         try {
           await _notificationService.notifyProofSubmitted(
@@ -786,6 +893,9 @@ class AccountabilityBloc
           autoCompleted: autoCompleted,
         );
       } catch (_) {}
+      // My review of this task is done — leave its channel (re-subscribed
+      // automatically the next time it shows up in the Reviews tab).
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       if (isClosed) return;
       emit(ProofApproved(
@@ -793,6 +903,11 @@ class AccountabilityBloc
         autoCompleted: autoCompleted,
         challengeId: task.challengeId,
       ));
+      if (autoCompleted) {
+        // Score the outcome against the real streak / task type — same
+        // update the approve-task path triggers.
+        await _recordReviewOutcome(task, 'approved', emit);
+      }
       add(LoadReviewTabData());
     } catch (e) {
       if (isClosed) return;
@@ -825,9 +940,13 @@ class AccountabilityBloc
           comment: event.comment,
         );
       } catch (_) {}
+      FcmService.instance.unsubscribeFromTaskChannel(task.id);
 
       if (isClosed) return;
       emit(ProofRejected(task.id, comment: event.comment));
+
+      // Score the outcome against the real streak / task type.
+      await _recordReviewOutcome(task, 'rejected', emit);
       add(LoadReviewTabData());
     } catch (e) {
       if (isClosed) return;

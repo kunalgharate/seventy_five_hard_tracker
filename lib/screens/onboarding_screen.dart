@@ -261,6 +261,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
       if (otherUid == null) continue;
 
+      // The reviewer is the partnership member that is NOT the doer —
+      // the task creator (me) reviews the partner's work.
+      final reviewerUid =
+          partner.ownerUid == otherUid ? partner.partnerUid : partner.ownerUid;
+
       // Fire-and-forget — don't block navigation
       svc.createAccountabilityTask(
         accountableUid: otherUid,
@@ -269,6 +274,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         title: challenge.title.trim(),
         description: 'Daily challenge task from 75 Hard',
         challengeId: challenge.id,
+        partnerUid: reviewerUid,
+        // taskType is persisted as 'hard' unless this IS a routine task
+        taskType: challenge.taskType == 'regular' ? 'regular' : null,
       );
     }
 
@@ -335,8 +343,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       // 3. Record consent
       await syncSvc.recordConsent();
 
-      // 4. Check if cloud backup exists (reinstall scenario)
-      //    Restore if found, then always go to /home.
+      // 4. Reconcile local data with this account: wipe any other account's
+      //    data and restore this account's backup if it exists, otherwise
+      //    upload local data. Always go to /home afterwards.
       if (mounted) {
         try {
           final db = context.read<ChallengeBloc>().repository;
@@ -344,18 +353,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           await db.init();
           await taskRepo.init();
 
-          final cloudData = await syncSvc.syncFromCloud();
-          if (cloudData != null &&
-              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-            await db.restoreFromJson(cloudData);
-            await taskRepo.restoreFromJson(cloudData);
-            if (mounted) {
-              context.read<ChallengeBloc>().add(LoadChallengeData());
-              context.read<RegularTaskBloc>().add(LoadRegularTasks());
-            }
-          } else {
-            // No cloud data yet — sync current (empty) local state
-            await syncSvc.syncToCloud(db, taskRepo);
+          await syncSvc.reconcileOnSignIn(db, taskRepo);
+          if (mounted) {
+            context.read<ChallengeBloc>().add(LoadChallengeData());
+            context.read<RegularTaskBloc>().add(LoadRegularTasks());
           }
         } catch (_) {}
       }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:equatable/equatable.dart';
 import 'package:seventy_five_hard_tracker/widgets/greeting_header.dart';
 import 'package:seventy_five_hard_tracker/widgets/challenge_hero_card.dart';
 import 'package:seventy_five_hard_tracker/widgets/review_notification_card.dart';
@@ -17,22 +18,66 @@ import 'package:seventy_five_hard_tracker/features/challenges/data/models/challe
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/core/utils/notification_badge.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
 import '../widgets/daily_task_card.dart';
 import '../widgets/challenge_task_sheet.dart';
 import '../widgets/water_reminder_widget.dart';
-import '../widgets/progress_stats.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/horizontal_date_picker.dart';
-import '../widgets/journal_bottom_sheet.dart';
 import '../widgets/photo_proof_sheet.dart';
 import '../widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/constants/app_constants.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
+
+class _DisciplineScoreInputSignature extends Equatable {
+  _DisciplineScoreInputSignature({
+    required this.sessionId,
+    required this.startDate,
+    required this.totalDaysTarget,
+    required this.today,
+    required List<String> nonRegularChallengeIds,
+    required List<_DisciplineProgressSignature> progress,
+  })  : nonRegularChallengeIds = List.unmodifiable(nonRegularChallengeIds),
+        progress = List.unmodifiable(progress);
+
+  final String sessionId;
+  final DateTime startDate;
+  final int totalDaysTarget;
+  final DateTime today;
+  final List<String> nonRegularChallengeIds;
+  final List<_DisciplineProgressSignature> progress;
+
+  @override
+  List<Object?> get props => [
+        sessionId,
+        startDate,
+        totalDaysTarget,
+        today,
+        nonRegularChallengeIds,
+        progress,
+      ];
+}
+
+class _DisciplineProgressSignature extends Equatable {
+  _DisciplineProgressSignature({
+    required this.date,
+    required this.isCompleted,
+    required List<String> completedChallengeIds,
+  }) : completedChallengeIds = List.unmodifiable(completedChallengeIds);
+
+  final DateTime date;
+  final bool isCompleted;
+  final List<String> completedChallengeIds;
+
+  @override
+  List<Object?> get props => [date, isCompleted, completedChallengeIds];
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onGoToSquad});
@@ -43,10 +88,15 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime _selectedDay = DateTime.now();
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
+
+  /// challengeId -> latest linked accountability task. Kept so the card can
+  /// date-scope the done-state (yesterday's approval is not today's).
+  /// Same lifecycle as the status maps above (rebuilt from the streams).
+  final Map<String, AccountabilityTask> _accountabilityTasks = {};
 
   /// challengeId -> true when the current user is only the REVIEWER of the
   /// linked accountability task (a partner assigned it). Such cards must not
@@ -68,12 +118,19 @@ class _HomeScreenState extends State<HomeScreen> {
   /// (e.g. a denied task toggle) never blanks the Today screen.
   ChallengeLoaded? _lastLoadedState;
 
+  _DisciplineScoreInputSignature? _lastDisciplineScoreInputSignature;
+
   /// Recent review notifications for inline display.
   List<Map<String, String>> _recentNotifications = [];
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notificationsSub;
 
   /// Daily motivational quote.
   String _dailyQuote =
       'Discipline is choosing between what you want now and what you want most.';
+
+  /// Set when the completion-toggle path shows its own error SnackBar so the
+  /// BlocConsumer listener below doesn't surface the same failure twice.
+  bool _errorSnackClaimed = false;
 
   // ignore: prefer_final_fields is intentional — updated after init
 
@@ -84,10 +141,38 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     context.read<ChallengeBloc>().add(LoadChallengeData());
-    _loadRecentNotifications();
+    _subscribeToNotifications();
     _loadDailyQuote();
     _subscribeToAccountabilityStreams();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _subscribeToNotifications();
+  }
+
+  void _subscribeToNotifications() {
+    _notificationsSub?.cancel();
+    final uid = AccountabilityService().currentUid;
+    if (uid == null) return;
+    _notificationsSub = FirebaseFirestore.instance
+        .collection('fcm_notifications')
+        .where('recipientUid', isEqualTo: uid)
+        .where('delivered', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .listen(
+      (snap) => _applyNotificationSnapshot(snap),
+      onError: (Object e) {
+        if (kDebugMode) {
+          debugPrint('[HomeScreen] notification stream failed: $e');
+        }
+      },
+    );
   }
 
   /// Listens to both directions of the review flow so approval reflects on
@@ -114,6 +199,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// complete too — so both sides show the same checked state.
   void _applyTaskStreamUpdate(List<AccountabilityTask> tasks) {
     if (!mounted) return;
+    final myUid = AccountabilityService().currentUid;
+    final challengeBloc = context.read<ChallengeBloc>();
+    for (final task in tasks) {
+      final outcome = reviewOutcomeForOwnerTask(task, currentUid: myUid);
+      if (outcome != null) challengeBloc.add(outcome);
+    }
+
     final state = context.read<ChallengeBloc>().state;
     if (state is! ChallengeLoaded || !state.hasActiveSession) return;
     final challengeIds =
@@ -122,7 +214,6 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final task in tasks) {
       final cid = task.challengeId;
       if (cid == null || !challengeIds.contains(cid)) continue;
-      final myUid = AccountabilityService().currentUid;
       final reviewOnly = myUid != null &&
           task.accountableUid == myUid &&
           task.assignedByUid != myUid;
@@ -134,8 +225,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _reviewOnlyChallenges[cid] = reviewOnly;
         changed = true;
       }
-      final approved = task.status == AccountabilityTaskStatus.approved ||
-          task.status == AccountabilityTaskStatus.completed;
+      _accountabilityTasks[cid] = task;
+      // Only TODAY's approval completes local progress — yesterday's must
+      // not check off the new day.
+      final approved = task.isDoneToday;
       if (approved && !reviewOnly) {
         context.read<ChallengeBloc>().add(
               UpdateDailyProgress(
@@ -154,29 +247,108 @@ class _HomeScreenState extends State<HomeScreen> {
       final svc = AccountabilityService();
       final uid = svc.currentUid;
       if (uid == null) return;
+      // Unread-only feed: docs the recipient has already seen (surfaced or
+      // dismissed) fall out, so the bell badge reaches zero (BUG-01).
+      // Counted over a wider window than the 3 inline cards.
       final snap = await FirebaseFirestore.instance
           .collection('fcm_notifications')
           .where('recipientUid', isEqualTo: uid)
           .where('delivered', isEqualTo: true)
           .orderBy('createdAt', descending: true)
-          .limit(3)
+          .limit(100)
           .get();
-      if (!mounted) return;
-      setState(() {
-        _recentNotifications = snap.docs.map((d) {
-          final data = d.data();
-          final type = data['type'] as String? ?? '';
-          String action = 'feedback';
-          if (type.contains('approved')) action = 'approved';
-          if (type.contains('rejected')) action = 'rejected';
-          return {
-            'reviewer': (data['title'] as String? ?? '').split(' ').first,
-            'task': data['body'] as String? ?? '',
-            'action': action,
-          };
-        }).toList();
-      });
-    } catch (_) {}
+      _applyNotificationSnapshot(snap);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[HomeScreen] notification load failed: $e');
+    }
+  }
+
+  void _applyNotificationSnapshot(QuerySnapshot<Map<String, dynamic>> snap) {
+    if (!mounted) return;
+    setState(() {
+      // Docs the user muted via notification prefs stay out of the cards.
+      _recentNotifications = unreadDeliveredNotifications(
+        snap.docs.map((doc) => {'id': doc.id, ...doc.data()}),
+      ).map((data) {
+        final notifData =
+            (data['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+        final type = AccountabilityNotificationService.canonicalTypeFromName(
+            (notifData['type'] ?? data['type'] ?? '').toString());
+        String action = 'feedback';
+        if (type == 'review_approved') action = 'approved';
+        if (type == 'review_rejected') action = 'rejected';
+        return {
+          'id': data['id'] as String? ?? '',
+          'reviewer': (data['title'] as String? ?? '').split(' ').first,
+          'task': data['body'] as String? ?? '',
+          'action': action,
+        };
+      }).toList();
+    });
+  }
+
+  /// Marks only the notifications shown in the inline cards as read.
+  Future<void> _markNotificationsRead(
+    List<Map<String, String>> surfacedNotifications,
+  ) async {
+    if (surfacedNotifications.isEmpty) return;
+    final surfacedIds = surfacedNotifications
+        .map((notification) => notification['id'])
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (surfacedIds.isEmpty) return;
+    final batch = FirebaseFirestore.instance.batch();
+    for (final notification in surfacedNotifications) {
+      final id = notification['id'];
+      if (id == null || id.isEmpty) continue;
+      batch.update(
+        FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
+        {'isRead': true, 'readAt': Timestamp.now()},
+      );
+    }
+    if (mounted) {
+      setState(() => _recentNotifications.removeWhere(
+          (notification) => surfacedIds.contains(notification['id'])));
+    }
+    try {
+      await batch.commit();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not mark notifications as read: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _dismissNotification(Map<String, String> notification) async {
+    final id = notification['id'];
+    if (id == null || id.isEmpty) return;
+    final index = _recentNotifications.indexOf(notification);
+    if (mounted) {
+      setState(() => _recentNotifications.remove(notification));
+    }
+    try {
+      await FirebaseFirestore.instance
+          .collection('fcm_notifications')
+          .doc(id)
+          .update({'isRead': true, 'readAt': Timestamp.now()});
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          if (!_recentNotifications.any((item) => item['id'] == id)) {
+            _recentNotifications.insert(
+              index.clamp(0, _recentNotifications.length),
+              notification,
+            );
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update notification: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadDailyQuote() async {
@@ -188,6 +360,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationsSub?.cancel();
     _assignedByMeSub?.cancel();
     _myTasksSub?.cancel();
     _scrollController.dispose();
@@ -237,11 +411,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             scaffoldMessenger.showSnackBar(
                               const SnackBar(
                                   content: Text(
-                                      'Test notification scheduled for 10 seconds')),
+                                      'Test notification scheduled for 5 seconds')),
                             );
                           }
                         },
-                        child: const Text('10 Seconds'),
+                        child: const Text('5 Seconds'),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
@@ -273,70 +447,108 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: BlocConsumer<ChallengeBloc, ChallengeState>(
-        listener: (context, state) {
-          // Use addPostFrameCallback to avoid setState during build
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return; // Safety check
-
-            if (state is ChallengeLoaded && state.hasActiveSession) {
-              _lastLoadedState = state;
-              // Reset selected day to today when a new session becomes active
-              // (e.g. after restarting from history)
-              final today = DateTime.now();
-              if (!_isSameDay(_selectedDay, today)) {
-                setState(() {
-                  _selectedDay = today;
-                });
-              }
-              // Load accountability statuses only once per session —
-              // not on every ChallengeLoaded emission (e.g. task toggles),
-              // which would cause repeated Firestore reads and rebuilds.
-              // Mark as loaded only after success so failures can be retried.
-              final sessionId = state.activeSession!.id;
-              if (_accountabilityLoadedSessionId != sessionId) {
-                _loadAccountabilityStatuses(
-                  state.activeSession!.challenges,
-                ).then((_) {
-                  _accountabilityLoadedSessionId = sessionId;
-                });
-              }
-            } else if (state is ChallengeError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            } else if (state is ChallengeReset) {
-              _showResetDialog(state);
-            } else if (state is ChallengeCompleted) {
-              _showCompletionDialog(state.completedSession);
-            }
-          });
-        },
+      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
         builder: (context, state) {
-          if (state is ChallengeLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          final hasSession = (state is ChallengeLoaded &&
+                  state.hasActiveSession) ||
+              (_lastLoadedState != null && _lastLoadedState!.hasActiveSession);
+          if (!hasSession) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            heroTag: 'addChallengeTask',
+            onPressed: () => _showTaskSheet(context, null),
+            backgroundColor: Colors.orange[600],
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Add Task',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            tooltip: 'Add Task',
+          );
+        },
+      ),
+      body: BlocListener<DisciplineScoreBloc, DisciplineScoreState>(
+        listenWhen: (previous, current) =>
+            previous is! DisciplineScoreInitial &&
+            current is DisciplineScoreInitial,
+        listener: (context, state) {
+          _lastDisciplineScoreInputSignature = null;
+        },
+        child: BlocConsumer<ChallengeBloc, ChallengeState>(
+          listener: (context, state) {
+            // Use addPostFrameCallback to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return; // Safety check
 
-          if (state is ChallengeLoaded) {
-            if (!state.hasActiveSession) {
-              return _buildNoActiveSession();
+              if (state is ChallengeLoaded && state.hasActiveSession) {
+                _lastLoadedState = state;
+                // Reset selected day to today when a new session becomes active
+                // (e.g. after restarting from history)
+                final today = DateTime.now();
+                if (!_isSameDay(_selectedDay, today)) {
+                  setState(() {
+                    _selectedDay = today;
+                  });
+                }
+                // Load accountability statuses only once per session —
+                // not on every ChallengeLoaded emission (e.g. task toggles),
+                // which would cause repeated Firestore reads and rebuilds.
+                // Mark as loaded only after success so failures can be retried.
+                final sessionId = state.activeSession!.id;
+                if (_accountabilityLoadedSessionId != sessionId) {
+                  _loadAccountabilityStatuses(
+                    state.activeSession!.challenges,
+                  ).then((_) {
+                    _accountabilityLoadedSessionId = sessionId;
+                  });
+                }
+              } else if (state is ChallengeLoaded) {
+                // No active session (sign-out / account switch cleared local
+                // data) — drop the cached snapshot so stale data can never
+                // reappear behind a later error/loading emission.
+                _lastLoadedState = null;
+              } else if (state is ChallengeError) {
+                if (_errorSnackClaimed) {
+                  // Already surfaced by the toggle path — just reset the flag.
+                  _errorSnackClaimed = false;
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } else if (state is ChallengeReset) {
+                _showResetDialog(state);
+              } else if (state is ChallengeCompleted) {
+                _showCompletionDialog(state.completedSession);
+              }
+            });
+          },
+          builder: (context, state) {
+            if (state is ChallengeLoading) {
+              return const Center(child: CircularProgressIndicator());
             }
 
-            return _buildActiveSession(state);
-          }
+            if (state is ChallengeLoaded) {
+              if (!state.hasActiveSession) {
+                return _buildNoActiveSession();
+              }
 
-          // Error / loading / initial — keep showing the last good screen so
-          // a failed action never makes every task vanish.
-          final cached = _lastLoadedState;
-          if (cached != null && cached.hasActiveSession) {
-            return _buildActiveSession(cached);
-          }
+              return _buildActiveSession(state);
+            }
 
-          return _buildNoActiveSession();
-        },
+            // Error / loading / initial — keep showing the last good screen so
+            // a failed action never makes every task vanish.
+            final cached = _lastLoadedState;
+            if (cached != null && cached.hasActiveSession) {
+              return _buildActiveSession(cached);
+            }
+
+            return _buildNoActiveSession();
+          },
+        ),
       ),
     );
   }
@@ -387,19 +599,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildActiveSession(ChallengeLoaded state) {
     final session = state.activeSession!;
+    final nonRegularChallengeIds = session.challenges
+        .where((challenge) => challenge.taskType != 'regular')
+        .map((challenge) => challenge.id)
+        .toList();
+    final nonRegularChallengeIdSet = nonRegularChallengeIds.toSet();
+    final scoreInputs = _DisciplineScoreInputSignature(
+      sessionId: session.id,
+      startDate: _normalizeDate(session.startDate),
+      totalDaysTarget: session.totalDaysTarget,
+      today: _normalizeDate(DateTime.now()),
+      nonRegularChallengeIds: nonRegularChallengeIds,
+      progress: state.currentProgress.map((dayProgress) {
+        final completedChallengeIds = dayProgress.challengeCompletions.entries
+            .where((entry) =>
+                entry.value && nonRegularChallengeIdSet.contains(entry.key))
+            .map((entry) => entry.key)
+            .toList()
+          ..sort();
+        return _DisciplineProgressSignature(
+          date: _normalizeDate(dayProgress.date),
+          isCompleted: dayProgress.isCompleted,
+          completedChallengeIds: completedChallengeIds,
+        );
+      }).toList(),
+    );
     final daysSinceStart =
         DateTime.now().difference(session.startDate).inDays + 1;
     final currentDay = daysSinceStart > 75 ? 75 : daysSinceStart;
 
-    // Trigger discipline score calculation whenever session data changes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
-              session: session,
-              progress: state.currentProgress,
-            ));
-      }
-    });
+    // Score inputs are stable across unrelated widget rebuilds. Dispatch only
+    // when the session, score-relevant progress, or current day changes.
+    if (scoreInputs != _lastDisciplineScoreInputSignature) {
+      _lastDisciplineScoreInputSignature = scoreInputs;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && scoreInputs == _lastDisciplineScoreInputSignature) {
+          context.read<DisciplineScoreBloc>().add(CalculateDisciplineScore(
+                session: session,
+                progress: state.currentProgress,
+              ));
+        }
+      });
+    }
 
     // --- Compute task data once ---
     if (_selectedDay.isBefore(session.startDate)) {
@@ -408,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final allProgress = state.currentProgress;
     final selectedProgress =
         allProgress.where((p) => _isSameDay(p.date, _selectedDay)).firstOrNull;
+    final streaks = _computeStreaks(allProgress);
     final isToday = _isSameDay(_selectedDay, DateTime.now());
     final isFutureDate =
         _normalizeDate(_selectedDay).isAfter(_normalizeDate(DateTime.now()));
@@ -419,14 +661,17 @@ class _HomeScreenState extends State<HomeScreen> {
     // --- Build a flat list of widgets ---
     final List<Widget> items = [
       // 1. Greeting
-      const GreetingHeader(),
+      GreetingHeader(
+        notificationCount: _recentNotifications.length,
+        onNotificationTap: _openNotifications,
+      ),
 
       // 2. Hero card
       ChallengeHeroCard(
         currentDay: currentDay,
         totalDays: session.totalDaysTarget,
-        currentStreak: _computeCurrentStreak(allProgress),
-        bestStreak: _computeBestStreak(allProgress),
+        currentStreak: streaks.current,
+        bestStreak: streaks.best,
       ),
       const SizedBox(height: 8),
 
@@ -436,9 +681,7 @@ class _HomeScreenState extends State<HomeScreen> {
             taskName: n['task'] ?? '',
             action: n['action'] ?? 'approved',
             comment: n['comment'],
-            onDismiss: () {
-              setState(() => _recentNotifications.remove(n));
-            },
+            onDismiss: () => _dismissNotification(n),
           )),
 
       // 4. "Today's Tasks" section header
@@ -487,15 +730,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   challenge: challenge,
                   isCompleted: isCompleted,
                   isEditable: isToday,
-                  onToggle: (completed) {
-                    context.read<ChallengeBloc>().add(
-                          UpdateDailyProgress(
-                            date: _selectedDay,
-                            challengeId: challenge.id,
-                            isCompleted: completed,
-                          ),
-                        );
-                  },
+                  onToggle: (completed) =>
+                      _toggleCompletion(challenge, completed),
                   onReminderUpdate: (updatedChallenge) {
                     context.read<ChallengeBloc>().add(
                           UpdateChallenge(updatedChallenge),
@@ -505,6 +741,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onEdit: () => _showTaskSheet(context, challenge),
                   proofStatus: _proofStatuses[challenge.id],
                   accountabilityStatus: _accountabilityStatuses[challenge.id],
+                  accountabilityDoneToday:
+                      _accountabilityTasks[challenge.id]?.isDoneToday ?? true,
                   isReviewOnly: _reviewOnlyChallenges[challenge.id] ?? false,
                   onSubmitProof: () => _submitProof(challenge),
                   onReviewProof: () => _reviewProof(challenge),
@@ -540,9 +778,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  
-
-  
   void _showTaskSheet(
     BuildContext context,
     Challenge? challenge,
@@ -556,6 +791,120 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Opens the app's notification surface — the Reviews screen, the same
+  /// destination the Squad top-right button and notification taps use.
+  /// Returning from it marks the surfaced notifications as read so the
+  /// bell badge goes to zero (BUG-01: badge must reflect unread state).
+  Future<void> _openNotifications() async {
+    final bloc = context.read<AccountabilityBloc>();
+    final surfacedNotifications = _recentNotifications.take(3).toList();
+    final route = Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: bloc,
+          child: const Scaffold(
+            appBar: CustomAppBar(title: 'Reviews'),
+            body: ReviewsTabV2(),
+          ),
+        ),
+      ),
+    );
+    await route;
+    if (!mounted) return;
+    unawaited(_markNotificationsRead(surfacedNotifications));
+    unawaited(_loadRecentNotifications());
+  }
+
+  /// Saves a task toggle end-to-end. Shows a blocking progress dialog while
+  /// the bloc runs its chain (Hive save → Firestore publish → notification
+  /// reschedule), closes it as soon as the saved value is confirmed, and on
+  /// failure closes it and surfaces a SnackBar — the checkbox only follows
+  /// persisted state, so it never flips optimistically.
+  Future<void> _toggleCompletion(Challenge challenge, bool completed) async {
+    final bloc = context.read<ChallengeBloc>();
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    BuildContext? dialogContext;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        dialogContext = dialogCtx;
+        return const _SavingProgressDialog();
+      },
+    );
+
+    try {
+      // `bloc.add` is fire-and-forget: subscribe to the state stream first so
+      // the completion signal can't be missed, then dispatch the event.
+      final confirmed = bloc.stream.firstWhere(
+        (state) =>
+            state is ChallengeError || _isSaved(state, challenge.id, completed),
+      );
+      bloc.add(
+        UpdateDailyProgress(
+          date: _selectedDay,
+          challengeId: challenge.id,
+          isCompleted: completed,
+        ),
+      );
+      final state = await confirmed.timeout(const Duration(seconds: 10));
+      if (state is ChallengeError) {
+        _showToggleError(state.message);
+      }
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Still saving your progress — it has not been confirmed yet.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (error) {
+      _showToggleError('$error');
+    } finally {
+      final ctx = dialogContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      } else if (ctx == null && rootNavigator.canPop()) {
+        // The save beat the dialog's first frame — pop through the navigator
+        // we pushed on, otherwise a non-dismissible dialog would be stranded.
+        rootNavigator.pop();
+      }
+    }
+  }
+
+  /// True when [state] already stores [value] for [challengeId] on the
+  /// selected day — i.e. the persistence actually landed.
+  bool _isSaved(ChallengeState state, String challengeId, bool value) {
+    if (state is! ChallengeLoaded || !state.hasActiveSession) return false;
+    for (final progress in state.currentProgress) {
+      if (_isSameDay(progress.date, _selectedDay)) {
+        return progress.challengeCompletions[challengeId] == value;
+      }
+    }
+    return false;
+  }
+
+  /// Surfaces the toggle failure once — the BlocConsumer listener skips its
+  /// own SnackBar when this path has already claimed the error.
+  void _showToggleError(String message) {
+    if (_errorSnackClaimed) {
+      _errorSnackClaimed = false;
+      return;
+    }
+    _errorSnackClaimed = true;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Could not save your progress — $message'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   void _handleRemoveTask(ChallengeSession session, Challenge challenge) {
     final remaining =
         session.challenges.where((c) => c.taskType != 'regular').length;
@@ -563,6 +912,16 @@ class _HomeScreenState extends State<HomeScreen> {
       context.read<ChallengeBloc>().add(
             RemoveChallengeFromSession(challenge.id),
           );
+      // Immediate local feedback: the bloc persists the delete to Hive and
+      // reloads, but that round-trip is silent — confirm now so offline
+      // deletes feel applied. Failures still surface via the ChallengeError
+      // listener below. No hardcoded color so the SnackBar follows the theme.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Removed "${challenge.title}"'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
@@ -654,115 +1013,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
-  Widget _buildDateProgressIndicator(
-      ChallengeLoaded state, ChallengeSession session) {
-    final progress = state.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-
-    if (progress == null) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'No data for this date',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: progress.isCompleted
-            ? null
-            : () => _scrollToFirstIncompleteTask(session),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: progress.isCompleted ? Colors.green[50] : Colors.red[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  progress.isCompleted ? Colors.green[300]! : Colors.red[300]!,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                progress.isCompleted ? Icons.check_circle : Icons.cancel,
-                color:
-                    progress.isCompleted ? Colors.green[600] : Colors.red[600],
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  progress.isCompleted
-                      ? 'All tasks completed!'
-                      : 'Some tasks are incomplete',
-                  style: TextStyle(
-                    color: progress.isCompleted
-                        ? Colors.green[700]
-                        : Colors.red[700],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (!progress.isCompleted)
-                Icon(Icons.keyboard_arrow_down, color: Colors.red[700]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _scrollToFirstIncompleteTask(ChallengeSession session) {
-    Challenge? target;
-    for (final c in session.challenges.where((c) => c.taskType != 'regular')) {
-      final isCompleted = _taskCompletionFor(c);
-      if (!isCompleted) {
-        target = c;
-        break;
-      }
-    }
-    final GlobalKey? key = null; // GlobalKeys removed to fix layout assertion
-    final context2 = key?.currentContext;
-    if (context2 != null) {
-      Scrollable.ensureVisible(
-        context2,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        alignment: 0.2,
-      );
-    }
-  }
-
-  bool _taskCompletionFor(Challenge challenge) {
-    final allProgress = context.read<ChallengeBloc>().state;
-    if (allProgress is! ChallengeLoaded) return false;
-    final progress = allProgress.currentProgress
-        .where((p) => _isSameDay(p.date, _selectedDay))
-        .firstOrNull;
-    return progress?.challengeCompletions[challenge.id] ?? false;
-  }
-
-  /// Loads the current accountability task status for each challenge from Firestore.
   /// Called on initial session load so DailyTaskCard shows correct review states.
   Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
     final svc = AccountabilityService();
@@ -781,14 +1031,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Partner approved my proof → the task is complete; mirror it onto
           // my local challenge so the Today card shows the checkmark.
-          final partnerApproved =
-              task.status == AccountabilityTaskStatus.completed ||
-                  task.status == AccountabilityTaskStatus.approved;
+          // Date-scoped: only today's approval completes today's progress.
+          final partnerApproved = task.isDoneToday;
 
           setState(() {
             _accountabilityStatuses[challenge.id] = task.status;
             _proofStatuses[challenge.id] = task.proofStatus;
             _reviewOnlyChallenges[challenge.id] = reviewOnly;
+            _accountabilityTasks[challenge.id] = task;
           });
 
           if (partnerApproved && !reviewOnly && mounted) {
@@ -873,6 +1123,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _proofStatuses[challenge.id] = ProofStatus.submitted;
           _accountabilityStatuses[challenge.id] =
               AccountabilityTaskStatus.pendingReview;
+          _accountabilityTasks[challenge.id] = updated;
         });
       }
     }
@@ -893,8 +1144,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(challenge.id);
-    if (taskId == null) return;
-
+    if (taskId == null) {
+      // Never fail silently — the camera button must always give feedback.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find the linked review task. Please try again later.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
     final result = await PhotoProofSheet.show(
       context: context,
@@ -995,32 +1257,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  int _computeCurrentStreak(List<DailyProgress> progress) {
-    int streak = 0;
+  ({int current, int best}) _computeStreaks(List<DailyProgress> progress) {
     final sorted = [...progress]..sort((a, b) => b.date.compareTo(a.date));
-    for (final p in sorted) {
-      if (p.isCompleted) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  int _computeBestStreak(List<DailyProgress> progress) {
+    var current = 0;
     int best = 0;
-    int current = 0;
-    final sorted = [...progress]..sort((a, b) => a.date.compareTo(b.date));
+    var sequence = 0;
+    var scanningCurrent = true;
+
     for (final p in sorted) {
       if (p.isCompleted) {
-        current++;
-        if (current > best) best = current;
+        sequence++;
+        if (sequence > best) best = sequence;
+        if (scanningCurrent) current++;
       } else {
-        current = 0;
+        sequence = 0;
+        scanningCurrent = false;
       }
     }
-    return best;
+    return (current: current, best: best);
   }
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -1094,31 +1348,45 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
 
-  void _showJournalBottomSheet(
-    BuildContext context,
-    ChallengeLoaded state,
-    DailyProgress? selectedProgress,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => JournalBottomSheet(
-        date: _selectedDay,
-        existingNote: selectedProgress?.journalNote,
-        onSave: (note) {
-          context.read<ChallengeBloc>().add(
-                AddJournalNote(date: _selectedDay, note: note),
-              );
-        },
-        onDelete: selectedProgress?.journalNote != null
-            ? () {
-                context.read<ChallengeBloc>().add(
-                      AddJournalNote(date: _selectedDay, note: ''),
-                    );
-              }
-            : null,
+/// Modal progress dialog shown while a completion toggle is being persisted.
+/// Barrier taps and the system back button are blocked so the save chain can
+/// finish; the caller pops it as soon as the bloc confirms the new value (or
+/// the attempt fails).
+class _SavingProgressDialog extends StatelessWidget {
+  const _SavingProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Saving your progress…',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'This keeps your daily streak accurate.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

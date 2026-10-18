@@ -2,7 +2,6 @@ import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
-import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/foundation.dart';
@@ -27,9 +26,12 @@ import 'features/regular_tasks/data/models/regular_task_completion.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
-import 'features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'features/human_accountability/presentation/bloc/accountability_state.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
+import 'core/services/offline_task_outbox.dart';
+import 'core/services/data_ownership.dart';
+import 'core/services/fcm_service.dart';
 import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -41,6 +43,15 @@ import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+/// Global navigator key — lets notification taps navigate from outside the
+/// widget tree (see FcmService).
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// True once the splash screen has pushed /home. Notification payloads
+/// queued before that wait for [FcmService.flushPendingNavigation] so the
+/// splash hand-off cannot replace the screen a cold-start tap asked for.
+bool appNavigationReady = false;
 
 /// App-wide theme colors — single source of truth.
 /// Aligned to the Figma "Design Daily Metal App" palette.
@@ -89,6 +100,11 @@ void main() async {
   } catch (e) {
     if (kDebugMode) print('Firebase init failed (app works offline): $e');
   }
+  // Listener starts only after the reconnect callback is installed.
+
+  // Reconnect hook: when the device regains internet, push local changes to
+  // the cloud (BUG-06) and flush any tasks queued while offline.
+  connectivity.onInternetRestoredWithResult = _onInternetRestored;
   connectivity.startListening(); // retries when internet comes back
 
   // ── Start review expiry timer if user is signed in ──
@@ -108,6 +124,24 @@ void main() async {
 
   runApp(MyApp(
       smartNotifications: smartNotifications, connectivity: connectivity));
+}
+
+/// Runs once per none→internet transition (set as
+/// [ConnectivityService.onInternetRestored]).
+///
+/// Pushes local changes to the cloud (autoSync — the missing half of the
+/// old "Auto-syncs when online" promise) and flushes tasks queued for
+/// creation while the device was offline.
+Future<bool> _onInternetRestored() async {
+  final db = DatabaseRepository();
+  final taskRepo = RegularTaskRepository();
+  await db.init();
+  await taskRepo.init();
+
+  final syncSucceeded =
+      await CloudSyncService().autoSyncWithResult(db, taskRepo);
+  final outboxResult = await OfflineTaskOutbox.instance.flushWithResult();
+  return syncSucceeded && outboxResult.succeeded;
 }
 
 class MyApp extends StatelessWidget {
@@ -147,9 +181,65 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Daily mettle',
         debugShowCheckedModeBanner: false,
+        navigatorKey: navigatorKey,
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         themeMode: ThemeMode.system,
+        // In-process bridge: a partner's review reaction carries task
+        // ownership metadata. ChallengeBloc refuses to mutate a reviewer's
+        // session; owner devices also observe persisted decisions through the
+        // assignedByMe task stream in HomeScreen.
+        //
+        // A partner's review reaction drives ChallengeBloc —
+        // StreakImpacted (hard tasks) resets the session on 'rejected',
+        // RegularTaskOutcome (regular tasks) un-completes the task for today.
+        // Exactly-once consumption is enforced in ChallengeBloc itself.
+        builder: (context, child) =>
+            BlocListener<AccountabilityBloc, AccountabilityState>(
+          listener: (context, state) {
+            if (state is StreakImpacted) {
+              final outcome = state is StreakReviewOutcome ? state : null;
+              if (state.reason == 'rejected') {
+                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                      taskId: outcome?.taskId,
+                      challengeId: outcome?.challengeId,
+                      taskOwnerUid: outcome?.taskOwnerUid,
+                      taskType: outcome?.taskType ?? 'hard',
+                      outcome: 'rejected',
+                      newStreakDay: state.newStreakDay,
+                      reviewedAt: outcome?.reviewedAt,
+                      taskAssignedAt: outcome?.taskAssignedAt,
+                    ));
+              } else if (state.reason == 'approved') {
+                // Approved needs no session mutation — register the outcome
+                // so exactly-once ingestion stays symmetric.
+                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                      taskId: outcome?.taskId,
+                      challengeId: outcome?.challengeId,
+                      taskOwnerUid: outcome?.taskOwnerUid,
+                      taskType: outcome?.taskType ?? 'hard',
+                      outcome: 'approved',
+                      newStreakDay: state.newStreakDay,
+                      reviewedAt: outcome?.reviewedAt,
+                      taskAssignedAt: outcome?.taskAssignedAt,
+                    ));
+              }
+              // 'expired' is emitted via TasksExpired elsewhere — not consumed.
+            } else if (state is RegularTaskOutcome &&
+                state.outcome == 'rejected') {
+              context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                    taskId: state.taskId,
+                    challengeId: state.challengeId,
+                    taskOwnerUid: state.taskOwnerUid,
+                    reviewedAt: state.reviewedAt,
+                    taskAssignedAt: state.taskAssignedAt,
+                    taskType: 'regular',
+                    outcome: 'rejected',
+                  ));
+            }
+          },
+          child: child,
+        ),
         home: const InitialScreen(),
         navigatorObservers: connectivity.isFirebaseReady
             ? [AnalyticsService().getObserver()]
@@ -192,9 +282,7 @@ class MyApp extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(FigmaTokens.rCard),
           side: BorderSide(
-            color: isDark
-                ? const Color(0xFF3A3335)
-                : const Color(0xFFEEE9E7),
+            color: isDark ? const Color(0xFF3A3335) : const Color(0xFFEEE9E7),
           ),
         ),
       ),
@@ -344,7 +432,7 @@ class InitialScreen extends StatefulWidget {
 }
 
 class _InitialScreenState extends State<InitialScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with TickerProviderStateMixin {
   _QuoteState _quoteState = _QuoteState.loading;
   Quote? _quote;
 
@@ -367,7 +455,6 @@ class _InitialScreenState extends State<InitialScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     _logoCtrl = AnimationController(
       vsync: this,
@@ -410,26 +497,11 @@ class _InitialScreenState extends State<InitialScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _logoCtrl.dispose();
     _quoteCtrl.dispose();
     _progressCtrl.dispose();
     _exitCtrl.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      SimpleBackgroundCheckService().checkOnAppOpen();
-      // Check for expired accountability tasks when app resumes
-      if (FirebaseAuth.instance.currentUser != null) {
-        ReviewExpiryService().checkAndExpireTasks();
-        if (mounted) {
-          context.read<AccountabilityBloc>().add(CheckExpiredTasks());
-        }
-      }
-    }
   }
 
   Future<void> _initApp() async {
@@ -445,10 +517,17 @@ class _InitialScreenState extends State<InitialScreen>
     // Awaiting this would freeze the splash behind the system permission
     // dialog until the user responds; instead we fire-and-forget so DB init
     // and navigation proceed normally.
-    unawaited(SmartNotificationService().requestPermissions().catchError((_) {}));
+    unawaited(
+        SmartNotificationService().requestPermissions().catchError((_) {}));
 
     await bloc.repository.init();
     await taskRepo.init();
+
+    // Replay Squad-task creations queued while offline (BUG-03). An
+    // online-start never fires the reconnect hook, so run it here too.
+    if (await ConnectivityService().hasInternet()) {
+      unawaited(OfflineTaskOutbox.instance.flush().catchError((_) => 0));
+    }
 
     // If user is signed in but has NO local data, restore from cloud.
     User? currentUser;
@@ -458,6 +537,20 @@ class _InitialScreenState extends State<InitialScreen>
       currentUser = null;
     }
     if (currentUser != null) {
+      // Cross-account isolation: if the local data belongs to a different
+      // account (e.g. the previous user never signed out on this device),
+      // wipe it before it can be shown or uploaded for this account.
+      final owner = await DataOwnership.read();
+      if (owner != null && owner != currentUser.uid) {
+        try {
+          await CloudSyncService().clearLocalData(bloc.repository, taskRepo);
+        } catch (_) {}
+        if (mounted) {
+          bloc.add(LoadChallengeData());
+          context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        }
+      }
+
       final hasLocalData = await bloc.repository.hasActiveSession();
       if (!hasLocalData) {
         try {
@@ -474,6 +567,11 @@ class _InitialScreenState extends State<InitialScreen>
           }
         } catch (_) {}
       }
+      // Record (or adopt) which account owns the local data.
+      await DataOwnership.claim(currentUser.uid);
+      try {
+        await bloc.repository.adoptSessionsFor(currentUser.uid);
+      } catch (_) {}
     }
 
     // Minimum splash display time
@@ -489,6 +587,8 @@ class _InitialScreenState extends State<InitialScreen>
     // - No session → shows "Start 75 Hard Challenge" button
     // The onboarding/setup wizard is triggered FROM home, not before it.
     Navigator.of(context).pushReplacementNamed('/home');
+    appNavigationReady = true;
+    unawaited(FcmService.instance.flushPendingNavigation());
   }
 
   Future<void> _fetchQuote() async {

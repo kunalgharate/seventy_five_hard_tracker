@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
 import 'package:seventy_five_hard_tracker/core/utils/text_helpers.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
@@ -11,6 +13,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/data/mod
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
+import 'package:seventy_five_hard_tracker/widgets/regular_tasks/regular_task_sheet_helpers.dart';
 
 /// Bottom sheet to create a new task from the Squad screen.
 /// Reviewer assignment is optional — tasks without reviewers
@@ -31,12 +34,14 @@ class CreateTaskSheet extends StatefulWidget {
   State<CreateTaskSheet> createState() => _CreateTaskSheetState();
 }
 
-class _CreateTaskSheetState extends State<CreateTaskSheet> {
+class _CreateTaskSheetState extends State<CreateTaskSheet>
+    with RegularTaskSheetHelpers {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   String _taskType = 'hard'; // 'hard' or 'regular'
   AppUser? _selectedReviewer;
+  String? _selectedPartnershipId;
   bool _lookingUp = false;
   bool _creating = false;
   String? _emailError;
@@ -51,6 +56,24 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   /// without typing anything.
   List<AccountabilityPartner> _partners = [];
   bool _loadingPartners = true;
+
+  /// Draft holding the 75-Hard reminder choice. Squad-created 75-Hard tasks
+  /// require a reminder (same rule as ChallengeTaskSheet); routine tasks
+  /// keep reminders optional so this stays untouched for 'regular'.
+  Challenge _hardReminder = const Challenge(
+    id: 'squad-draft',
+    title: '',
+    taskType: 'hard',
+    category: 'general',
+  );
+
+  @override
+  Challenge get sheetChallenge => _hardReminder;
+  @override
+  set sheetChallenge(Challenge value) => _hardReminder = value;
+
+  bool get _hasHardReminder =>
+      _hardReminder.isReminderEnabled && _hardReminder.reminderTime != null;
 
   final _svc = AccountabilityService();
 
@@ -95,6 +118,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         displayName: p.displayName,
         createdAt: p.acceptedAt ?? p.createdAt,
       );
+      _selectedPartnershipId = p.id;
       _emailInviteOnly = false;
       _emailInfo = null;
       _emailError = null;
@@ -112,7 +136,10 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   Future<void> _lookupReviewer() async {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
-      setState(() => _selectedReviewer = null);
+      setState(() {
+        _selectedReviewer = null;
+        _selectedPartnershipId = null;
+      });
       return;
     }
     if (!email.contains('@')) {
@@ -142,6 +169,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
           _lookingUp = false;
           _emailInviteOnly = false;
           _selectedReviewer = user;
+          _selectedPartnershipId = null;
         });
       }
     } catch (e) {
@@ -161,23 +189,64 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       setState(() => _titleError = validationError);
       return;
     }
+    // 75-Hard tasks require a reminder before saving (mirrors the
+    // ChallengeTaskSheet gate). Routine-task reminders stay optional.
+    if (_taskType == 'hard' && !_hasHardReminder) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please set a reminder before saving this task'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     setState(() {
       _titleError = null;
       _creating = true;
     });
+    final senderUid = _svc.currentUid;
 
     try {
+      // Connectivity snapshot: drives the offline fallback paths below.
+      final offline = !await ConnectivityService().hasInternet();
+      if (!mounted) return;
+      if (offline && _emailInviteOnly) {
+        setState(() => _creating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'You\'re offline — assigning a task by email needs internet. Try again when reconnected.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
       String? partnershipId;
       String accountableUid = _svc.currentUid ?? '';
       String accountableName = _svc.currentUserDisplayName;
       String? accountableEmail;
+      var queuedOffline = false;
 
       // If reviewer selected, create partnership + task with reviewer
       if (_selectedReviewer != null) {
-        partnershipId = await _svc.ensurePartnership(
-          _selectedReviewer!.uid,
-          _selectedReviewer!.displayName,
-        );
+        if (offline) {
+          partnershipId = _selectedPartnershipId;
+          queuedOffline = true;
+        } else {
+          _assertSenderUnchanged(senderUid);
+          try {
+            partnershipId = await _svc.ensurePartnership(
+              _selectedReviewer!.uid,
+              _selectedReviewer!.displayName,
+            );
+          } catch (e) {
+            if (await ConnectivityService().hasInternet()) rethrow;
+            partnershipId = _selectedPartnershipId;
+            queuedOffline = true;
+          }
+          _assertSenderUnchanged(senderUid);
+        }
         accountableUid = _selectedReviewer!.uid;
         accountableName = _selectedReviewer!.displayName;
       } else if (_emailInviteOnly) {
@@ -251,6 +320,19 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   title: title,
                   taskType: 'hard',
                   category: 'general',
+                  // Reminder was gated above, so scheduling (in the bloc)
+                  // picks this task up exactly like ChallengeSheet tasks.
+                  // Only today's DailyProgress is touched — past days are
+                  // never backfilled, so mid-challenge adds don't mark
+                  // earlier days missed.
+                  reminderTime: _hardReminder.reminderTime,
+                  isReminderEnabled: true,
+                  reminderType: _hardReminder.reminderType,
+                  reminderStartHour: _hardReminder.reminderStartHour,
+                  reminderEndHour: _hardReminder.reminderEndHour,
+                  allowNightReminders: _hardReminder.allowNightReminders,
+                  reminderIntervalMinutes:
+                      _hardReminder.reminderIntervalMinutes,
                 ),
               ),
             );
@@ -262,17 +344,52 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       // challenge (75 Hard) or the habit (Routine) created above.
       bool ok = true;
       final hasReviewer = _selectedReviewer != null || _emailInviteOnly;
+      Future<void> enqueueOfflineTask() async {
+        _assertSenderUnchanged(senderUid);
+        await OfflineTaskOutbox.instance.enqueue({
+          'senderUid': senderUid,
+          'accountableUid': accountableUid,
+          'accountableName': accountableName,
+          'partnershipId': partnershipId ?? '',
+          'title': title,
+          'description': _descCtrl.text.trim(),
+          'challengeId': challengeId,
+          'partnerUid': senderUid,
+          'taskType': _taskType == 'regular' ? 'regular' : 'hard',
+        });
+      }
+
       if (hasReviewer) {
-        final created = await _svc.createAccountabilityTask(
-          accountableUid: accountableUid,
-          accountableName: accountableName,
-          accountableEmail: accountableEmail,
-          partnershipId: partnershipId ?? '',
-          title: title,
-          description: _descCtrl.text.trim(),
-          challengeId: challengeId,
-        );
-        ok = created != null;
+        if (queuedOffline && _selectedReviewer != null) {
+          await enqueueOfflineTask();
+          queuedOffline = true;
+          ok = true;
+        } else {
+          _assertSenderUnchanged(senderUid);
+          final created = await _svc.createAccountabilityTask(
+            accountableUid: accountableUid,
+            accountableName: accountableName,
+            accountableEmail: accountableEmail,
+            partnershipId: partnershipId ?? '',
+            title: title,
+            description: _descCtrl.text.trim(),
+            challengeId: challengeId,
+            // The doer is the other partnership member, so I review their work.
+            partnerUid: _svc.currentUid,
+            // taskType is persisted as 'hard' unless this is a routine task
+            taskType: _taskType == 'regular' ? 'regular' : null,
+          );
+          _assertSenderUnchanged(senderUid);
+          if (created == null &&
+              _selectedReviewer != null &&
+              !await ConnectivityService().hasInternet()) {
+            await enqueueOfflineTask();
+            queuedOffline = true;
+            ok = true;
+          } else {
+            ok = created != null;
+          }
+        }
       }
 
       if (!mounted) return;
@@ -281,16 +398,19 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_emailInviteOnly
-                ? 'Task assigned to ${_emailCtrl.text.trim()} — '
-                    'they\'ll accept it after they join.'
-                : _selectedReviewer != null
-                    ? 'Task created! ${_selectedReviewer!.displayName} '
-                        'will be asked to review.'
-                    : _taskType == 'regular'
-                        ? 'Routine task added to your Habits!'
-                        : 'Task added to today\'s challenge!'),
-            backgroundColor: Colors.green,
+            content: Text(queuedOffline
+                ? 'Saved offline — "${_selectedReviewer!.displayName}" '
+                    'will be asked to review when you\'re back online.'
+                : _emailInviteOnly
+                    ? 'Task assigned to ${_emailCtrl.text.trim()} — '
+                        'they\'ll accept it after they join.'
+                    : _selectedReviewer != null
+                        ? 'Task created! ${_selectedReviewer!.displayName} '
+                            'will be asked to review.'
+                        : _taskType == 'regular'
+                            ? 'Routine task added to your Habits!'
+                            : 'Task added to today\'s challenge!'),
+            backgroundColor: queuedOffline ? Colors.orange : Colors.green,
           ),
         );
         Navigator.pop(context, true);
@@ -315,11 +435,24 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
     }
   }
 
+  void _assertSenderUnchanged(String? senderUid) {
+    if (senderUid == null ||
+        senderUid.isEmpty ||
+        _svc.currentUid != senderUid) {
+      throw StateError(
+          'Your signed-in account changed while creating the task.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark ? Colors.grey[850]! : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.grey[900]!;
+    // All colors come from the active Theme so the sheet stays readable in
+    // both light and dark mode — never hard-code white/black text here.
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final cardBg = scheme.surface;
+    final textColor = scheme.onSurface;
+    final fieldFill = theme.inputDecorationTheme.fillColor ?? scheme.surface;
 
     return Container(
       decoration: BoxDecoration(
@@ -343,7 +476,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -360,7 +493,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
             const SizedBox(height: 4),
             Text(
               'Add a new task to your challenge. Reviewer is optional.',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
 
@@ -370,7 +503,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
@@ -383,6 +516,60 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
             ),
             const SizedBox(height: 16),
 
+            // ── Reminder (required for 75 Hard, optional for Routine) ──
+            if (_taskType == 'hard') ...[
+              GestureDetector(
+                onTap: showReminderSetup,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _hasHardReminder
+                        ? Colors.orange.withValues(alpha: 0.08)
+                        : Colors.red.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _hasHardReminder
+                          ? Colors.orange.withValues(alpha: 0.4)
+                          : Colors.red.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _hasHardReminder ? Icons.alarm_on : Icons.alarm_add,
+                        size: 18,
+                        color: _hasHardReminder
+                            ? Colors.orange[700]
+                            : Colors.red[700],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _hasHardReminder
+                              ? 'Reminder Set'
+                              : 'Set Reminder (Required)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _hasHardReminder
+                                ? Colors.orange[800]
+                                : Colors.red[700],
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          size: 18,
+                          color: _hasHardReminder
+                              ? Colors.orange[400]
+                              : Colors.red[400]),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // ── Task name ──
             TextField(
               controller: _titleCtrl,
@@ -391,6 +578,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 hintText: 'e.g. 45 minute workout',
                 errorText: _titleError,
                 prefixIcon: const Icon(Icons.task_alt),
+                filled: true,
+                fillColor: fieldFill,
+                labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                hintStyle: TextStyle(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                prefixIconColor: scheme.onSurfaceVariant,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -410,6 +603,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 labelText: 'Description (optional)',
                 hintText: 'What does this task involve?',
                 prefixIcon: const Icon(Icons.description_outlined),
+                filled: true,
+                fillColor: fieldFill,
+                labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                hintStyle: TextStyle(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                prefixIconColor: scheme.onSurfaceVariant,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -424,13 +623,13 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: scheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Tasks without a reviewer complete normally.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
 
@@ -444,14 +643,14 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   child: Row(
                     children: [
                       Icon(Icons.group_outlined,
-                          size: 16, color: Colors.grey[400]),
+                          size: 16, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'No partners yet — invite one below, or share your '
                           'invite code from the Squad screen.',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[400]),
+                          style: TextStyle(
+                              fontSize: 12, color: scheme.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -463,7 +662,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[500],
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -471,15 +670,16 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Expanded(child: Divider(color: scheme.outline)),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         'or invite someone new',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                        style: TextStyle(
+                            fontSize: 11, color: scheme.onSurfaceVariant),
                       ),
                     ),
-                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Expanded(child: Divider(color: scheme.outline)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -494,6 +694,12 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                         hintText: 'reviewer@email.com',
                         errorText: _emailError,
                         prefixIcon: const Icon(Icons.email_outlined),
+                        filled: true,
+                        fillColor: fieldFill,
+                        hintStyle: TextStyle(
+                            color:
+                                scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                        prefixIconColor: scheme.onSurfaceVariant,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -561,7 +767,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                     Expanded(
                       child: Text(
                         _emailInfo!,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
                       ),
                     ),
                   ],
@@ -611,6 +817,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildTypeChip(String type, String label, Color color) {
+    final scheme = Theme.of(context).colorScheme;
     final selected = _taskType == type;
     return Expanded(
       child: GestureDetector(
@@ -623,7 +830,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 selected ? color.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? color : Colors.grey[300]!,
+              color: selected ? color : scheme.outline,
               width: selected ? 2 : 1,
             ),
           ),
@@ -633,7 +840,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: selected ? color : Colors.grey[500],
+                color: selected ? color : scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -643,6 +850,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildSelectedReviewer() {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -679,7 +887,8 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                 ),
                 Text(
                   _selectedReviewer!.email,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  style:
+                      TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -687,10 +896,11 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
           IconButton(
             onPressed: () => setState(() {
               _selectedReviewer = null;
+              _selectedPartnershipId = null;
               _emailCtrl.clear();
             }),
             icon: const Icon(Icons.close, size: 18),
-            color: Colors.grey[400],
+            color: scheme.onSurfaceVariant,
           ),
         ],
       ),
@@ -698,6 +908,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
   }
 
   Widget _buildPartnerTile(AccountabilityPartner p) {
+    final scheme = Theme.of(context).colorScheme;
     final name = p.displayName;
     final email = p.emailOf(_svc.currentUid) ?? '';
     return InkWell(
@@ -708,7 +919,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: scheme.outline),
         ),
         child: Row(
           children: [
@@ -737,7 +948,8 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   if (email.isNotEmpty)
                     Text(
                       email,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      style: TextStyle(
+                          fontSize: 11, color: scheme.onSurfaceVariant),
                       overflow: TextOverflow.ellipsis,
                     ),
                 ],
@@ -760,7 +972,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet> {
                   ),
                 ),
               ),
-            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
+            Icon(Icons.chevron_right, color: scheme.onSurfaceVariant, size: 20),
           ],
         ),
       ),

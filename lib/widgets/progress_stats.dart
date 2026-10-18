@@ -43,7 +43,8 @@ class ProgressStats extends StatelessWidget {
                     Text(
                       'Started: ${_formatDate(session.startDate)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[600],
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ],
@@ -83,14 +84,14 @@ class ProgressStats extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            _buildStreakInfo(),
+            _buildStreakInfo(context),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStreakInfo() {
+  Widget _buildStreakInfo(BuildContext context) {
     int currentStreak = 0;
     int longestStreak = 0;
     int tempStreak = 0;
@@ -122,14 +123,17 @@ class ProgressStats extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         _buildStatItem(
+            context,
             'Current Streak',
             '$currentStreak ${currentStreak == 1 ? 'day' : 'days'}',
             Icons.local_fire_department),
         _buildStatItem(
+            context,
             'Best Streak',
             '$longestStreak ${longestStreak == 1 ? 'day' : 'days'}',
             Icons.emoji_events),
         _buildStatItem(
+            context,
             'Remaining',
             '${totalDays - currentDay} ${totalDays - currentDay == 1 ? 'day' : 'days'}',
             Icons.schedule),
@@ -137,7 +141,8 @@ class ProgressStats extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
+  Widget _buildStatItem(
+      BuildContext context, String label, String value, IconData icon) {
     return Column(
       children: [
         Icon(icon, color: Colors.blue, size: 24),
@@ -152,7 +157,7 @@ class ProgressStats extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 12,
           ),
         ),

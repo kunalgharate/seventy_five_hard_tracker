@@ -59,3 +59,6 @@ key.properties
 dayschallenge-*.json
 service-account*.json
 ios/build/
+
+# Cloud Functions
+functions/node_modules/

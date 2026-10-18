@@ -52,8 +52,13 @@ jobs:
           echo "storeFile=../upload-keystore.jks" >> android/key.properties
 
       # ── Build Release APK ──────────────────────────────────────────
+      # API keys come from GitHub Secrets (Settings → Secrets and variables
+      # → Actions) so they never appear in source control. Add NVIDIA_API_KEY
+      # there — without it, Tron AI polish reports "not configured".
       - name: Build release APK
-        run: flutter build apk --release
+        run: >-
+          flutter build apk --release
+          --dart-define=NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
 
       # ── Upload Artifact ────────────────────────────────────────────
       - name: Sanitize branch name for artifact

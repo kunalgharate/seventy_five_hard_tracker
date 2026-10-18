@@ -80,7 +80,7 @@ class AchievementsShowcase extends StatelessWidget {
           style: GoogleFonts.poppins(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 12),
@@ -92,7 +92,7 @@ class AchievementsShowcase extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final a = achievements[index];
-              return _buildBadge(a);
+              return _buildBadge(context, a);
             },
           ),
         ),
@@ -100,7 +100,8 @@ class AchievementsShowcase extends StatelessWidget {
     );
   }
 
-  Widget _buildBadge(_Achievement a) {
+  Widget _buildBadge(BuildContext context, _Achievement a) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Semantics(
       label:
           '${a.title} achievement: ${a.description}. ${a.isUnlocked ? "Unlocked" : "Locked"}',
@@ -112,7 +113,7 @@ class AchievementsShowcase extends StatelessWidget {
           decoration: BoxDecoration(
             color: a.isUnlocked
                 ? a.color.withValues(alpha: 0.15)
-                : Colors.grey[200],
+                : (isDark ? Colors.grey[800]! : Colors.grey[200]!),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: a.isUnlocked
@@ -137,7 +138,9 @@ class AchievementsShowcase extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: a.isUnlocked ? Colors.grey[800] : Colors.grey[400],
+                  color: a.isUnlocked
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Colors.grey[400],
                 ),
               ),
             ],

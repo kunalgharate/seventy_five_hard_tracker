@@ -4,13 +4,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_score.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/notification_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/discipline_heatmap.dart';
 import 'package:seventy_five_hard_tracker/widgets/achievements_showcase.dart';
 import 'journal_timeline_screen.dart';
@@ -28,15 +34,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isSyncing = false;
   String? _lastSync;
 
+  // Offline-cached profile (SharedPreferences — same KV store the sync
+  // service already uses). Written at sign-in, read when auth/user fetch
+  // is unavailable so the header never goes blank.
+  static const _kCachedName = 'cachedProfileDisplayName';
+  static const _kCachedEmail = 'cachedProfileEmail';
+  static const _kCachedPhoto = 'cachedProfilePhotoUrl';
+  String? _cachedName;
+  String? _cachedEmail;
+  String? _cachedPhotoUrl;
+
   @override
   void initState() {
     super.initState();
     _loadLastSync();
+    _loadCachedProfile();
   }
 
   Future<void> _loadLastSync() async {
     final time = await _syncService.getLastSyncTime();
     if (mounted) setState(() => _lastSync = time);
+  }
+
+  Future<void> _loadCachedProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _cachedName = prefs.getString(_kCachedName);
+        _cachedEmail = prefs.getString(_kCachedEmail);
+        _cachedPhotoUrl = prefs.getString(_kCachedPhoto);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _cacheProfile(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (user.displayName != null) {
+        await prefs.setString(_kCachedName, user.displayName!);
+      }
+      if (user.email != null) {
+        await prefs.setString(_kCachedEmail, user.email!);
+      }
+      if (user.photoURL != null) {
+        await prefs.setString(_kCachedPhoto, user.photoURL!);
+      }
+      if (!mounted) return;
+      setState(() {
+        _cachedName = user.displayName ?? _cachedName;
+        _cachedEmail = user.email ?? _cachedEmail;
+        _cachedPhotoUrl = user.photoURL ?? _cachedPhotoUrl;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _clearCachedProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kCachedName);
+      await prefs.remove(_kCachedEmail);
+      await prefs.remove(_kCachedPhoto);
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _cachedName = null;
+        _cachedEmail = null;
+        _cachedPhotoUrl = null;
+      });
+    }
   }
 
   @override
@@ -141,8 +207,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return StreamBuilder<User?>(
       stream: _syncService.authStateChanges,
       builder: (context, snapshot) {
+        // Never a blank screen: on stream error or while waiting, fall back
+        // to the locally cached profile (or the signed-out state).
         final user = snapshot.data;
+        final hasCache = _cachedName != null ||
+            _cachedEmail != null ||
+            _cachedPhotoUrl != null;
         final isSignedIn = user != null;
+        final displayName = user?.displayName ??
+            (isSignedIn ? 'Signed In' : (_cachedName ?? 'Local Challenger'));
+        final email = user?.email ?? _cachedEmail;
+        final photoUrl = user?.photoURL ?? _cachedPhotoUrl;
+        final photoImage = photoUrl != null && photoUrl.isNotEmpty
+            ? NetworkImage(photoUrl)
+            : null;
+        // Offline hint: auth stream has no live user but we have saved data,
+        // or the stream itself errored.
+        final showOfflineHint = (user == null && hasCache) || snapshot.hasError;
 
         return SliverAppBar(
           expandedHeight: 250,
@@ -167,49 +248,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Hero(
-                        tag: 'profile_avatar',
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.2),
-                          ),
-                          child: CircleAvatar(
-                            radius: 45,
-                            backgroundColor: Colors.white,
-                            backgroundImage:
-                                (isSignedIn && user.photoURL != null)
-                                    ? NetworkImage(user.photoURL!)
-                                    : null,
-                            child: (isSignedIn && user.photoURL != null)
-                                ? null
-                                : const Icon(Icons.person,
-                                    size: 50, color: AppColors.primary),
-                          ),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                        child: CircleAvatar(
+                          radius: 45,
+                          backgroundColor: Colors.white,
+                          backgroundImage: photoImage,
+                          onBackgroundImageError:
+                              photoImage != null ? (_, __) {} : null,
+                          child: photoImage != null
+                              ? null
+                              : const Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: AppColors.primary,
+                                ),
                         ),
                       )
                           .animate()
                           .scale(duration: 400.ms, curve: Curves.easeOutBack),
                       const SizedBox(height: 12),
                       Text(
-                        isSignedIn
-                            ? (user.displayName ?? 'Signed In')
-                            : 'Local Challenger',
+                        displayName,
                         style: GoogleFonts.poppins(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ).animate(delay: 200.ms).fadeIn().slideY(begin: 0.2),
-                      if (isSignedIn && user.email != null)
+                      if (email != null)
                         Text(
-                          user.email!,
+                          email,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14,
                           ),
                         ).animate(delay: 300.ms).fadeIn().slideY(begin: 0.2),
+                      if (showOfflineHint)
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Offline · showing saved profile',
+                            style: TextStyle(color: Colors.white, fontSize: 11),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -596,6 +688,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ],
+            if (isSignedIn) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isSyncing ? null : _manualSync,
+                  icon: _isSyncing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync, size: 18),
+                  label: Text(_isSyncing ? 'Syncing…' : 'Sync now'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -676,6 +791,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.pop(context);
 
       if (user != null) {
+        await _cacheProfile(user);
         try {
           await _syncService.recordConsent();
         } catch (e) {
@@ -711,8 +827,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final db = context.read<ChallengeBloc>().repository;
+    final taskRepo = context.read<RegularTaskBloc>().repository;
+
+    // Back up this account's data first, then remove every trace of it from
+    // the device so the next account never sees it (cross-account isolation).
+    try {
+      await _syncService.syncToCloud(db, taskRepo);
+    } catch (_) {}
+    try {
+      await _syncService.clearLocalData(db, taskRepo);
+    } catch (_) {}
+
+    // Reminders were scheduled from this account's tasks — cancel them.
+    try {
+      await SmartNotificationService()
+          .cancelAllRemindersForDate(DateTime.now());
+    } catch (_) {}
+    try {
+      await NotificationService().cancelAllNotifications();
+    } catch (_) {}
+
+    // Drop cached partner read-access lists from the previous account.
+    try {
+      AccountabilityService().invalidateAllowedReaders();
+    } catch (_) {}
+
     await _syncService.signOut();
+    await _clearCachedProfile();
+
     if (mounted) {
+      context.read<ChallengeBloc>().add(LoadChallengeData());
+      context.read<RegularTaskBloc>().add(LoadRegularTasks());
+      context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
+      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
       setState(() => _lastSync = null);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -721,41 +869,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// After sign-in, checks if local data is empty. If so, restores from cloud.
-  /// Otherwise uploads local data to cloud.
+  /// Manual "Sync now" — calls the existing [CloudSyncService.syncToCloud]
+  /// without modifying the service. Progress via [_isSyncing], result via
+  /// success/error SnackBars.
+  Future<void> _manualSync() async {
+    if (_isSyncing) return;
+    if (!_syncService.isSignedIn) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in to enable cloud backup.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _isSyncing = true);
+    try {
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
+      final ok = await _syncService.syncToCloud(db, taskRepo);
+      if (!mounted) return;
+      if (ok) {
+        await _loadLastSync();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Backup synced successfully.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sync failed. Check connection and try again.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  /// After sign-in, reconciles local data with the signed-in account:
+  /// restores this account's cloud backup if local data is empty or belongs
+  /// to a different account, otherwise uploads local data to cloud.
   void _triggerAutoSync() async {
     final db = context.read<ChallengeBloc>().repository;
     final taskRepo = context.read<RegularTaskBloc>().repository;
     setState(() => _isSyncing = true);
 
     try {
-      // Check if local database is empty (reinstall scenario)
-      final hasLocalData = await db.hasActiveSession();
-
-      if (!hasLocalData) {
-        // Try restoring from cloud first
-        final cloudData = await _syncService.syncFromCloud();
-        if (cloudData != null &&
-            (cloudData['sessions'] as List?)?.isNotEmpty == true) {
-          await db.restoreFromJson(cloudData);
-          await taskRepo.restoreFromJson(cloudData);
-          if (mounted) {
-            context.read<ChallengeBloc>().add(LoadChallengeData());
-            context.read<RegularTaskBloc>().add(LoadRegularTasks());
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Your data has been restored from cloud!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        }
-      } else {
-        // Local data exists — sync it up to cloud
-        final success = await _syncService.syncToCloud(db, taskRepo);
-        if (mounted && success) {
-          _loadLastSync();
-        }
+      final result = await _syncService.reconcileOnSignIn(db, taskRepo);
+      if (!mounted) return;
+      context.read<ChallengeBloc>().add(LoadChallengeData());
+      context.read<RegularTaskBloc>().add(LoadRegularTasks());
+      if (result.restored) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your data has been restored from cloud!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else if (result.uploaded) {
+        _loadLastSync();
       }
     } catch (_) {
     } finally {

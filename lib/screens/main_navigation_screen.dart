@@ -1,5 +1,15 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
+import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
+import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -18,28 +28,107 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
+  Future<void>? _resumeSyncInFlight;
+  final Set<int> _visitedTabs = {0};
+  final Map<int, Widget> _builtScreens = {};
 
-  late final List<Widget> _screens = [
-    HomeScreen(
-      onGoToSquad: () => setState(() => _currentIndex = 4),
-    ),
-    const RegularTasksScreen(),
-    const JournalScreen(),
-    const InsightsScreen(),
-    AccountabilityScreen(
-      onGoToProfile: () => setState(() => _currentIndex = 5),
-    ),
-    const ProfileScreen(),
+  late final List<Widget Function()> _screenBuilders = [
+    () => HomeScreen(
+          onGoToSquad: () => _selectTab(4),
+        ),
+    () => const RegularTasksScreen(),
+    () => const JournalScreen(),
+    () => const InsightsScreen(),
+    () => AccountabilityScreen(
+          onGoToProfile: () => _selectTab(5),
+        ),
+    () => const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      _currentIndex = index;
+      _visitedTabs.add(index);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
+    if (FirebaseAuth.instance.currentUser != null) {
+      context.read<AccountabilityBloc>().add(CheckExpiredTasks());
+    }
+    unawaited(_syncLocalChanges());
+  }
+
+  Future<void> _syncLocalChanges() {
+    final activeSync = _resumeSyncInFlight;
+    if (activeSync != null) return activeSync;
+
+    late final Future<void> sync;
+    sync = _performLocalSync().whenComplete(() {
+      if (identical(_resumeSyncInFlight, sync)) {
+        _resumeSyncInFlight = null;
+      }
+    });
+    _resumeSyncInFlight = sync;
+    return sync;
+  }
+
+  Future<void> _performLocalSync() async {
+    try {
+      if (!await ConnectivityService().hasInternet()) return;
+      final db = DatabaseRepository();
+      final taskRepo = RegularTaskRepository();
+      await db.init();
+      await taskRepo.init();
+      final syncSucceeded =
+          await CloudSyncService().autoSyncWithResult(db, taskRepo);
+      final outboxResult = await OfflineTaskOutbox.instance.flushWithResult();
+      if (!syncSucceeded || !outboxResult.succeeded) {
+        ConnectivityService().requestReconnectRetry();
+        if (kDebugMode) {
+          debugPrint(
+            'Resume sync incomplete; pending work will retry on the next '
+            'resume or reconnect.',
+          );
+        }
+      }
+    } catch (e) {
+      ConnectivityService().requestReconnectRetry();
+      if (kDebugMode) debugPrint('Resume sync failed: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _screens),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: List<Widget>.generate(_screenBuilders.length, (index) {
+          return _visitedTabs.contains(index)
+              ? _builtScreens.putIfAbsent(index, _screenBuilders[index])
+              : const SizedBox.shrink();
+        }),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -51,7 +140,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             // partner) sees fresh data instead of the last cached payload.
             context.read<AccountabilityBloc>().add(LoadAccountabilityData());
           }
-          setState(() => _currentIndex = index);
+          _selectTab(index);
         },
         selectedItemColor: const Color(0xFFFF5449),
         unselectedItemColor:

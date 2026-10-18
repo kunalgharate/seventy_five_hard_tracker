@@ -52,11 +52,14 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       appBar: const CustomAppBar(
         title: 'Weekly Summary',
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _summary.isEmpty
-              ? _buildEmpty()
-              : _buildContent(),
+      body: SafeArea(
+        top: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _summary.isEmpty
+                ? _buildEmpty()
+                : _buildContent(),
+      ),
     );
   }
 

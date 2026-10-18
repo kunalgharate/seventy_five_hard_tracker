@@ -1,12 +1,7 @@
-// Bug Condition Exploration Test — iOS Splash Screen White Background
+// Regression test — iOS splash screen background
 //
-// This test encodes the EXPECTED (correct) behavior: the native iOS
-// LaunchScreen.storyboard background color and LaunchBackground images
-// should match the Dart splash primary color #FFA726.
-//
-// On UNFIXED code, this test is expected to FAIL because the storyboard
-// has a white background (RGB 1,1,1) instead of orange (RGB 1.0, 0.655, 0.149).
-// Failure confirms the bug exists.
+// The native iOS launch screen background color and LaunchBackground images
+// should match the app's primary color #FFA726.
 //
 // **Validates: Requirements 1.1, 1.2, 2.1, 2.2**
 
@@ -56,7 +51,7 @@ List<int> parsePngPixelColor(Uint8List bytes) {
 }
 
 void main() {
-  group('Bug Condition Exploration — iOS Splash Screen Background', () {
+  group('iOS Splash Screen Background', () {
     test(
         'Validates: Requirements 2.1 — '
         'LaunchScreen.storyboard backgroundColor should match #FFA726 (orange)',
@@ -82,9 +77,7 @@ void main() {
       final green = double.parse(match.group(2)!);
       final blue = double.parse(match.group(3)!);
 
-      // EXPECTED behavior: backgroundColor should be #FFA726
       // #FFA726 in normalized RGB: red=1.0, green≈0.655, blue≈0.149
-      // On UNFIXED code: red=1, green=1, blue=1 (white) — this will FAIL
       expect(
         red,
         equals(1.0),
@@ -106,9 +99,7 @@ void main() {
             'ACTUAL: blue=$blue. '
             'Bug: storyboard has white background (blue=1) instead of orange (blue≈0.149).',
       );
-    },
-        skip:
-            'Known bug: storyboard uses white background instead of #FFA726 orange');
+    });
 
     test(
         'Validates: Requirements 2.2 — '
@@ -123,8 +114,7 @@ void main() {
       final bytes = bgFile.readAsBytesSync();
       final pixelColor = parsePngPixelColor(bytes);
 
-      // EXPECTED behavior: pixel color should be RGB(255, 167, 38) = #FFA726
-      // On UNFIXED code: pixel is white RGB(255, 255, 255) — this will FAIL
+      // Pixel color should be RGB(255, 167, 38) = #FFA726
       expect(
         pixelColor[0],
         equals(255),
@@ -162,8 +152,7 @@ void main() {
       final bytes = darkBgFile.readAsBytesSync();
       final pixelColor = parsePngPixelColor(bytes);
 
-      // EXPECTED behavior: pixel color should be RGB(255, 167, 38) = #FFA726
-      // On UNFIXED code: pixel is white RGB(255, 255, 255) — this will FAIL
+      // Pixel color should be RGB(255, 167, 38) = #FFA726
       expect(
         pixelColor[0],
         equals(255),

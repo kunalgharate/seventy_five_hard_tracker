@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import '../../../../core/services/data_ownership.dart';
+import '../../../../core/services/fcm_service.dart';
 import '../../../../models/collaborator.dart';
 import '../models/accountability_partner.dart';
 import '../models/accountability_task.dart';
 import '../models/partner_review.dart';
 import '../models/app_user.dart';
 import '../models/accountability_invitation.dart';
+import 'accountability_notification_service.dart';
 
 /// Firestore collections:
 ///   partnerships/{id}              — partnership documents
@@ -37,6 +41,11 @@ class AccountabilityService {
       return false;
     }
   }
+
+  /// Public readiness check — Firebase initialized AND a signed-in user.
+  /// Used by offline flows (e.g. the task outbox) to decide whether a
+  /// replay can proceed.
+  bool get isReady => _isReady;
 
   String? get currentUid => _auth.currentUser?.uid;
 
@@ -804,6 +813,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Never publish another account's local data to my progress docs.
+      if (await DataOwnership.ownedByOther(uid)) return;
       // Ensure partner read-access list is current before publishing.
       await _syncAllowedReaders();
       await _db
@@ -839,6 +850,8 @@ class AccountabilityService {
     if (!_isReady) return;
     try {
       final uid = currentUid!;
+      // Never publish another account's local data to my progress docs.
+      if (await DataOwnership.ownedByOther(uid)) return;
       _cachedAllowedReaders ??= await _acceptedPartnerUids();
       await _db.collection('public_progress').doc(uid).set({
         'challengeNames': challengeNames,
@@ -1072,6 +1085,11 @@ class AccountabilityService {
 
   /// Creates a task request. Status starts as [AccountabilityTaskStatus.requested].
   /// The partner must accept before it becomes active (pending).
+  ///
+  /// [partnerUid] is the UID that must REVIEW the task (the accountability
+  /// partner relative to the doer); without it the review queues
+  /// (partnerUid == myUid) and review-time notifications never see the task.
+  /// [taskType] is 'hard' (75 Hard) or 'regular'; score branching reads it.
   Future<AccountabilityTask?> createAccountabilityTask({
     required String accountableUid,
     required String accountableName,
@@ -1082,6 +1100,8 @@ class AccountabilityService {
     String? challengeId,
     List<String>? accountableUserIds,
     String? accountableEmail,
+    String? partnerUid,
+    String? taskType,
   }) async {
     if (!_isReady) return null;
     // An empty accountableUid makes the task invisible to everyone — unless
@@ -1114,8 +1134,21 @@ class AccountabilityService {
             ? const []
             : (accountableUserIds ?? [accountableUid]),
         accountableEmail: accountableEmail,
+        partnerUid: partnerUid,
+        taskType: taskType ?? 'hard',
       );
       await ref.set(task.toFirestore());
+      // Join the task's FCM topic on the owner's device now; assigned
+      // reviewers are notified so the recipient's delivery listener can
+      // surface the assignment (never blocks task creation on failure).
+      unawaited(FcmService.instance.subscribeToTaskChannel(ref.id));
+      try {
+        await _notifyTaskAssigned(task);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AccountabilityService] createTask notify error: $e');
+        }
+      }
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] createTask: ${ref.id} for $accountableUid challengeId=$challengeId partnershipId=$partnershipId');
@@ -1126,6 +1159,24 @@ class AccountabilityService {
         debugPrint('[AccountabilityService] createTask error: $e');
       }
       return null;
+    }
+  }
+
+  /// Sends a "task assigned" notification to every assigned user (the
+  /// accountable uid plus any extra reviewer ids) except the creator.
+  Future<void> _notifyTaskAssigned(AccountabilityTask task) async {
+    final svc = AccountabilityNotificationService();
+    final assignees = <String>{
+      if (task.accountableUid.isNotEmpty) task.accountableUid,
+      ...task.accountableUserIds,
+    }.where((uid) => uid.isNotEmpty && uid != currentUid);
+    for (final uid in assignees) {
+      await svc.notifyTaskAssigned(
+        recipientUid: uid,
+        ownerName: task.assignedByName,
+        taskName: task.title,
+        taskId: task.id,
+      );
     }
   }
 
@@ -1406,6 +1457,9 @@ class AccountabilityService {
       if (!doc.exists) return false;
       final data = doc.data()!;
       final uid = currentUid!;
+      if (data['status'] != AccountabilityTaskStatus.requested.name) {
+        return false;
+      }
       final email = _auth.currentUser?.email?.toLowerCase();
       final isMine = data['accountableUid'] == uid ||
           ((email != null && email.isNotEmpty) &&
@@ -1415,11 +1469,22 @@ class AccountabilityService {
       final ids =
           (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
       if (!ids.contains(uid)) ids.add(uid);
-      await ref.update({
+      final update = <String, dynamic>{
         'status': AccountabilityTaskStatus.pending.name,
         'accountableUid': uid,
         'accountableUserIds': ids,
-      });
+      };
+      // Email-claimed tasks have no reviewer yet. The creator reviews the
+      // acceptor's work — backfilling here makes submitForReview notifications
+      // and the review queues (partnerUid == uid) reach them.
+      final partnerUid = data['partnerUid'] as String?;
+      if (partnerUid == null || partnerUid.isEmpty) {
+        final creatorUid = data['assignedByUid'] as String?;
+        if (creatorUid != null && creatorUid.isNotEmpty) {
+          update['partnerUid'] = creatorUid;
+        }
+      }
+      await ref.update(update);
       if (kDebugMode) {
         debugPrint('[AccountabilityService] acceptTaskRequest: $taskId');
       }
@@ -1440,7 +1505,11 @@ class AccountabilityService {
       final ref = _db.collection('accountability_tasks').doc(taskId);
       final doc = await ref.get();
       if (!doc.exists) return false;
-      if (doc.data()!['accountableUid'] != currentUid) return false;
+      final data = doc.data()!;
+      if (data['accountableUid'] != currentUid ||
+          data['status'] != AccountabilityTaskStatus.requested.name) {
+        return false;
+      }
       await ref.update({'status': AccountabilityTaskStatus.declined.name});
       if (kDebugMode) {
         debugPrint('[AccountabilityService] declineTaskRequest: $taskId');
@@ -1458,10 +1527,20 @@ class AccountabilityService {
   Future<void> cancelAccountabilityTask(String taskId) async {
     if (!_isReady) return;
     try {
-      await _db
-          .collection('accountability_tasks')
-          .doc(taskId)
-          .update({'status': AccountabilityTaskStatus.declined.name});
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final doc = await ref.get();
+      if (!doc.exists) return;
+      final data = doc.data()!;
+      const cancellableStatuses = {
+        'requested',
+        'pending',
+        'pendingReview',
+      };
+      if (data['assignedByUid'] != currentUid ||
+          !cancellableStatuses.contains(data['status'])) {
+        return;
+      }
+      await ref.update({'status': AccountabilityTaskStatus.declined.name});
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -1480,7 +1559,8 @@ class AccountabilityService {
 
       final data = doc.data()!;
       // Security check: only the accountable person can complete
-      if (data['accountableUid'] != currentUid) {
+      if (data['accountableUid'] != currentUid ||
+          data['status'] != AccountabilityTaskStatus.pending.name) {
         if (kDebugMode) {
           debugPrint('[AccountabilityService] completeTask: not authorized');
         }
@@ -1510,7 +1590,8 @@ class AccountabilityService {
 
       final data = doc.data()!;
       // Security check: only the accountable person can uncomplete
-      if (data['accountableUid'] != currentUid) {
+      if (data['accountableUid'] != currentUid ||
+          data['status'] != AccountabilityTaskStatus.completed.name) {
         if (kDebugMode) {
           debugPrint('[AccountabilityService] uncompleteTask: not authorized');
         }
@@ -1663,19 +1744,73 @@ class AccountabilityService {
   }
 
   /// Real-time stream of tasks for a partnership.
+  ///
+  /// The security rules reject an unscoped partnershipId-only snapshot query
+  /// (permission-denied) — same reason fetchTasksForPartnership runs scoped
+  /// queries. So listen to three scoped snapshot streams — tasks I assigned,
+  /// tasks I'm accountable for, and tasks I must review — merge them into one
+  /// output, and dedupe by doc id with a latest-wins map (self-assigned tasks
+  /// match two of the scopes).
   Stream<List<AccountabilityTask>> tasksStream(String partnershipId) {
     if (!_isReady) return const Stream.empty();
-    return _db
-        .collection('accountability_tasks')
-        .where('partnershipId', isEqualTo: partnershipId)
-        .snapshots()
-        .map((snap) {
-      final tasks = snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+    final myUid = currentUid!;
+    final base = _db.collection('accountability_tasks');
+
+    final subs = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    final snapshotsByScope =
+        List<Map<String, DocumentSnapshot<Map<String, dynamic>>>>.generate(
+      3,
+      (_) => <String, DocumentSnapshot<Map<String, dynamic>>>{},
+    );
+
+    late final StreamController<List<AccountabilityTask>> controller;
+    void emit() {
+      final latest = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final snapshots in snapshotsByScope) {
+        latest.addAll(snapshots);
+      }
+      final tasks = latest.values
+          .map((d) => AccountabilityTask.fromFirestore(d.data()!, id: d.id))
           .toList();
       tasks.sort((a, b) => b.assignedAt.compareTo(a.assignedAt));
-      return tasks;
-    });
+      if (!controller.isClosed) controller.add(tasks);
+    }
+
+    controller = StreamController<List<AccountabilityTask>>(
+      onListen: () {
+        for (var i = 0; i < 3; i++) {
+          final uidField = ['assignedByUid', 'accountableUid', 'partnerUid'][i];
+          final sub = base
+              .where('partnershipId', isEqualTo: partnershipId)
+              .where(uidField, isEqualTo: myUid)
+              .snapshots()
+              .listen((snap) {
+            snapshotsByScope[i] = {
+              for (final doc in snap.docs) doc.id: doc,
+            };
+            emit();
+          }, onError: (Object e) {
+            if (kDebugMode) {
+              debugPrint(
+                  '[AccountabilityService] tasksStream($uidField) error: $e');
+            }
+            if (!controller.isClosed) controller.addError(e);
+          });
+          subs.add(sub);
+        }
+      },
+      onCancel: () async {
+        for (final sub in subs) {
+          await sub.cancel();
+        }
+        subs.clear();
+        for (final snapshots in snapshotsByScope) {
+          snapshots.clear();
+        }
+      },
+    );
+
+    return controller.stream;
   }
 
   // ── Phase 1: Users collection ────────────────────────────────────────────
@@ -1879,6 +2014,12 @@ class AccountabilityService {
         createdAt: DateTime.now(),
       );
       await upgradeRef.set(upgraded.toFirestore());
+      if (recipient?.uid.isNotEmpty ?? false) {
+        await _notifyInvitationReceived(
+          recipientUid: recipient!.uid,
+          partnershipId: existing.id,
+        );
+      }
       return upgraded;
     }
 
@@ -1934,6 +2075,15 @@ class AccountabilityService {
 
     await batch.commit();
 
+    // Push the invite to the recipient's device if they already have an
+    // account (toUid is null for pre-registration invites).
+    if (recipientUid != null) {
+      await _notifyInvitationReceived(
+        recipientUid: recipientUid,
+        partnershipId: partnershipRef.id,
+      );
+    }
+
     if (kDebugMode) {
       debugPrint(
           '[AccountabilityService] sendEmailInvite: sent to $recipientEmail '
@@ -1941,6 +2091,23 @@ class AccountabilityService {
     }
 
     return invitation.copyWith(id: inviteRef.id);
+  }
+
+  Future<void> _notifyInvitationReceived({
+    required String recipientUid,
+    required String partnershipId,
+  }) async {
+    try {
+      await AccountabilityNotificationService().notifyInvitationReceived(
+        recipientUid: recipientUid,
+        senderName: currentUserDisplayName,
+        partnershipId: partnershipId,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] invite notify error: $e');
+      }
+    }
   }
 
   /// Fetches invitations received by the current user (by email).
@@ -2394,6 +2561,10 @@ class AccountabilityService {
         'proofStatus': ProofStatus.submitted.toWire,
         'proofUrl': proofUrl,
         'proofSubmittedAt': now.toIso8601String(),
+        'approvals': <Map<String, dynamic>>[],
+        'rejections': <Map<String, dynamic>>[],
+        'approvalUids': <String>[],
+        'rejectionUids': <String>[],
       });
       if (kDebugMode) {
         debugPrint(
@@ -2418,49 +2589,10 @@ class AccountabilityService {
     required bool approved,
     String? comment,
   }) async {
-    if (!_isReady) return false;
-    try {
-      final ref = _db.collection('accountability_tasks').doc(taskId);
-      final doc = await ref.get();
-      if (!doc.exists) return false;
-      final data = doc.data()!;
-      if (!_isReviewerOf(data, currentUid!)) {
-        if (kDebugMode) {
-          debugPrint(
-              '[AccountabilityService] reviewTaskProof: denied — only the reviewer can review proof');
-        }
-        return false;
-      }
-      final now = DateTime.now();
-      final batch = _db.batch();
-
-      if (approved) {
-        batch.update(ref, {
-          'proofStatus': ProofStatus.approved.toWire,
-          'proofReviewComment': comment,
-          'proofReviewedAt': now.toIso8601String(),
-          'status': AccountabilityTaskStatus.completed.name,
-          'completedAt': now.toIso8601String(),
-        });
-      } else {
-        batch.update(ref, {
-          'proofStatus': ProofStatus.rejected.toWire,
-          'proofReviewComment': comment,
-          'proofReviewedAt': now.toIso8601String(),
-          // Keep task pending so user can resubmit
-          'status': AccountabilityTaskStatus.pending.name,
-          'completedAt': null,
-        });
-      }
-
-      await batch.commit();
-      return true;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[AccountabilityService] reviewTaskProof error: $e');
-      }
-      return false;
-    }
+    final result = approved
+        ? await approveProof(taskId: taskId, comment: comment)
+        : await rejectProof(taskId: taskId, comment: comment ?? '');
+    return result != null;
   }
 
   /// Fetch tasks with pending (submitted) proof for the current user to review.
@@ -2570,9 +2702,14 @@ class AccountabilityService {
   Future<String?> fetchTaskIdByChallengeId(String challengeId) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
+      // Scope the query to the current user (as creator) so it satisfies the
+      // accountability_tasks read rule — an unscoped challengeId-only query is
+      // rejected with permission-denied (same as fetchTaskByChallengeId).
       final snap = await _db
           .collection('accountability_tasks')
           .where('challengeId', isEqualTo: challengeId)
+          .where('assignedByUid', isEqualTo: uid)
           .limit(1)
           .get();
       if (snap.docs.isEmpty) return null;
@@ -2691,30 +2828,31 @@ class AccountabilityService {
   /// Submits a task for partner review. Sets status to pendingReview,
   /// records submittedAt and expiresAt (now + 24h).
   ///
-  /// Returns the updated task, or null on failure.
+  /// Returns the updated task, or null on failure/invalid transition.
   Future<AccountabilityTask?> submitForReview(String taskId) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
-      final doc = await ref.get();
-      if (!doc.exists) return null;
-
-      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
-
-      // Validate: only the accountable user can submit for review
-      if (task.accountableUid != currentUid) return null;
-      // Validate: must be in pending/accepted state
-      if (task.status != AccountabilityTaskStatus.pending) return null;
-
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
+      final doc = await ref.get();
+      if (!doc.exists) return null;
+      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
+      if (task.accountableUid != uid ||
+          task.status != AccountabilityTaskStatus.pending) {
+        return null;
+      }
+
+      // A normal update queues while offline. Security Rules validate the
+      // source state and timestamps when it reaches the server, so a racing
+      // review/expiry cannot be overwritten.
       await ref.update({
         'status': 'pendingReview',
         'submittedAt': Timestamp.fromDate(now),
         'expiresAt': Timestamp.fromDate(expiresAt),
       });
-
       return task.copyWith(
         status: AccountabilityTaskStatus.pendingReview,
         submittedAt: now,
@@ -2737,42 +2875,37 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
+      final now = DateTime.now();
       final doc = await ref.get();
       if (!doc.exists) return null;
-
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
-      // Validate: only the partner can approve
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
-        return null;
-      }
-      // Validate: must be in pendingReview state
-      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
-      // Validate: not already reviewed
-      if (task.reviewedAt != null) return null;
-      // Validate: not expired
-      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+      if ((task.partnerUid != uid && task.assignedByUid != uid) ||
+          task.status != AccountabilityTaskStatus.pendingReview ||
+          task.reviewedAt != null ||
+          (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!))) {
         return null;
       }
 
-      final now = DateTime.now();
       final updateData = <String, dynamic>{
         'status': 'approved',
         'reviewedAt': Timestamp.fromDate(now),
         'reviewDecision': 'approved',
+        'completedAt': Timestamp.fromDate(now),
       };
       if (improvementNote != null && improvementNote.length <= 500) {
         updateData['reviewComment'] = improvementNote;
       }
-
+      // Rules atomically reject this if a competing decision/expiry wins.
       await ref.update(updateData);
-
       return task.copyWith(
         status: AccountabilityTaskStatus.approved,
         reviewedAt: now,
         reviewDecision: 'approved',
         reviewComment: improvementNote,
+        completedAt: now,
       );
     } catch (e) {
       if (kDebugMode) {
@@ -2791,26 +2924,20 @@ class AccountabilityService {
   }) async {
     if (!_isReady) return null;
     try {
+      final uid = currentUid!;
       final ref = _db.collection('accountability_tasks').doc(taskId);
+      final now = DateTime.now();
       final doc = await ref.get();
       if (!doc.exists) return null;
-
       final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
 
-      // Validate: only the partner can reject
-      if (task.partnerUid != currentUid && task.assignedByUid != currentUid) {
-        return null;
-      }
-      // Validate: must be in pendingReview state
-      if (task.status != AccountabilityTaskStatus.pendingReview) return null;
-      // Validate: not already reviewed
-      if (task.reviewedAt != null) return null;
-      // Validate: not expired
-      if (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!)) {
+      if ((task.partnerUid != uid && task.assignedByUid != uid) ||
+          task.status != AccountabilityTaskStatus.pendingReview ||
+          task.reviewedAt != null ||
+          (task.expiresAt != null && DateTime.now().isAfter(task.expiresAt!))) {
         return null;
       }
 
-      final now = DateTime.now();
       final updateData = <String, dynamic>{
         'status': 'rejected',
         'reviewedAt': Timestamp.fromDate(now),
@@ -2819,9 +2946,8 @@ class AccountabilityService {
       if (improvementNote != null && improvementNote.length <= 500) {
         updateData['reviewComment'] = improvementNote;
       }
-
+      // Rules atomically reject this if a competing decision/expiry wins.
       await ref.update(updateData);
-
       return task.copyWith(
         status: AccountabilityTaskStatus.rejected,
         reviewedAt: now,
@@ -2958,38 +3084,47 @@ class AccountabilityService {
     }
   }
 
-  /// Fetches completed review history (approved/rejected) for the current
-  /// user — both as owner and reviewer. Limited to last 50.
+  /// Fetches completed review history (approved/rejected/expired) for the
+  /// current user — both as owner and reviewer. Limited to last 50.
+  ///
+  /// Review events are matched on status (approved/rejected/expired) or
+  /// proofStatus for compatibility with older proof-review documents.
+  /// Sorting happens in memory because some legacy decisions lack reviewedAt.
   Future<List<AccountabilityTask>> fetchReviewHistory() async {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      // Tasks I own that are approved/rejected
-      final ownSnap = await _db
-          .collection('accountability_tasks')
-          .where('assignedByUid', isEqualTo: uid)
-          .where('status', whereIn: ['approved', 'rejected'])
-          .orderBy('reviewedAt', descending: true)
-          .limit(25)
-          .get();
-      // Tasks I reviewed
-      final reviewSnap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('status', whereIn: ['approved', 'rejected'])
-          .orderBy('reviewedAt', descending: true)
-          .limit(25)
-          .get();
+      final tasks = _db.collection('accountability_tasks');
+      final decidedProof = [
+        ProofStatus.approved.toWire,
+        ProofStatus.rejected.toWire,
+      ];
+      final snaps = await Future.wait([
+        tasks.where('assignedByUid', isEqualTo: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks.where('accountableUserIds', arrayContains: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks
+            .where('assignedByUid', isEqualTo: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+      ]);
       final all = <String, AccountabilityTask>{};
-      for (final d in ownSnap.docs) {
-        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
-      }
-      for (final d in reviewSnap.docs) {
-        all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          all[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
       }
       final list = all.values.toList()
-        ..sort((a, b) => (b.reviewedAt ?? b.assignedAt)
-            .compareTo(a.reviewedAt ?? a.assignedAt));
+        ..sort((a, b) {
+          final at = a.reviewedAt ?? a.proofReviewedAt ?? a.assignedAt;
+          final bt = b.reviewedAt ?? b.proofReviewedAt ?? b.assignedAt;
+          return bt.compareTo(at);
+        });
       return list.take(50).toList();
     } catch (e) {
       if (kDebugMode) {
@@ -3079,6 +3214,10 @@ class AccountabilityService {
         'status': AccountabilityTaskStatus.pendingReview.name,
         'submittedAt': Timestamp.fromDate(now),
         'expiresAt': Timestamp.fromDate(expiresAt),
+        'approvals': <Map<String, dynamic>>[],
+        'rejections': <Map<String, dynamic>>[],
+        'approvalUids': <String>[],
+        'rejectionUids': <String>[],
       });
       final doc =
           await _db.collection('accountability_tasks').doc(taskId).get();
@@ -3102,8 +3241,8 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
-      final preDoc =
-          await _db.collection('accountability_tasks').doc(taskId).get();
+      final ref = _db.collection('accountability_tasks').doc(taskId);
+      final preDoc = await ref.get();
       if (!preDoc.exists) return null;
       if (!_isReviewerOf(preDoc.data()!, uid)) {
         if (kDebugMode) {
@@ -3115,7 +3254,27 @@ class AccountabilityService {
       // Prevent double-voting by the same reviewer.
       final preTask =
           AccountabilityTask.fromFirestore(preDoc.data()!, id: preDoc.id);
-      if (preTask.hasApprovedBy(uid)) return preTask;
+      if (preTask.proofStatus != ProofStatus.submitted ||
+          preTask.hasRejectedBy(uid)) {
+        return null;
+      }
+      if (preTask.hasApprovedBy(uid)) {
+        if (!preTask.hasEnoughApprovals ||
+            preTask.status == AccountabilityTaskStatus.approved) {
+          return preTask;
+        }
+        await ref.update({
+          'status': AccountabilityTaskStatus.approved.name,
+          'proofStatus': ProofStatus.approved.toWire,
+          'reviewDecision': 'approved',
+          'reviewedAt': FieldValue.serverTimestamp(),
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+        final updated = await ref.get();
+        return updated.exists
+            ? AccountabilityTask.fromFirestore(updated.data()!, id: updated.id)
+            : null;
+      }
       final name = currentUserDisplayName;
       final now = DateTime.now();
 
@@ -3126,34 +3285,42 @@ class AccountabilityService {
         if (comment != null && comment.isNotEmpty) 'comment': comment,
       };
 
-      await _db.collection('accountability_tasks').doc(taskId).update({
+      final update = <String, dynamic>{
         'approvals': FieldValue.arrayUnion([approval]),
+        'approvalUids': FieldValue.arrayUnion([uid]),
         'proofReviewedAt': Timestamp.fromDate(now),
-      });
-
-      // Re-read to check if enough approvals
-      final doc =
-          await _db.collection('accountability_tasks').doc(taskId).get();
-      if (!doc.exists) return null;
-      final task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
-
-      // If enough approvals, auto-complete
-      if (task.hasEnoughApprovals) {
-        await _db.collection('accountability_tasks').doc(taskId).update({
+      };
+      if (preTask.approvalUids.length + 1 >= preTask.requiredApprovals) {
+        update.addAll({
           'status': AccountabilityTaskStatus.approved.name,
           'proofStatus': ProofStatus.approved.toWire,
           'reviewDecision': 'approved',
           'reviewedAt': Timestamp.fromDate(now),
           'completedAt': Timestamp.fromDate(now),
         });
-        return task.copyWith(
-          status: AccountabilityTaskStatus.approved,
-          proofStatus: ProofStatus.approved,
-          reviewDecision: 'approved',
-          completedAt: now,
-        );
       }
+      await ref.update(update);
 
+      // A concurrent vote can meet quorum after this client's initial read.
+      // Finalize separately only when the server-visible vote count proves
+      // quorum; the rules require this caller to have an approval vote.
+      var doc = await ref.get();
+      if (!doc.exists) return null;
+      var task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+      if (task.proofStatus == ProofStatus.submitted &&
+          task.hasEnoughApprovals &&
+          task.status != AccountabilityTaskStatus.approved) {
+        await ref.update({
+          'status': AccountabilityTaskStatus.approved.name,
+          'proofStatus': ProofStatus.approved.toWire,
+          'reviewDecision': 'approved',
+          'reviewedAt': Timestamp.fromDate(now),
+          'completedAt': Timestamp.fromDate(now),
+        });
+        doc = await ref.get();
+        if (!doc.exists) return null;
+        task = AccountabilityTask.fromFirestore(doc.data()!, id: doc.id);
+      }
       return task;
     } catch (e) {
       if (kDebugMode) {
@@ -3163,7 +3330,7 @@ class AccountabilityService {
     }
   }
 
-  /// Reviewer rejects a proof. Adds to rejections, reverts to pending.
+  /// Reviewer rejects a proof. Adds a rejection vote and finalizes the proof.
   /// REVIEWER-ONLY: the owner cannot reject their own proof.
   Future<AccountabilityTask?> rejectProof({
     required String taskId,
@@ -3182,6 +3349,13 @@ class AccountabilityService {
         }
         return null;
       }
+      final preTask =
+          AccountabilityTask.fromFirestore(preDoc.data()!, id: preDoc.id);
+      if (preTask.proofStatus != ProofStatus.submitted ||
+          preTask.hasApprovedBy(uid) ||
+          preTask.hasRejectedBy(uid)) {
+        return null;
+      }
       final name = currentUserDisplayName;
       final now = DateTime.now();
 
@@ -3194,6 +3368,7 @@ class AccountabilityService {
 
       await _db.collection('accountability_tasks').doc(taskId).update({
         'rejections': FieldValue.arrayUnion([rejection]),
+        'rejectionUids': FieldValue.arrayUnion([uid]),
         'proofStatus': ProofStatus.rejected.toWire,
         'proofReviewComment': comment,
         'proofReviewedAt': Timestamp.fromDate(now),

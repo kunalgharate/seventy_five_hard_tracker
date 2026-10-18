@@ -47,8 +47,16 @@ extension MessageTypeExtension on MessageType {
       );
 }
 
+String normalizeMessageText(String text) {
+  final normalized = text.trim();
+  if (normalized.isEmpty) {
+    throw ArgumentError.value(text, 'text', 'Message cannot be empty');
+  }
+  return normalized;
+}
+
 /// A message sent from a partner to a user (or vice-versa).
-/// Stored in Firestore `accountability_messages/{id}`.
+/// Stored in Firestore `partnerships/{partnershipId}/messages/{id}`.
 class AccountabilityMessage extends Equatable {
   final String id;
 

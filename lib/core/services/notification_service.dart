@@ -110,8 +110,11 @@ class NotificationService {
 
     if (androidImplementation != null) {
       // Request notification permission (Android 13+)
+      await androidImplementation.requestNotificationsPermission();
 
-      // Request exact alarm permission
+      // Request exact alarm permission (Android 12+). The user grants this
+      // in system settings; scheduling still falls back when denied.
+      await androidImplementation.requestExactAlarmsPermission();
     }
   }
 

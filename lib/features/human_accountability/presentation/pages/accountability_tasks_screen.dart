@@ -35,108 +35,116 @@ class _AccountabilityTasksScreenState extends State<AccountabilityTasksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Accountability Tasks'),
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, challengeState) {
-          // 75 Hard challenges from local BLoC
-          final challenges = (challengeState is ChallengeLoaded &&
-                  challengeState.hasActiveSession)
-              ? challengeState.activeSession!.challenges
-                  .where((c) => c.taskType != 'regular')
-                  .toList()
-              : <Challenge>[];
+      body: SafeArea(
+        top: false,
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, challengeState) {
+            // 75 Hard challenges from local BLoC
+            final challenges = (challengeState is ChallengeLoaded &&
+                    challengeState.hasActiveSession)
+                ? challengeState.activeSession!.challenges
+                    .where((c) => c.taskType != 'regular')
+                    .toList()
+                : <Challenge>[];
 
-          final today = DateTime.now();
-          final DailyProgress? todayProgress = challengeState is ChallengeLoaded
-              ? challengeState.currentProgress
-                  .where((p) =>
-                      p.date.year == today.year &&
-                      p.date.month == today.month &&
-                      p.date.day == today.day)
-                  .firstOrNull
-              : null;
+            final today = DateTime.now();
+            final DailyProgress? todayProgress =
+                challengeState is ChallengeLoaded
+                    ? challengeState.currentProgress
+                        .where((p) =>
+                            p.date.year == today.year &&
+                            p.date.month == today.month &&
+                            p.date.day == today.day)
+                        .firstOrNull
+                    : null;
 
-          return StreamBuilder<List<AccountabilityTask>>(
-            stream: _svc.tasksStream(widget.partner.id),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            return StreamBuilder<List<AccountabilityTask>>(
+              stream: _svc.tasksStream(widget.partner.id),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-              return Column(
-                children: [
-                  _buildStatsBar(
-                      challenges.length,
-                      challenges
-                          .where((c) =>
-                              todayProgress?.challengeCompletions[c.id] == true)
-                          .length,
-                      challenges
-                          .where((c) =>
-                              todayProgress?.challengeCompletions[c.id] != true)
-                          .length),
-                  _buildFilterRow(),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                      children: [
-                        // ── 75 Hard challenges ──────────────────
-                        if (challenges.isNotEmpty) ...[
-                          // Apply filter to 75 Hard challenges too
-                          Builder(builder: (context) {
-                            final filteredChallenges = _filter == 'All'
-                                ? challenges
-                                : _filter == 'Completed'
-                                    ? challenges
-                                        .where((c) =>
-                                            todayProgress
-                                                ?.challengeCompletions[c.id] ==
-                                            true)
-                                        .toList()
-                                    : challenges
-                                        .where((c) =>
-                                            todayProgress
-                                                ?.challengeCompletions[c.id] !=
-                                            true)
-                                        .toList();
+                return Column(
+                  children: [
+                    _buildStatsBar(
+                        challenges.length,
+                        challenges
+                            .where((c) =>
+                                todayProgress?.challengeCompletions[c.id] ==
+                                true)
+                            .length,
+                        challenges
+                            .where((c) =>
+                                todayProgress?.challengeCompletions[c.id] !=
+                                true)
+                            .length),
+                    _buildFilterRow(),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                        children: [
+                          // ── 75 Hard challenges ──────────────────
+                          if (challenges.isNotEmpty) ...[
+                            // Apply filter to 75 Hard challenges too
+                            Builder(builder: (context) {
+                              final filteredChallenges = _filter == 'All'
+                                  ? challenges
+                                  : _filter == 'Completed'
+                                      ? challenges
+                                          .where((c) =>
+                                              todayProgress
+                                                      ?.challengeCompletions[
+                                                  c.id] ==
+                                              true)
+                                          .toList()
+                                      : challenges
+                                          .where((c) =>
+                                              todayProgress
+                                                      ?.challengeCompletions[
+                                                  c.id] !=
+                                              true)
+                                          .toList();
 
-                            if (filteredChallenges.isEmpty &&
-                                _filter != 'All') {
-                              return const SizedBox.shrink();
-                            }
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionHeader(
-                                  title: '75 Hard Challenges',
-                                  icon: Icons.fitness_center,
-                                  color: Colors.orange,
-                                ),
-                                const SizedBox(height: 8),
-                                ...filteredChallenges.map((c) {
-                                  final done = todayProgress
-                                          ?.challengeCompletions[c.id] ==
-                                      true;
-                                  return _ChallengeTaskCard(
-                                    challenge: c,
-                                    isCompleted: done,
-                                  );
-                                }),
-                                const SizedBox(height: 20),
-                              ],
-                            );
-                          }),
+                              if (filteredChallenges.isEmpty &&
+                                  _filter != 'All') {
+                                return const SizedBox.shrink();
+                              }
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const _SectionHeader(
+                                    title: '75 Hard Challenges',
+                                    icon: Icons.fitness_center,
+                                    color: Colors.orange,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...filteredChallenges.map((c) {
+                                    final done = todayProgress
+                                            ?.challengeCompletions[c.id] ==
+                                        true;
+                                    return _ChallengeTaskCard(
+                                      challenge: c,
+                                      isCompleted: done,
+                                    );
+                                  }),
+                                  const SizedBox(height: 20),
+                                ],
+                              );
+                            }),
+                          ],
+
+                          // ── Assigned accountability tasks ───────
+                          // (hidden — tasks managed separately)
                         ],
-
-                        // ── Assigned accountability tasks ───────
-                        // (hidden — tasks managed separately)
-                      ],
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+                  ],
+                );
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: null,
     );
@@ -395,6 +403,8 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       title: title,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       dueDate: _dueDate,
+      // The task creator reviews the assignee's work.
+      partnerUid: _svc.currentUid,
     );
     if (!mounted) return;
     setState(() => _submitting = false);

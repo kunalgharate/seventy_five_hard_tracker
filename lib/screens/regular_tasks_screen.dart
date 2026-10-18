@@ -153,7 +153,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               final isCompleted = todayCompletions[task.id] ?? false;
               final stats =
                   calculateRegularTaskStats(task.id, recentCompletions);
-              return _buildTaskItem(context, task, isCompleted, stats);
+              return _buildTaskItem(
+                  context, task, isCompleted, stats, recentCompletions);
             },
           ),
         ),
@@ -166,17 +167,21 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     RegularTask task,
     bool isCompleted,
     RegularTaskStats stats,
+    List<RegularTaskCompletion> recentCompletions,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
         onLongPress: () => _showTaskOptions(context, task),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isCompleted ? Colors.green[200]! : Colors.grey[200]!,
+              color: isCompleted
+                  ? Colors.green[200]!
+                  : (isDark ? FigmaTokens.darkLine : Colors.grey[200]!),
             ),
             boxShadow: [
               BoxShadow(
@@ -214,8 +219,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                               color: isCompleted
-                                  ? Colors.green[700]
-                                  : Colors.grey[800],
+                                  ? (isDark
+                                      ? Colors.green[300]!
+                                      : Colors.green[700]!)
+                                  : Theme.of(context).colorScheme.onSurface,
                               decoration: isCompleted
                                   ? TextDecoration.lineThrough
                                   : null,
@@ -260,6 +267,9 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 6),
+                          _buildCompletionHistory(
+                              task.id, stats, recentCompletions, isDark),
                           if ((_taskCollaborators[task.id]?.isNotEmpty ??
                               false)) ...[
                             const SizedBox(height: 4),
@@ -396,8 +406,20 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   Future<void> _submitProof(RegularTask task) async {
     final svc = AccountabilityService();
     final taskId = await svc.fetchTaskIdByChallengeId(task.id);
-    if (taskId == null || !mounted) return;
-
+    if (taskId == null) {
+      // Never fail silently — the camera button must always give feedback.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Could not find the linked review task. Please try again later.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
     final result = await PhotoProofSheet.show(
       context: context,
       taskId: taskId,
@@ -476,6 +498,71 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     );
   }
 
+  /// Compact completion record for one habit: last-7-days dots (filled =
+  /// completed, hollow = missed/unrecorded) plus done/missed counts from the
+  /// stored [RegularTaskCompletion] history.
+  List<bool> _last7Days(
+      String taskId, List<RegularTaskCompletion> completions) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final byKey = <String, bool>{
+      for (final c in completions) c.dateKey: c.taskCompletions[taskId] ?? false
+    };
+    return List.generate(7, (i) {
+      final d = today.subtract(Duration(days: 6 - i));
+      final key =
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      return byKey[key] ?? false;
+    });
+  }
+
+  Widget _buildCompletionHistory(
+    String taskId,
+    RegularTaskStats stats,
+    List<RegularTaskCompletion> recentCompletions,
+    bool isDark,
+  ) {
+    final days = _last7Days(taskId, recentCompletions);
+    final missedColor = isDark ? FigmaTokens.darkLine : Colors.grey[300]!;
+    final labelColor = isDark ? Colors.white70 : Colors.grey[600]!;
+    return Row(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < days.length; i++) ...[
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: days[i] ? Colors.green : Colors.transparent,
+                  border: Border.all(
+                    color: days[i] ? Colors.green : missedColor,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+              if (i != days.length - 1) const SizedBox(width: 5),
+            ],
+          ],
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            '${stats.completed} done · ${stats.missed} missed (30d)',
+            style: TextStyle(
+              fontSize: 11,
+              color: labelColor,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCheckbox(
       BuildContext context, RegularTask task, bool isCompleted) {
     return GestureDetector(
@@ -521,14 +608,16 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               style: GoogleFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[800]),
+                  color: Theme.of(context).colorScheme.onSurface),
             ),
             const SizedBox(height: 12),
             Text(
               'Regular tasks are optional habits you can track without the pressure of resetting.',
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(fontSize: 16, color: Colors.grey[600], height: 1.5),
+              style: TextStyle(
+                  fontSize: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.5),
             ),
             const SizedBox(height: 32),
             ElevatedButton.icon(
@@ -682,9 +771,9 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -710,7 +799,9 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
             const SizedBox(height: 4),
             Text(
               'Select a partner to hold accountable for "${task.title}"',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             ...acceptedPartners.map((p) => ListTile(
@@ -721,12 +812,19 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                   subtitle: Text(p.role.label),
                   onTap: () async {
                     Navigator.pop(context);
+                    // The doer is the partnership member that is not me;
+                    // the reviewer is therefore me (the other member).
+                    final doerUid = p.partnerUid ?? '';
+                    final reviewerUid =
+                        p.ownerUid == doerUid ? p.partnerUid : p.ownerUid;
                     final createdTask = await svc.createAccountabilityTask(
                       partnershipId: p.id,
                       title: task.title,
                       challengeId: task.id,
-                      accountableUid: p.partnerUid ?? '',
+                      accountableUid: doerUid,
                       accountableName: p.partnerName,
+                      partnerUid: doerUid.isEmpty ? null : reviewerUid,
+                      taskType: 'regular',
                     );
                     if (createdTask != null && mounted) {
                       setState(() {

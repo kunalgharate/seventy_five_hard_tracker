@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge_session.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/journal_entry.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
@@ -36,39 +37,20 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   bool _isCheckingMissedDays = false;
   bool _hasCheckedMissedDays = false;
 
+  /// Review outcome rounds already consumed by [_onReviewOutcomeObserved].
+  final Set<String> _processedReviewOutcomes = {};
+
+  Future<void> _journalLock = Future.value();
+
   DatabaseRepository get repository => _repository;
 
-  // ── ACCOUNTABILITY SCORING INTEGRATION POINT ────────────────────────────────
+  // ── ACCOUNTABILITY SCORING INTEGRATION ──────────────────────────────────────
   //
-  // When a task with taskType='hard' is rejected or expired by the accountability
-  // partner, the 75 Hard streak should reset. Integration approach:
-  //
-  // 1. The AccountabilityBloc emits StreakImpacted(newStreakDay, reason) when a
-  //    review outcome impacts scoring (reason = 'rejected' or 'expired').
-  //
-  // 2. To connect the two BLoCs, use one of these patterns:
-  //    a) Stream-based: Expose a Stream<StreakImpacted> from AccountabilityBloc.
-  //       Subscribe here in ChallengeBloc's constructor and dispatch ResetChallenge
-  //       when reason == 'rejected' || reason == 'expired'.
-  //    b) Shared service: A ReviewScoringService that both BLoCs depend on.
-  //       AccountabilityBloc writes outcomes; ChallengeBloc listens for resets.
-  //    c) Parent-level BlocListener: In the widget tree (e.g., MyApp or
-  //       MainNavigationScreen), add a BlocListener<AccountabilityBloc> that
-  //       dispatches ResetChallenge to ChallengeBloc on StreakImpacted events.
-  //
-  // 3. The ResetChallenge event already handles streak reset logic (marks session
-  //    inactive, records failure reason). Dispatch it like:
-  //      challengeBloc.add(ResetChallenge(
-  //        reason: 'Accountability partner rejected task',
-  //        failedChallenges: [taskTitle],
-  //      ));
-  //
-  // 4. For regular tasks (taskType='regular'), rejection/expiry only marks the day
-  //    incomplete — no streak reset needed. This is handled in the completion
-  //    percentage calculation, not here.
-  //
-  // TODO: Wire up cross-BLoC communication once widget integration is complete.
-  // ────────────────────────────────────────────────────────────────────────────
+  // Partner-review outcomes now reach this bloc for real: main.dart's
+  // MaterialApp builder wraps a BlocListener<AccountabilityBloc> that forwards
+  // identified StreakReviewOutcome (hard tasks) and RegularTaskOutcome
+  // (regular tasks) as [ReviewOutcomeObserved]. Mutations are limited to a
+  // session owned by the task's assignedBy user and are deduped after save.
 
   ChallengeBloc({
     required DatabaseRepository repository,
@@ -79,10 +61,13 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<LoadChallengeData>(_onLoadChallengeData);
     on<StartNewSession>(_onStartNewSession);
     on<UpdateDailyProgress>(_onUpdateDailyProgress);
-    on<AddJournalNote>(_onAddJournalNote);
+    on<AddJournalEntry>(_onAddJournalEntry);
+    on<UpdateJournalEntry>(_onUpdateJournalEntry);
+    on<DeleteJournalEntry>(_onDeleteJournalEntry);
     on<AddTaskNote>(_onAddTaskNote);
     on<UpdateChallenge>(_onUpdateChallenge);
     on<ResetChallenge>(_onResetChallenge);
+    on<ReviewOutcomeObserved>(_onReviewOutcomeObserved);
     on<CompleteChallenge>(_onCompleteChallenge);
     on<UpdateChallengeReminder>(_onUpdateChallengeReminder);
     on<AddTaskPhoto>(_onAddTaskPhoto);
@@ -193,10 +178,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       final activeSession = await _repository.getActiveSession();
       if (activeSession != null) {
-        final endedSession = activeSession.copyWith(
-          isActive: false,
-          endDate: DateTime.now(),
-        );
+        final endedSession = endSessionForManualRestart(activeSession);
         await _repository.updateSession(endedSession);
       }
 
@@ -266,6 +248,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         final endedSession = activeSession.copyWith(
           isActive: false,
           endDate: DateTime.now(),
+          failureReason: manuallyRestartedReason,
         );
         await _repository.updateSession(endedSession);
       }
@@ -466,33 +449,96 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     }).toList();
   }
 
-  Future<void> _onAddJournalNote(
-    AddJournalNote event,
+  /// Load (creating if needed) the DailyProgress for [date].
+  Future<DailyProgress?> _progressForDate(DateTime date) async {
+    final activeSession = await _repository.getActiveSession();
+    var dailyProgress = _repository.getDailyProgress(date);
+    if (dailyProgress == null && activeSession != null) {
+      // Create a fresh DailyProgress entry if none exists yet
+      final challengeCompletions = <String, bool>{};
+      for (final challenge in activeSession.challenges) {
+        challengeCompletions[challenge.id] = false;
+      }
+      dailyProgress = DailyProgress(
+        date: date,
+        challengeCompletions: challengeCompletions,
+        isCompleted: false,
+      );
+    }
+    return dailyProgress;
+  }
+
+  /// Rewrite the day's entry list through [transform] and persist it.
+  Future<void> _mutateJournalEntries(
+    DateTime date,
+    List<JournalEntry> Function(List<JournalEntry>) transform,
+  ) {
+    return _serializeJournal(() async {
+      final dailyProgress = await _progressForDate(date);
+      if (dailyProgress == null) return;
+      final current = JournalEntry.decode(
+        dailyProgress.journalNote,
+        fallbackDate: dailyProgress.date,
+      );
+      final updated = transform(current);
+      await _repository.saveDailyProgress(
+        dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
+      );
+      add(LoadChallengeData());
+    });
+  }
+
+  Future<T> _serializeJournal<T>(Future<T> Function() action) {
+    final result = _journalLock.then((_) => action());
+    _journalLock = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<void> _onAddJournalEntry(
+    AddJournalEntry event,
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      final activeSession = await _repository.getActiveSession();
-      var dailyProgress = _repository.getDailyProgress(event.date);
-      if (dailyProgress == null && activeSession != null) {
-        // Create a fresh DailyProgress entry if none exists yet
-        final challengeCompletions = <String, bool>{};
-        for (final challenge in activeSession.challenges) {
-          challengeCompletions[challenge.id] = false;
-        }
-        dailyProgress = DailyProgress(
-          date: event.date,
-          challengeCompletions: challengeCompletions,
-          isCompleted: false,
-        );
-      }
-      if (dailyProgress != null) {
-        final updatedProgress = dailyProgress.copyWith(journalNote: event.note);
-        await _repository.saveDailyProgress(updatedProgress);
-        add(LoadChallengeData());
-      }
+      if (event.entry.isEmpty) return;
+      await _mutateJournalEntries(event.date, (current) {
+        // Same id (double-tap / retry) replaces instead of duplicating.
+        final list = current.where((e) => e.id != event.entry.id).toList()
+          ..add(event.entry);
+        return list;
+      });
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
-      emit(ChallengeError('Failed to add journal note: $e'));
+      emit(ChallengeError('Failed to add journal entry: $e'));
+    }
+  }
+
+  Future<void> _onUpdateJournalEntry(
+    UpdateJournalEntry event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      await _mutateJournalEntries(event.date, (current) {
+        return current
+            .map((e) => e.id == event.entry.id ? event.entry : e)
+            .toList();
+      });
+    } catch (e, stack) {
+      unawaited(_analytics.logError(e, stack));
+      emit(ChallengeError('Failed to update journal entry: $e'));
+    }
+  }
+
+  Future<void> _onDeleteJournalEntry(
+    DeleteJournalEntry event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    try {
+      await _mutateJournalEntries(event.date, (current) {
+        return current.where((e) => e.id != event.entryId).toList();
+      });
+    } catch (e, stack) {
+      unawaited(_analytics.logError(e, stack));
+      emit(ChallengeError('Failed to delete journal entry: $e'));
     }
   }
 
@@ -607,6 +653,121 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     } catch (e, stack) {
       unawaited(_analytics.logError(e, stack));
       emit(ChallengeError('Failed to reset challenge: $e'));
+    }
+  }
+
+  /// Consumes a partner-review outcome forwarded from AccountabilityBloc by
+  /// main.dart's BlocListener. Approved outcomes are a no-op (the daily
+  /// completion flow already counted the streak/day); rejections either reset
+  /// the session (hard tasks) or invalidate today's completion (regular).
+  Future<void> _onReviewOutcomeObserved(
+    ReviewOutcomeObserved event,
+    Emitter<ChallengeState> emit,
+  ) async {
+    if (event.outcome != 'rejected' ||
+        (event.taskType != 'hard' &&
+            event.taskType != 'soft' &&
+            event.taskType != 'regular') ||
+        event.taskId == null) {
+      return;
+    }
+
+    try {
+      final task = event.taskOwnerUid == null
+          ? await AccountabilityService().fetchTaskById(event.taskId!)
+          : null;
+      final ownerUid = event.taskOwnerUid ?? task?.assignedByUid;
+      final challengeId = event.challengeId ?? task?.challengeId;
+      final reviewedAt =
+          event.reviewedAt ?? task?.reviewedAt ?? task?.proofReviewedAt;
+      if (ownerUid == null || (task == null && event.taskOwnerUid == null)) {
+        return;
+      }
+      if (reviewedAt == null) return;
+      final resolvedEvent = event.reviewedAt == reviewedAt
+          ? event
+          : ReviewOutcomeObserved(
+              taskId: event.taskId,
+              challengeId: challengeId,
+              taskOwnerUid: ownerUid,
+              outcome: event.outcome,
+              taskType: event.taskType,
+              newStreakDay: event.newStreakDay,
+              reviewedAt: reviewedAt,
+              taskAssignedAt: task?.assignedAt ?? event.taskAssignedAt,
+            );
+      final key = resolvedEvent.dedupeKey;
+      if (resolvedEvent.reviewRoundId.isEmpty ||
+          _processedReviewOutcomes.contains(key)) {
+        return;
+      }
+
+      final activeSession = await _repository.getActiveSession();
+      // The local session belongs to the signed-in user. A partner's review
+      // must never mutate the reviewer's session instead of the task owner's.
+      if (activeSession == null ||
+          !resolvedEvent.isForCurrentSession(activeSession)) {
+        return;
+      }
+
+      if (event.taskType == 'regular') {
+        if (challengeId == null) return;
+        final challenge = activeSession.challenges
+            .where((c) => c.id == challengeId)
+            .firstOrNull;
+        if (challenge == null || challenge.taskType != 'regular') return;
+
+        // Invalidate today's completion of the rejected regular task, the
+        // same way an owner-toggle un-complete persists progress.
+        final today = DateTime.now();
+        final progress = _repository.getDailyProgress(today);
+        if (progress == null ||
+            progress.challengeCompletions[challengeId] != true) {
+          return;
+        }
+
+        final updatedCompletions =
+            Map<String, bool>.from(progress.challengeCompletions);
+        updatedCompletions[challengeId] = false;
+
+        final allCompleted = activeSession.challenges
+            .where((c) => c.taskType != 'regular')
+            .every((c) => updatedCompletions[c.id] == true);
+
+        await _repository.saveDailyProgress(
+          progress.copyWith(
+            challengeCompletions: updatedCompletions,
+            isCompleted: allCompleted,
+          ),
+        );
+        _processedReviewOutcomes.add(key);
+        add(LoadChallengeData());
+        return;
+      }
+
+      // Hard ('75-hard') task rejected → same reset flow as ResetChallenge.
+      if (challengeId == null) return;
+      final challenge = activeSession.challenges
+          .where((c) => c.id == challengeId)
+          .firstOrNull;
+      if (challenge == null || challenge.taskType != 'hard') return;
+      if (activeSession.mode != ResetMode.hard) return;
+
+      await _onResetChallenge(
+          ResetChallenge(
+            reason: 'Accountability partner rejected task "${challenge.title}"',
+            failedChallenges: [challenge.title],
+          ),
+          emit);
+      final sessionAfterReset = await _repository.getActiveSession();
+      if (sessionAfterReset == null ||
+          sessionAfterReset.id != activeSession.id) {
+        _processedReviewOutcomes.add(key);
+      }
+    } catch (e, stack) {
+      // Background scoring hook — log only; never ChallengeError, which would
+      // replace the whole Today screen with the "no active session" page.
+      unawaited(_analytics.logError(e, stack));
     }
   }
 
@@ -746,6 +907,30 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       await _repository.saveDailyProgress(todayProgress);
       debugPrint(
           '🟢 [BLoC] DailyProgress saved with completions: ${todayProgress.challengeCompletions.keys.toList()}');
+
+      // Backfill past days so a mid-challenge task doesn't trip the
+      // missed-day check: every EXISTING DailyProgress since the session
+      // start that lacks the new id gets it as exempt (true — the task
+      // didn't exist those days). Days with no entry at all are genuinely
+      // missed days and are left for _checkForMissedDays to judge.
+      final newId = event.challenge.id;
+      final start = activeSession.startDate;
+      var day = DateTime(start.year, start.month, start.day);
+      final todayDate = DateTime(today.year, today.month, today.day);
+      while (day.isBefore(todayDate)) {
+        final past = _repository.getDailyProgress(day);
+        if (past != null && !past.challengeCompletions.containsKey(newId)) {
+          await _repository.saveDailyProgress(
+            past.copyWith(
+              challengeCompletions: {
+                ...past.challengeCompletions,
+                newId: true,
+              },
+            ),
+          );
+        }
+        day = day.add(const Duration(days: 1));
+      }
 
       final currentProgress =
           _repository.getProgressForSession(activeSession.startDate);
@@ -918,6 +1103,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       final endedSession = activeSession.copyWith(
         isActive: false,
         endDate: DateTime.now(),
+        failureReason: 'Challenge ended manually',
       );
       await _repository.updateSession(endedSession);
       add(LoadChallengeData());

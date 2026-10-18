@@ -165,190 +165,210 @@ class _PhotoProofSheetState extends State<PhotoProofSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Submit Photo Proof',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.taskName,
-            style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-          ),
-          const SizedBox(height: 24),
-          if (_proofUrl != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                _proofUrl!,
-                height: 200,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
+    // Scrollable + SafeArea + keyboard insets: the 200px preview plus the
+    // buttons exceed small screens after a photo is picked, which used to
+    // overflow the bottom of the sheet.
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          24,
+          24,
+          24 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Submit Photo Proof',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.taskName,
+                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 24),
+              if (_proofUrl != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    _proofUrl!,
                     height: 200,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (_, child, progress) {
+                      if (progress == null) return child;
+                      return Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Center(child: CircularProgressIndicator()),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image,
+                              color: Colors.grey[400], size: 40),
+                          const SizedBox(height: 8),
+                          Text('Failed to load image',
+                              style: TextStyle(color: Colors.grey[500])),
+                        ],
+                      ),
                     ),
-                    child: const Center(child: CircularProgressIndicator()),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle,
+                        color: Colors.green[600], size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Photo uploaded successfully',
+                      style: TextStyle(
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ] else ...[
+                // Image picker buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildPickerButton(
+                        icon: Icons.camera_alt,
+                        label: 'Camera',
+                        onTap: _uploading ? null : () => _pickPhoto(true),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildPickerButton(
+                        icon: Icons.photo_library,
+                        label: 'Gallery',
+                        onTap: _uploading ? null : () => _pickPhoto(false),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (_uploading && _proofUrl == null) ...[
+                const SizedBox(height: 24),
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Uploading photo...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red[200]!),
+                  ),
+                  child: Row(
                     children: [
-                      Icon(Icons.broken_image,
-                          color: Colors.grey[400], size: 40),
-                      const SizedBox(height: 8),
-                      Text('Failed to load image',
-                          style: TextStyle(color: Colors.grey[500])),
+                      Icon(Icons.error_outline,
+                          size: 16, color: Colors.red[400]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.red[700]),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle, color: Colors.green[600], size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  'Photo uploaded successfully',
-                  style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
               ],
-            ),
-            const SizedBox(height: 20),
-          ] else ...[
-            // Image picker buttons
-            Row(
-              children: [
-                Expanded(
-                  child: _buildPickerButton(
-                    icon: Icons.camera_alt,
-                    label: 'Camera',
-                    onTap: _uploading ? null : () => _pickPhoto(true),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildPickerButton(
-                    icon: Icons.photo_library,
-                    label: 'Gallery',
-                    onTap: _uploading ? null : () => _pickPhoto(false),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (_uploading && _proofUrl == null) ...[
-            const SizedBox(height: 24),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Uploading photo...',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-            ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red[200]!),
-              ),
-              child: Row(
+              const SizedBox(height: 20),
+              Row(
                 children: [
-                  Icon(Icons.error_outline, size: 16, color: Colors.red[400]),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      _error!,
-                      style: TextStyle(fontSize: 12, color: Colors.red[700]),
+                    child: TextButton(
+                      onPressed:
+                          _uploading ? null : () => Navigator.pop(context),
+                      child: Text('Cancel',
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: (_proofUrl != null && !_uploading)
+                          ? _submitProof
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: _uploading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Submit Proof',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: _uploading ? null : () => Navigator.pop(context),
-                  child:
-                      Text('Cancel', style: TextStyle(color: Colors.grey[600])),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed:
-                      (_proofUrl != null && !_uploading) ? _submitProof : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: _uploading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Submit Proof',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
