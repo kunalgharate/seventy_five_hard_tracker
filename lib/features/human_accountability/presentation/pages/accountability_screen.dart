@@ -22,6 +22,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/utils/online_refresh.dart';
 import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -337,17 +338,21 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   /// errors and return empty lists when offline.
   Future<void> _onRefreshPressed() async {
     if (_isRefreshing) return;
-    if (!await ConnectivityService().hasInternet()) {
+    final refreshed = await refreshWhenOnline(
+      hasInternet: ConnectivityService().hasInternet,
+      refresh: () async {
+        if (!mounted) return;
+        setState(() => _isRefreshing = true);
+        context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+      },
+    );
+    if (!refreshed) {
       if (!mounted) return;
       _showSnack(
         'You\'re offline — showing your latest saved squad data.',
         isSuccess: false,
       );
-      return;
     }
-    if (!mounted) return;
-    setState(() => _isRefreshing = true);
-    context.read<AccountabilityBloc>().add(LoadAccountabilityData());
   }
 
   void _handleStateChange(BuildContext context, AccountabilityState state) {

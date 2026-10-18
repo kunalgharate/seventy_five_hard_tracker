@@ -19,6 +19,7 @@ import 'package:seventy_five_hard_tracker/features/discipline_score/discipline_s
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
+import 'package:seventy_five_hard_tracker/core/utils/notification_badge.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
@@ -172,16 +173,13 @@ class _HomeScreenState extends State<HomeScreen> {
           .where('recipientUid', isEqualTo: uid)
           .where('delivered', isEqualTo: true)
           .orderBy('createdAt', descending: true)
-          .limit(50)
           .get();
       if (!mounted) return;
       setState(() {
         // Docs the user muted via notification prefs stay out of the cards.
-        _recentNotifications = snap.docs
-            .where((d) => d.data()['suppressedByPrefs'] != true)
-            .where((d) => d.data()['isRead'] != true)
-            .map((d) {
-          final data = d.data();
+        _recentNotifications = unreadDeliveredNotifications(
+          snap.docs.map((doc) => {'id': doc.id, ...doc.data()}),
+        ).map((data) {
           // Canonical snake_case type — payload type first, legacy camelCase
           // enum-name top level normalized the same way as delivery.
           final notifData =
@@ -192,28 +190,28 @@ class _HomeScreenState extends State<HomeScreen> {
           if (type == 'review_approved') action = 'approved';
           if (type == 'review_rejected') action = 'rejected';
           return {
-            'id': d.id,
+            'id': data['id'] as String? ?? '',
             'reviewer': (data['title'] as String? ?? '').split(' ').first,
             'task': data['body'] as String? ?? '',
             'action': action,
           };
         }).toList();
       });
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) debugPrint('[HomeScreen] notification load failed: $e');
+    }
   }
 
   /// Marks all visible delivered notifications as read so the Today badge
   /// clears once the user has seen them. Batched Firestore write (queues
   /// fine offline — local reads already include pending writes).
   Future<void> _markNotificationsRead() async {
-    try {
-      final svc = AccountabilityService();
-      final uid = svc.currentUid;
-      if (uid == null) return;
-      if (_recentNotifications.isEmpty) return;
+    if (_recentNotifications.isEmpty) return;
+    for (var offset = 0; offset < _recentNotifications.length; offset += 450) {
       final batch = FirebaseFirestore.instance.batch();
-      for (final n in _recentNotifications) {
-        final id = n['id'];
+      final chunk = _recentNotifications.skip(offset).take(450);
+      for (final notification in chunk) {
+        final id = notification['id'];
         if (id == null || id.isEmpty) continue;
         batch.update(
           FirebaseFirestore.instance.collection('fcm_notifications').doc(id),
@@ -221,7 +219,26 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
       await batch.commit();
-    } catch (_) {}
+    }
+    if (mounted) setState(() => _recentNotifications.clear());
+  }
+
+  Future<void> _dismissNotification(Map<String, String> notification) async {
+    final id = notification['id'];
+    if (id == null || id.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('fcm_notifications')
+          .doc(id)
+          .update({'isRead': true, 'readAt': Timestamp.now()});
+      if (mounted) setState(() => _recentNotifications.remove(notification));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update notification: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadDailyQuote() async {
@@ -514,21 +531,7 @@ class _HomeScreenState extends State<HomeScreen> {
             taskName: n['task'] ?? '',
             action: n['action'] ?? 'approved',
             comment: n['comment'],
-            onDismiss: () {
-              // Persist the dismissal so the notification stays read and
-              // the badge drops — previously this only removed the local
-              // card and it reappeared on the next reload (BUG-01).
-              final id = n['id'];
-              if (id != null && id.isNotEmpty) {
-                try {
-                  FirebaseFirestore.instance
-                      .collection('fcm_notifications')
-                      .doc(id)
-                      .update({'isRead': true, 'readAt': Timestamp.now()});
-                } catch (_) {}
-              }
-              setState(() => _recentNotifications.remove(n));
-            },
+            onDismiss: () => _dismissNotification(n),
           )),
 
       // 4. "Today's Tasks" section header
@@ -642,10 +645,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// destination the Squad top-right button and notification taps use.
   /// Returning from it marks the surfaced notifications as read so the
   /// bell badge goes to zero (BUG-01: badge must reflect unread state).
-  void _openNotifications() {
+  Future<void> _openNotifications() async {
     final bloc = context.read<AccountabilityBloc>();
-    Navigator.of(context)
-        .push(
+    final route = Navigator.of(context).push<void>(
           MaterialPageRoute(
             builder: (_) => BlocProvider.value(
               value: bloc,
@@ -655,11 +657,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-        )
-        .then((_) async {
-          await _markNotificationsRead();
-          if (mounted) await _loadRecentNotifications();
-        });
+        );
+    try {
+      await _markNotificationsRead();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not mark notifications as read: $e')),
+        );
+      }
+    }
+    await route;
+    if (mounted) await _loadRecentNotifications();
   }
 
   /// Saves a task toggle end-to-end. Shows a blocking progress dialog while

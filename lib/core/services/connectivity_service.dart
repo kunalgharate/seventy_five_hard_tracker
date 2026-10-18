@@ -5,6 +5,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:seventy_five_hard_tracker/firebase_options.dart';
 import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_reconnect_state.dart';
 import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 
 /// Manages internet connectivity and lazy Firebase initialization.
@@ -18,15 +19,12 @@ class ConnectivityService {
   final Connectivity _connectivity = Connectivity();
   StreamSubscription? _subscription;
   bool _firebaseInitialized = false;
-  bool _lastHadInternet = false;
+  bool _reconnectWorkInFlight = false;
+  final ConnectivityReconnectState _reconnectState =
+      ConnectivityReconnectState();
 
-  /// Suppressed until the first connectivity event arrives, so the callback
-  /// doesn't fire on app start (initial state is not a "restored" state).
-  bool _lastHadInternetSet = false;
-
-  /// Invoked once per device-none→internet transition. Lets callers run
-  /// reconnect-time work (cloud sync, outbox flush) without the service
-  /// knowing about them.
+  /// Invoked when internet first becomes available and on later reconnects.
+  /// Lets callers run sync work without this service knowing about it.
   Future<void> Function()? onInternetRestored;
 
   bool get isFirebaseReady => _firebaseInitialized;
@@ -48,6 +46,11 @@ class ConnectivityService {
   /// Returns true if successful, false otherwise.
   Future<bool> initFirebase() async {
     if (_firebaseInitialized) return true;
+
+    if (Firebase.apps.isNotEmpty) {
+      _firebaseInitialized = true;
+      return true;
+    }
 
     // Don't even try if there's no internet
     final hasNet = await _hasInternet();
@@ -97,21 +100,33 @@ class ConnectivityService {
   }
 
   /// Start listening for connectivity changes.
-  /// When internet becomes available, init Firebase if not already done.
+  /// When online, initialize Firebase before running pending sync work.
   void startListening() {
+    _subscription?.cancel();
     _subscription = _connectivity.onConnectivityChanged.listen((result) {
       final hasInternet = result.any((r) => r != ConnectivityResult.none);
-      if (hasInternet && !_firebaseInitialized) {
-        initFirebase();
+      if (_reconnectState.observe(hasInternet)) {
+        unawaited(_runReconnectWork());
       }
-      // Fire reconnect work (sync, outbox flush) on none→internet
-      // transitions only, so connectivity churn doesn't spam uploads.
-      if (hasInternet && !_lastHadInternet && _lastHadInternetSet) {
-        unawaited(onInternetRestored?.call());
-      }
-      _lastHadInternet = hasInternet;
-      _lastHadInternetSet = true;
     });
+  }
+
+  Future<void> _runReconnectWork() async {
+    if (_reconnectWorkInFlight) return;
+    _reconnectWorkInFlight = true;
+    try {
+      if (!_firebaseInitialized && !await initFirebase()) return;
+      if (!_reconnectState.workPending) return;
+      await onInternetRestored?.call();
+      _reconnectState.complete(succeeded: true);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('🌐 Reconnect work failed: $e');
+      }
+      _reconnectState.complete(succeeded: false);
+    } finally {
+      _reconnectWorkInFlight = false;
+    }
   }
 
   void dispose() {

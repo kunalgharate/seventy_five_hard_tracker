@@ -1,5 +1,15 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
+import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
+import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -18,7 +28,8 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
 
   late final List<Widget> _screens = [
@@ -33,6 +44,42 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
+    if (FirebaseAuth.instance.currentUser != null) {
+      context.read<AccountabilityBloc>().add(CheckExpiredTasks());
+    }
+    unawaited(_syncLocalChanges());
+  }
+
+  Future<void> _syncLocalChanges() async {
+    try {
+      if (!await ConnectivityService().hasInternet()) return;
+      final db = DatabaseRepository();
+      final taskRepo = RegularTaskRepository();
+      await db.init();
+      await taskRepo.init();
+      await CloudSyncService().autoSync(db, taskRepo);
+      await OfflineTaskOutbox.instance.flush();
+    } catch (e) {
+      if (kDebugMode) debugPrint('Resume sync failed: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

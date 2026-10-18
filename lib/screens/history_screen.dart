@@ -265,7 +265,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            session.failureReason ?? 'Unknown reason',
+            challengeResetReasonLabel(session.failureReason),
             style: TextStyle(color: Colors.red[700]),
           ),
           if (resetDay != null) ...[

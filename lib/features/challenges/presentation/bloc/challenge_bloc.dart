@@ -181,11 +181,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       final activeSession = await _repository.getActiveSession();
       if (activeSession != null) {
-        final endedSession = activeSession.copyWith(
-          isActive: false,
-          endDate: DateTime.now(),
-          failureReason: 'Started a new challenge',
-        );
+        final endedSession = endSessionForManualRestart(activeSession);
         await _repository.updateSession(endedSession);
       }
 

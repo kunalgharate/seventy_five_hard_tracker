@@ -41,6 +41,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
   final _emailCtrl = TextEditingController();
   String _taskType = 'hard'; // 'hard' or 'regular'
   AppUser? _selectedReviewer;
+  String? _selectedPartnershipId;
   bool _lookingUp = false;
   bool _creating = false;
   String? _emailError;
@@ -117,6 +118,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
         displayName: p.displayName,
         createdAt: p.acceptedAt ?? p.createdAt,
       );
+      _selectedPartnershipId = p.id;
       _emailInviteOnly = false;
       _emailInfo = null;
       _emailError = null;
@@ -134,7 +136,10 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
   Future<void> _lookupReviewer() async {
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
-      setState(() => _selectedReviewer = null);
+      setState(() {
+        _selectedReviewer = null;
+        _selectedPartnershipId = null;
+      });
       return;
     }
     if (!email.contains('@')) {
@@ -164,6 +169,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           _lookingUp = false;
           _emailInviteOnly = false;
           _selectedReviewer = user;
+          _selectedPartnershipId = null;
         });
       }
     } catch (e) {
@@ -202,6 +208,17 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
     try {
       // Connectivity snapshot: drives the offline fallback paths below.
       final offline = !await ConnectivityService().hasInternet();
+      if (offline && _emailInviteOnly) {
+        setState(() => _creating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'You\'re offline — assigning a task by email needs internet. Try again when reconnected.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
 
       String? partnershipId;
       String accountableUid = _svc.currentUid ?? '';
@@ -210,27 +227,18 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
 
       // If reviewer selected, create partnership + task with reviewer
       if (_selectedReviewer != null) {
-        partnershipId = await _svc.ensurePartnership(
-          _selectedReviewer!.uid,
-          _selectedReviewer!.displayName,
-        );
+        partnershipId = offline
+            ? _selectedPartnershipId
+            : await _svc.ensurePartnership(
+                _selectedReviewer!.uid,
+                _selectedReviewer!.displayName,
+              );
         accountableUid = _selectedReviewer!.uid;
         accountableName = _selectedReviewer!.displayName;
       } else if (_emailInviteOnly) {
         // ── Direct assignment by email (teacher / manager / coach) ──
         // Invite them and address the task to that email in one step. They
         // will see "invited you to review this task" once they join.
-        if (offline && !_svc.isReady) {
-          setState(() => _creating = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'You\'re offline — assigning a task by email needs internet. Try again when reconnected.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          return;
-        }
         final email = _emailCtrl.text.trim().toLowerCase();
         if (!email.contains('@')) {
           setState(() {
@@ -327,26 +335,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       bool ok = true;
       final hasReviewer = _selectedReviewer != null || _emailInviteOnly;
       if (hasReviewer) {
-        final created = await _svc.createAccountabilityTask(
-          accountableUid: accountableUid,
-          accountableName: accountableName,
-          accountableEmail: accountableEmail,
-          partnershipId: partnershipId ?? '',
-          title: title,
-          description: _descCtrl.text.trim(),
-          challengeId: challengeId,
-          // The doer is the other partnership member, so I review their work.
-          partnerUid: _svc.currentUid,
-          // taskType is persisted as 'hard' unless this is a routine task
-          taskType: _taskType == 'regular' ? 'regular' : null,
-        );
-        ok = created != null;
-
-        // Offline fallback: queue the assignment for replay on reconnect
-        // (same flow as CloudSync/BUG-06) instead of failing outright. The
-        // local challenge/habit above is already persisted, so the user's
-        // own side keeps working; only the partner-facing assignment waits.
-        if (!ok && offline && _selectedReviewer != null) {
+        if (offline && _selectedReviewer != null) {
           await OfflineTaskOutbox.instance.enqueue({
             'senderUid': _svc.currentUid,
             'accountableUid': accountableUid,
@@ -358,8 +347,23 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
             'partnerUid': _svc.currentUid,
             'taskType': _taskType == 'regular' ? 'regular' : 'hard',
           });
-          queuedOffline = mounted;
+          queuedOffline = true;
           ok = true;
+        } else {
+          final created = await _svc.createAccountabilityTask(
+            accountableUid: accountableUid,
+            accountableName: accountableName,
+            accountableEmail: accountableEmail,
+            partnershipId: partnershipId ?? '',
+            title: title,
+            description: _descCtrl.text.trim(),
+            challengeId: challengeId,
+            // The doer is the other partnership member, so I review their work.
+            partnerUid: _svc.currentUid,
+            // taskType is persisted as 'hard' unless this is a routine task
+            taskType: _taskType == 'regular' ? 'regular' : null,
+          );
+          ok = created != null;
         }
       }
 
@@ -858,6 +862,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           IconButton(
             onPressed: () => setState(() {
               _selectedReviewer = null;
+              _selectedPartnershipId = null;
               _emailCtrl.clear();
             }),
             icon: const Icon(Icons.close, size: 18),

@@ -162,6 +162,26 @@ class AccountabilityExtensionService {
     }
   }
 
+  Future<void> editMessage({
+    required String partnershipId,
+    required String messageId,
+    required String text,
+  }) async {
+    if (!_isReady) throw StateError('Not signed in — cannot edit message');
+    final updatedText = normalizeMessageText(text);
+    await _messagesRef(partnershipId)
+        .doc(messageId)
+        .update({'text': updatedText});
+  }
+
+  Future<void> deleteMessage({
+    required String partnershipId,
+    required String messageId,
+  }) async {
+    if (!_isReady) throw StateError('Not signed in — cannot delete message');
+    await _messagesRef(partnershipId).doc(messageId).delete();
+  }
+
   // ── Notifications ────────────────────────────────────────────────
 
   /// Create a notification for a recipient.

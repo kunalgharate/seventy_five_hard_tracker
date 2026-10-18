@@ -9,6 +9,25 @@ enum ResetMode {
   soft // Missed tasks tracked but no reset
 }
 
+const manuallyRestartedReason = 'Manually restarted';
+
+String challengeResetReasonLabel(String? reason) {
+  final normalized = reason?.trim();
+  return normalized == null || normalized.isEmpty
+      ? 'Reason not recorded'
+      : normalized;
+}
+
+ChallengeSession endSessionForManualRestart(
+  ChallengeSession session, {
+  DateTime? endedAt,
+}) =>
+    session.copyWith(
+      isActive: false,
+      endDate: endedAt ?? DateTime.now(),
+      failureReason: manuallyRestartedReason,
+    );
+
 @HiveType(typeId: 2)
 class ChallengeSession extends Equatable {
   @HiveField(0)

@@ -78,8 +78,14 @@ service cloud.firestore {
         allow create: if isPartnershipMember(partnershipId)
                       && request.resource.data.senderUid == request.auth.uid
                       && request.resource.data.partnershipId == partnershipId;
-        allow update: if isPartnershipMember(partnershipId);
+        allow update: if isPartnershipMember(partnershipId)
+                      && resource.data.senderUid == request.auth.uid
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['text'])
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0;
         allow delete: if request.auth != null
+                      && isPartnershipMember(partnershipId)
                       && resource.data.senderUid == request.auth.uid;
       }
     }

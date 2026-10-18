@@ -2,7 +2,6 @@ import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
-import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/foundation.dart';
@@ -27,7 +26,6 @@ import 'features/regular_tasks/data/models/regular_task_completion.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
-import 'features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'features/human_accountability/presentation/bloc/accountability_state.dart';
 import 'features/discipline_score/discipline_score.dart';
 import 'core/services/cloud_sync_service.dart';
@@ -102,11 +100,12 @@ void main() async {
   } catch (e) {
     if (kDebugMode) print('Firebase init failed (app works offline): $e');
   }
-  connectivity.startListening(); // retries when internet comes back
+  // Listener starts only after the reconnect callback is installed.
 
   // Reconnect hook: when the device regains internet, push local changes to
   // the cloud (BUG-06) and flush any tasks queued while offline.
   connectivity.onInternetRestored = _onInternetRestored;
+  connectivity.startListening(); // retries when internet comes back
 
   // ── Start review expiry timer if user is signed in ──
   // Checks for overdue partner reviews every 5 minutes and on app start.
@@ -134,17 +133,13 @@ void main() async {
 /// old "Auto-syncs when online" promise) and flushes tasks queued for
 /// creation while the device was offline.
 Future<void> _onInternetRestored() async {
-  try {
-    final db = DatabaseRepository();
-    final taskRepo = RegularTaskRepository();
-    await db.init();
-    await taskRepo.init();
+  final db = DatabaseRepository();
+  final taskRepo = RegularTaskRepository();
+  await db.init();
+  await taskRepo.init();
 
-    await CloudSyncService().autoSync(db, taskRepo);
-    await OfflineTaskOutbox.instance.flush();
-  } catch (e) {
-    if (kDebugMode) print('🔄 Reconnect work failed: $e');
-  }
+  await CloudSyncService().autoSync(db, taskRepo);
+  await OfflineTaskOutbox.instance.flush();
 }
 
 class MyApp extends StatelessWidget {
@@ -416,7 +411,7 @@ class InitialScreen extends StatefulWidget {
 }
 
 class _InitialScreenState extends State<InitialScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with TickerProviderStateMixin {
   _QuoteState _quoteState = _QuoteState.loading;
   Quote? _quote;
 
@@ -439,7 +434,6 @@ class _InitialScreenState extends State<InitialScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     _logoCtrl = AnimationController(
       vsync: this,
@@ -482,26 +476,11 @@ class _InitialScreenState extends State<InitialScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _logoCtrl.dispose();
     _quoteCtrl.dispose();
     _progressCtrl.dispose();
     _exitCtrl.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      SimpleBackgroundCheckService().checkOnAppOpen();
-      // Check for expired accountability tasks when app resumes
-      // (CheckExpiredTasks already runs the expiry query via the service).
-      if (FirebaseAuth.instance.currentUser != null) {
-        if (mounted) {
-          context.read<AccountabilityBloc>().add(CheckExpiredTasks());
-        }
-      }
-    }
   }
 
   Future<void> _initApp() async {
@@ -525,8 +504,9 @@ class _InitialScreenState extends State<InitialScreen>
 
     // Replay Squad-task creations queued while offline (BUG-03). An
     // online-start never fires the reconnect hook, so run it here too.
-    unawaited(
-        OfflineTaskOutbox.instance.flush().catchError((_) => 0));
+    if (await ConnectivityService().hasInternet()) {
+      unawaited(OfflineTaskOutbox.instance.flush().catchError((_) => 0));
+    }
 
     // If user is signed in but has NO local data, restore from cloud.
     User? currentUser;
