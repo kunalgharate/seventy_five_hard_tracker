@@ -18,7 +18,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.seventyfive.hard.challenge"
         CM_KEYSTORE_PATH: /tmp/keystore.jks
-      flutter: stable
+      flutter: 3.38.3
       xcode: latest
       cocoapods: default
     

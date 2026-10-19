@@ -51,25 +51,86 @@ The product requirements document is the single source of truth for QA testing. 
 
 ## Getting Started
 
-```bash
-# Install dependencies
-flutter pub get
+### Prerequisites
 
-# Generate Hive adapters
+- Flutter **3.38.3** (stable), which includes Dart **3.10.1**. The version is
+  pinned in [.fvmrc](.fvmrc).
+- Git and a platform toolchain for the target you want to run (Android Studio
+  for Android, or Xcode and CocoaPods for iOS).
+
+If you use [FVM](https://fvm.app/), install and select the repository's pinned
+SDK before running the commands below:
+
+```bash
+fvm install
+fvm use
+export FLUTTER="fvm flutter"
+export DART="fvm dart"
+```
+
+Without FVM, install Flutter 3.38.3 and make its `flutter` and `dart`
+executables available on `PATH`.
+
+### Setup, run, test, and build
+
+```bash
+# Resolve the locked dependency graph (requires network access the first time)
+make get
+
+# Generate Hive adapters when generated sources are needed
 dart run build_runner build --delete-conflicting-outputs
 
-# Run the app
+# Run the app on an available Flutter device
 flutter run
 
-# Run tests
-flutter test
+# Run the complete offline test suite. Dependencies must already be cached.
+make test
 
-# Run linter
-flutter analyze
+# Analyze the project and check formatting
+make analyze
+make format-check
 
-# Format code
-dart format .
+# Build the production Flutter web artifact in build/web/
+make build
+
+# Start a local Flutter web-server preview
+make run
 ```
+
+`make test` is the single offline test command for this repository; it uses
+Flutter's supported `--no-pub` flag so it cannot trigger dependency resolution.
+Run `make get` while online before using it on a clean machine. The FVM setup
+above exports the Make variables; they can also be passed per invocation, for
+example: `make FLUTTER="fvm flutter" test`.
+
+### Docker web preview
+
+The Docker build downloads the pinned Flutter 3.38.3 SDK, installs the Linux
+build prerequisites, resolves `pubspec.lock`, and builds the release web
+artifact. The final image serves that artifact with Python's web server:
+
+```bash
+docker build --tag seventy-five-hard-tracker:local .
+docker run --rm --publish 8080:8080 seventy-five-hard-tracker:local
+```
+
+Open <http://localhost:8080> after the container starts.
+
+### Mobile release notes
+
+- **Android:** configure signing values in the local, ignored
+  `android/key.properties` and provide the keystore through your CI secret
+  store. Build an AAB with `flutter build appbundle --release` (or an APK with
+  `flutter build apk --release`). The Android minimum SDK is 23.
+- **iOS:** use macOS with Xcode and CocoaPods, configure the bundle identifier,
+  signing team, provisioning profile, and Firebase plist in Xcode, then run
+  `flutter build ipa --release`. App Store distribution and signing are
+  described in [docs/APP_STORE_PUBLISHING.md](docs/APP_STORE_PUBLISHING.md).
+
+Firebase, Google Sign-In, and Cloudinary credentials are environment/CI
+configuration and are **not committed** to this repository. Keep local
+credential files and signing material out of git; use your CI secret store or
+an untracked `.env` file for local configuration.
 
 ## Project Structure
 
@@ -93,6 +154,7 @@ docs/
 
 ## Version
 
-**Current:** 1.1.0+5  
-**Min SDK:** Android 23 (6.0 Marshmallow)  
-**Dart SDK:** ^3.5.0
+**Current:** 1.0.8+8
+**Min SDK:** Android 23 (6.0 Marshmallow)
+**Flutter:** 3.38.3 (Dart 3.10.1)
+**Dart SDK constraint:** ^3.5.0

@@ -1,0 +1,16 @@
+.git
+.dart_tool
+.pub-cache
+build
+ios/Pods
+android/.gradle
+android/key.properties
+android/local.properties
+*.jks
+*.keystore
+*.pem
+*-base64*.txt
+service-account*.json
+.env
+.env.*
+!.env.example
