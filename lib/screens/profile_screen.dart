@@ -32,6 +32,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _syncService = CloudSyncService();
   bool _isSyncing = false;
+  bool _isSigningOut = false;
   String? _lastSync;
 
   // Offline-cached profile (SharedPreferences — same KV store the sync
@@ -322,7 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: _signOut,
+              onPressed: _isSigningOut ? null : _signOut,
               icon: const Icon(Icons.logout, size: 18),
               label: const Text('Sign Out'),
               style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
@@ -827,17 +828,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your data will be backed up before signing out. If backup fails, '
+          'you will stay signed in and your local data will be kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Back up & sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSigningOut = true);
     final db = context.read<ChallengeBloc>().repository;
     final taskRepo = context.read<RegularTaskBloc>().repository;
 
-    // Back up this account's data first, then remove every trace of it from
-    // the device so the next account never sees it (cross-account isolation).
+    // Back up this account's data first. The service returns a safe decision
+    // and never clears local data when backup or cleanup fails.
+    late final SignOutPreparationStatus preparation;
     try {
-      await _syncService.syncToCloud(db, taskRepo);
-    } catch (_) {}
-    try {
-      await _syncService.clearLocalData(db, taskRepo);
-    } catch (_) {}
+      preparation = await _syncService.prepareForSignOut(db, taskRepo);
+    } catch (_) {
+      // Treat an unexpected backup error exactly like a reported failure:
+      // never proceed to local cleanup or auth sign-out.
+      preparation = SignOutPreparationStatus.backupFailed;
+    }
+    if (!preparation.maySignOut) {
+      if (mounted) {
+        setState(() => _isSigningOut = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              preparation == SignOutPreparationStatus.backupFailed
+                  ? 'Backup failed. You are still signed in and your local data was kept.'
+                  : 'Local cleanup failed. You are still signed in and your local data was kept.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
 
     // Reminders were scheduled from this account's tasks — cancel them.
     try {
@@ -867,6 +909,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             content: Text('Signed out'), backgroundColor: Colors.grey),
       );
     }
+    if (mounted) setState(() => _isSigningOut = false);
   }
 
   /// Manual "Sync now" — calls the existing [CloudSyncService.syncToCloud]

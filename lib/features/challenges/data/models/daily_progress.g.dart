@@ -23,13 +23,14 @@ class DailyProgressAdapter extends TypeAdapter<DailyProgress> {
       isCompleted: fields[3] as bool,
       taskNotes: (fields[4] as Map?)?.cast<String, String>(),
       taskPhotos: (fields[5] as Map?)?.cast<String, String>(),
+      sessionId: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, DailyProgress obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.date)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class DailyProgressAdapter extends TypeAdapter<DailyProgress> {
       ..writeByte(4)
       ..write(obj.taskNotes)
       ..writeByte(5)
-      ..write(obj.taskPhotos);
+      ..write(obj.taskPhotos)
+      ..writeByte(6)
+      ..write(obj.sessionId);
   }
 
   @override

@@ -65,8 +65,11 @@ class RegularTaskMigrationService {
 
       // Step 4: Migrate completion data from DailyProgress
       if (session.isActive) {
-        final progressList =
-            challengeRepo.getProgressForSession(session.startDate);
+        final progressList = challengeRepo.getProgressForSession(
+          session.startDate,
+          sessionId: session.id,
+          totalDaysTarget: session.totalDaysTarget,
+        );
         for (final progress in progressList) {
           var completion = regularRepo.getCompletion(progress.date);
           final taskCompletions = <String, bool>{};

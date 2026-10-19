@@ -2,6 +2,7 @@ import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/services/regular_task_migration_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/foundation.dart';
@@ -74,6 +75,25 @@ void main() async {
   Hive.registerAdapter(DailyProgressAdapter());
   Hive.registerAdapter(RegularTaskCompletionAdapter());
   Hive.registerAdapter(RegularTaskAdapter());
+
+  // Migrate legacy regular-type challenge tasks before the independent Habits
+  // BLoC starts loading. The operation is idempotent and remains local-only.
+  try {
+    final challengeRepository = DatabaseRepository();
+    final regularTaskRepository = RegularTaskRepository();
+    await challengeRepository.init();
+    await regularTaskRepository.init();
+    final activeSession = await challengeRepository.getActiveSession();
+    if (activeSession != null) {
+      await challengeRepository.adoptLegacyProgressForSession(activeSession);
+    }
+    await RegularTaskMigrationService.migrateRegularTasks(
+      challengeRepository,
+      regularTaskRepository,
+    );
+  } catch (e) {
+    if (kDebugMode) print('Regular-task migration failed: $e');
+  }
 
   final smartNotifications = SmartNotificationService();
   try {
@@ -557,7 +577,7 @@ class _InitialScreenState extends State<InitialScreen>
           final syncSvc = CloudSyncService();
           final cloudData = await syncSvc.syncFromCloud();
           if (cloudData != null &&
-              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+              CloudSyncService.hasRestorablePayload(cloudData)) {
             await bloc.repository.restoreFromJson(cloudData);
             await taskRepo.restoreFromJson(cloudData);
             if (mounted) {

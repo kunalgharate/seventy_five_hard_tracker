@@ -15,6 +15,21 @@ import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 const _kLastSyncTime = 'lastSyncTime';
 const _kConsentGiven = 'cloudSyncConsentGiven';
 
+/// The decision returned before a destructive sign-out cleanup is allowed.
+///
+/// A failed backup must leave the account signed in and all local data intact.
+enum SignOutPreparationStatus {
+  readyToSignOut,
+  backupFailed,
+  localCleanupFailed,
+}
+
+extension SignOutPreparationStatusX on SignOutPreparationStatus {
+  bool get maySignOut => this == SignOutPreparationStatus.readyToSignOut;
+
+  bool get keepsLocalData => this != SignOutPreparationStatus.readyToSignOut;
+}
+
 /// AES-256-GCM authenticated-encryption cloud sync service.
 ///
 /// Security properties:
@@ -175,6 +190,37 @@ class CloudSyncService {
     await DataOwnership.clear();
   }
 
+  /// Backs up local data and performs the local cleanup needed before auth
+  /// sign-out. The caller must only continue with auth sign-out when the
+  /// returned status [maySignOut] is true.
+  ///
+  /// This is deliberately a separate decision path: a failed backup returns
+  /// before [clearLocalData], so local data remains available for retry.
+  Future<SignOutPreparationStatus> prepareForSignOut(
+    DatabaseRepository db,
+    RegularTaskRepository taskRepo,
+  ) async {
+    final backedUp = await syncToCloud(db, taskRepo);
+    final backupStatus = signOutStatusForBackup(backedUp);
+    if (!backupStatus.maySignOut) return backupStatus;
+
+    try {
+      await clearLocalData(db, taskRepo);
+      return SignOutPreparationStatus.readyToSignOut;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Local sign-out cleanup failed: $e');
+      }
+      return SignOutPreparationStatus.localCleanupFailed;
+    }
+  }
+
+  /// Pure decision function for the safety boundary before local deletion.
+  static SignOutPreparationStatus signOutStatusForBackup(bool backedUp) =>
+      backedUp
+          ? SignOutPreparationStatus.readyToSignOut
+          : SignOutPreparationStatus.backupFailed;
+
   /// Reconciles device-local data with the signed-in account after a
   /// sign-in: another account's data is wiped (never uploaded) and this
   /// account's cloud backup restored if needed; matching data is uploaded.
@@ -197,8 +243,7 @@ class CloudSyncService {
     }
 
     final cloudData = await syncFromCloud();
-    final sessions = (cloudData?['sessions'] as List?) ?? [];
-    if (cloudData != null && sessions.isNotEmpty) {
+    if (cloudData != null && hasRestorablePayload(cloudData)) {
       await db.restoreFromJson(cloudData);
       await taskRepo.restoreFromJson(cloudData);
       await DataOwnership.claim(uid);
@@ -207,6 +252,19 @@ class CloudSyncService {
 
     await DataOwnership.claim(uid);
     return (restored: false, uploaded: false);
+  }
+
+  /// Returns true when a decrypted backup contains at least one supported
+  /// collection. Presence of a collection key matters: an intentionally empty
+  /// array is a valid replacement and must still be restored.
+  static bool hasRestorablePayload(Map<String, dynamic> data) {
+    const collectionKeys = [
+      'sessions',
+      'progress',
+      'regularTasks',
+      'regularCompletions',
+    ];
+    return collectionKeys.any(data.containsKey);
   }
 
   // ── User profile ─────────────────────────────────────────────────────────
@@ -332,7 +390,11 @@ class CloudSyncService {
       final sessions = db.getAllSessions();
       final allProgress = <Map<String, dynamic>>[];
       for (final s in sessions) {
-        for (final p in db.getProgressForSession(s.startDate)) {
+        for (final p in db.getProgressForSession(
+          s.startDate,
+          sessionId: s.id,
+          totalDaysTarget: s.totalDaysTarget,
+        )) {
           allProgress.add(p.toJson());
         }
       }

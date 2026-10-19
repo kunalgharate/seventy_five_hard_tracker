@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:seventy_five_hard_tracker/firebase_options.dart';
 import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_reconnect_state.dart';
-import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 
 /// Manages internet connectivity and lazy Firebase initialization.
 /// Firebase services are initialized ONLY when internet is available.
@@ -102,17 +101,13 @@ class ConnectivityService {
     unawaited(_initDependentServices());
   }
 
-  /// Initialize FCM and background check — all wrapped in try-catch.
+  /// Initialize FCM — all wrapped in try-catch. Missed-day detection is
+  /// owned by ChallengeBloc so it uses session-scoped progress consistently.
   Future<void> _initDependentServices() async {
     try {
       await FcmService.instance.init().timeout(const Duration(seconds: 5));
     } catch (e) {
       if (kDebugMode) print('🌐 FCM init failed (non-critical): $e');
-    }
-    try {
-      await SimpleBackgroundCheckService().checkOnAppOpen();
-    } catch (e) {
-      if (kDebugMode) print('🌐 Background check failed (non-critical): $e');
     }
   }
 

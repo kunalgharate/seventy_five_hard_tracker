@@ -9,7 +9,6 @@ import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dar
 import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
-import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -70,7 +69,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
     if (FirebaseAuth.instance.currentUser != null) {
       context.read<AccountabilityBloc>().add(CheckExpiredTasks());
     }
