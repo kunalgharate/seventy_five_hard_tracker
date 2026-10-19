@@ -30,8 +30,7 @@
         android:label="DailyMettle: Habit &amp; Challenge"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
-        android:requestLegacyExternalStorage="true"
-        android:usesCleartextTraffic="true">
+            android:requestLegacyExternalStorage="true">
         
         <activity
             android:name=".MainActivity"
