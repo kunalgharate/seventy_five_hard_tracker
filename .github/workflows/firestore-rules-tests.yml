@@ -1,0 +1,43 @@
+name: Firestore Rules Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'firestore.rules'
+      - 'rules-tests/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'firestore.rules'
+      - 'rules-tests/**'
+
+jobs:
+  rules-tests:
+    name: Firestore Security Rules Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'rules-tests/package-lock.json'
+
+      - name: Install test dependencies
+        working-directory: ./rules-tests
+        run: npm ci
+
+      - name: Start Firestore Emulator
+        uses: firebase/firebase-tools-action@v1
+        with:
+          command: emulators:exec --only=firestore "npm test"
+          working-directory: ./rules-tests
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+          GCLOUD_PROJECT: dailymettle-rules-test

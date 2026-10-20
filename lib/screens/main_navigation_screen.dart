@@ -21,7 +21,10 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+  const MainNavigationScreen({super.key, this.screenBuilders});
+
+  @visibleForTesting
+  final List<Widget Function()>? screenBuilders;
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -34,18 +37,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   final Set<int> _visitedTabs = {0};
   final Map<int, Widget> _builtScreens = {};
 
-  late final List<Widget Function()> _screenBuilders = [
-    () => HomeScreen(
-          onGoToSquad: () => _selectTab(4),
-        ),
-    () => const RegularTasksScreen(),
-    () => const JournalScreen(),
-    () => const InsightsScreen(),
-    () => AccountabilityScreen(
-          onGoToProfile: () => _selectTab(5),
-        ),
-    () => const ProfileScreen(),
-  ];
+  late final List<Widget Function()> _screenBuilders = widget.screenBuilders ??
+      [
+        () => HomeScreen(
+              onGoToSquad: () => _selectTab(4),
+            ),
+        () => const RegularTasksScreen(),
+        () => const JournalScreen(),
+        () => const InsightsScreen(),
+        () => AccountabilityScreen(
+              onGoToProfile: () => _selectTab(5),
+            ),
+        () => const ProfileScreen(),
+      ];
 
   @override
   void initState() {

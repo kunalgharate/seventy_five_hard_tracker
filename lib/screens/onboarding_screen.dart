@@ -7,6 +7,7 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
@@ -50,6 +51,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   void initState() {
     super.initState();
+    unawaited(AnalyticsService().logOnboardingStarted());
     _headerAnimationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -69,14 +71,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _loadPartners();
   }
 
+  /// Safe auth-state read; falls back to signed-out when Firebase is
+  /// unavailable (tests, or a device where Firebase init failed).
+  User? _currentUserOrNull() {
+    try {
+      return FirebaseAuth.instance.currentUser;
+    } on Object {
+      return null;
+    }
+  }
+
   Future<void> _loadPartners() async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    if (mounted) {
-      setState(() {
-        _availablePartners = partners
-            .where((p) => p.status == PartnershipStatus.accepted)
-            .toList();
-      });
+    // Partnership loading is best-effort: without Firebase (tests, or a
+    // device where init failed) the screen still works with no partners.
+    try {
+      final partners = await AccountabilityService().fetchMyPartnerships();
+      if (mounted) {
+        setState(() {
+          _availablePartners = partners
+              .where((p) => p.status == PartnershipStatus.accepted)
+              .toList();
+        });
+      }
+    } on Object {
+      // Leave _availablePartners empty.
     }
   }
 
@@ -318,6 +336,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     await context.read<ChallengeBloc>().stream.firstWhere(
           (state) => state is ChallengeLoaded && state.hasActiveSession,
         );
+
+    unawaited(AnalyticsService().logOnboardingCompleted(
+      challengeCount: sanitizedChallenges.length,
+      setupMode: _resetMode,
+    ));
 
     // The widget may have been disposed while awaiting the session stream.
     if (!mounted) return;
@@ -661,6 +684,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               .fadeIn(delay: 1000.ms, duration: 600.ms)
               .slideY(begin: 0.3, end: 0),
 
+          const SizedBox(height: 10),
+          Text(
+            'DailyMettle is an independent app inspired by the public 75 Hard concept and is not affiliated with its creators.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+              height: 1.35,
+            ),
+          ),
+
           const SizedBox(height: 40),
 
           // Rules with Staggered Animation
@@ -674,8 +708,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   valueColor: AlwaysStoppedAnimation<Color>(FigmaTokens.coral))
               : Column(
                   children: [
-                    // Show different button based on auth state
-                    if (FirebaseAuth.instance.currentUser == null) ...[
+                    // Fail closed to the sign-in branch when Firebase is not
+                    // initialized, so onboarding still renders (local-only path).
+                    if (_currentUserOrNull() == null) ...[
                       // Not signed in — offer sign-in
                       _buildAnimatedButton(
                         text: 'Sign In & Start Setup',

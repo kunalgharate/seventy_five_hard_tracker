@@ -4,19 +4,62 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloudinary_upload_signer.dart';
 
 /// Uploads task proof photos to Cloudinary.
 class PhotoSyncService {
-  static const String _cloudName = 'dudjztvui';
-  static const String _uploadPreset = 'jiremalisamajapp-prod';
-  static const String _uploadUrl =
-      'https://api.cloudinary.com/v1_1/$_cloudName/image/upload';
-
   static final PhotoSyncService _instance = PhotoSyncService._internal();
-  factory PhotoSyncService() => _instance;
-  PhotoSyncService._internal();
+  factory PhotoSyncService({
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  }) {
+    if (signer != null || configuration != null) {
+      _instance.configureSigner(
+        signer: signer,
+        configuration: configuration,
+      );
+    }
+    return _instance;
+  }
 
-  final _picker = ImagePicker();
+  PhotoSyncService._internal()
+      : _picker = ImagePicker(),
+        _configuration = CloudinarySignerConfiguration.fromEnvironment(),
+        _signer = _createEnvironmentSigner();
+
+  @visibleForTesting
+  PhotoSyncService.forTesting({
+    ImagePicker? picker,
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  })  : _picker = picker ?? ImagePicker(),
+        _signer = signer,
+        _configuration = configuration;
+
+  final ImagePicker _picker;
+  CloudinaryUploadSigner? _signer;
+  CloudinarySignerConfiguration? _configuration;
+
+  static CloudinaryUploadSigner? _createEnvironmentSigner() {
+    final configuration = CloudinarySignerConfiguration.fromEnvironment();
+    if (configuration == null || !configuration.isValid) return null;
+    return HttpCloudinaryUploadSigner(endpoint: configuration.endpoint);
+  }
+
+  /// Configures the signed-upload path. Passing null clears that component;
+  /// uploads fail closed until both a signer and valid configuration exist.
+  @visibleForTesting
+  void configureSigner({
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  }) {
+    _signer = signer;
+    _configuration = configuration;
+  }
+
+  @visibleForTesting
+  bool get hasConfiguredSigner =>
+      _signer != null && (_configuration?.isValid ?? false);
 
   /// Pick a photo from camera or gallery.
   ///
@@ -56,6 +99,15 @@ class PhotoSyncService {
       } catch (_) {}
     }
 
+    if (!hasConfiguredSigner) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] uploadPhoto: no signed uploader configured',
+        );
+      }
+      return null;
+    }
+
     try {
       final compressed = await _compressImage(file);
       if (kDebugMode) {
@@ -64,7 +116,11 @@ class PhotoSyncService {
             '[PhotoSyncService] uploadPhoto: compressed size=${s.size} bytes');
       }
 
-      final result = await _uploadToCloudinary(compressed);
+      final result = await _uploadToCloudinary(
+        compressed,
+        challengeId: challengeId,
+        date: date,
+      );
       if (result == null) {
         if (kDebugMode) {
           debugPrint(
@@ -137,17 +193,67 @@ class PhotoSyncService {
     }
   }
 
-  Future<Map<String, dynamic>?> _uploadToCloudinary(File imageFile) async {
+  Future<Map<String, dynamic>?> _uploadToCloudinary(
+    File imageFile, {
+    required String challengeId,
+    required DateTime date,
+  }) async {
+    final signer = _signer;
+    final configuration = _configuration;
+    if (signer == null || configuration == null || !configuration.isValid) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] signed Cloudinary uploader is not configured',
+        );
+      }
+      return null;
+    }
+
     try {
-      final request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
-      request.fields['upload_preset'] = _uploadPreset;
-      request.fields['folder'] = 'task_proofs';
+      // Cloudinary signatures expire quickly, so the signature timestamp is
+      // the current time. The task date is used only to keep public IDs
+      // stable for a task proof.
+      final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final proofDate = date.toIso8601String().split('T').first;
+      final request = CloudinarySignRequest(
+        parameters: {
+          'folder': 'task_proofs',
+          'public_id': '${challengeId}_$proofDate',
+          'timestamp': timestamp.toString(),
+        },
+      );
+      final signed = await signer.sign(request);
+      if (signed.timestamp.toString() != request.parameters['timestamp']) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer timestamp does not match the requested payload.',
+        );
+      }
+      final apiKey = signed.apiKey ?? configuration.apiKey;
+      final cloudName = signed.cloudName ?? configuration.cloudName;
+      if (apiKey == null || apiKey.isEmpty || cloudName.isEmpty) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer response/configuration did not provide api key '
+          'and cloud name.',
+        );
+      }
+
+      final uploadUrl = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      );
+      final multipartRequest = http.MultipartRequest('POST', uploadUrl);
+      multipartRequest.fields.addAll({
+        'api_key': apiKey,
+        'folder': request.parameters['folder']!,
+        'public_id': request.parameters['public_id']!,
+        'signature': signed.signature,
+        'timestamp': signed.timestamp.toString(),
+      });
 
       final multipartFile =
           await http.MultipartFile.fromPath('file', imageFile.path);
-      request.files.add(multipartFile);
+      multipartRequest.files.add(multipartFile);
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await multipartRequest.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {

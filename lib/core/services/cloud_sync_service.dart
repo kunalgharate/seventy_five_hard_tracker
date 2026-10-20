@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,6 +9,7 @@ import 'package:pointycastle/export.dart' as pc;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloud_backup_key_store.dart';
 import 'package:seventy_five_hard_tracker/core/services/data_ownership.dart';
 import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
 
@@ -35,9 +37,10 @@ extension SignOutPreparationStatusX on SignOutPreparationStatus {
 /// Security properties:
 ///   • AES-256-GCM (AEAD) — confidentiality + integrity + authenticity.
 ///     Tampered ciphertext is rejected at decryption time whenever the
-///     attacker does not know the derived key.
-///   • Key = HKDF-SHA256(uid, salt, info) — stable and re-derivable by the
-///     UID owner, so backups can be restored after a reinstall.
+///     attacker does not know the account key.
+///   • New backups use a random 256-bit key held in platform secure storage.
+///   • Old UID-derived backups are read-only migration fallback and are never
+///     used for new writes.
 ///   • Random 12-byte nonce per encryption call.
 ///   • 128-bit GCM authentication tag appended to ciphertext.
 ///
@@ -54,36 +57,54 @@ extension SignOutPreparationStatusX on SignOutPreparationStatus {
 class CloudSyncService {
   static final CloudSyncService _instance = CloudSyncService._internal();
   factory CloudSyncService() => _instance;
-  CloudSyncService._internal();
+  CloudSyncService._internal()
+      : _auth = FirebaseAuth.instance,
+        _firestore = FirebaseFirestore.instance,
+        _keyStore = CloudBackupKeyStore();
 
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
+  @visibleForTesting
+  CloudSyncService.forTesting({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    CloudBackupKeyStore? keyStore,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _keyStore = keyStore ?? CloudBackupKeyStore();
 
-  /// Derived AES-256 key. Derived from the Firebase UID on demand.
-  enc.Key? _aesKey;
+  static const int _currentBackupSchemaVersion = 4;
+  static const String _secureStorageKeySource = 'secure-storage-v1';
+  static const String _legacyUidKeySource = 'uid-derived-v3';
+  static const String _legacyBackupField = 'legacyBackup';
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+  final CloudBackupKeyStore _keyStore;
+
+  /// Random account key loaded from platform secure storage.
+  enc.Key? _userHeldKey;
+  String? _userHeldKeyUid;
+  Future<enc.Key?>? _keyLoadInFlight;
   Future<bool>? _autoSyncInFlight;
   Future<bool>? _syncToCloudInFlight;
+
+  bool _lastRestoreUsedLegacyKey = false;
 
   User? get currentUser => _auth.currentUser;
   bool get isSignedIn => _auth.currentUser != null;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // ── Key derivation ───────────────────────────────────────────────────────
+  /// True when the last successful restore used the UID-derived migration
+  /// fallback. The next successful sync can migrate it to the user-held key.
+  @visibleForTesting
+  bool get lastRestoreUsedLegacyKey => _lastRestoreUsedLegacyKey;
 
-  /// Derives a 256-bit AES key from the Firebase UID using HKDF-SHA256.
+  // ── Key derivation and secure key loading ────────────────────────────────
+
+  /// Derives the key used by the pre-secure-storage backup format.
   ///
-  /// The UID is stable across sign-ins (same Google account = same UID).
-  /// Data confidentiality is enforced at two layers:
-  ///   1. Firestore security rules restrict read/write to the UID owner
-  ///   2. AES-256-GCM encryption binds the ciphertext to the derived key, so
-  ///      only the UID owner (who can re-derive the key) can decrypt it.
-  ///
-  /// The salt and info strings version-namespace the key for future migrations.
-  /// The key is deliberately derived only from the UID (not the short-lived
-  /// idToken) so it stays re-derivable after a reinstall. Data confidentiality
-  /// therefore rests on the Firestore security rules restricting access to
-  /// the UID owner, not on a secret held by the client.
-  enc.Key _deriveKey(String uid) {
+  /// This is intentionally retained only so backups written by older app
+  /// versions remain restorable. It must not be used by new writes.
+  enc.Key _deriveLegacyKey(String uid) {
     final ikm = utf8.encode(uid);
     final salt = utf8.encode('dailymettle-v3-stable-key');
     final info = utf8.encode('aes256-gcm-user-data-v3');
@@ -101,18 +122,57 @@ class CloudSyncService {
     return enc.Key(keyBytes);
   }
 
-  void _ensureKey() {
-    if (_aesKey == null && _auth.currentUser != null) {
-      _aesKey = _deriveKey(_auth.currentUser!.uid);
+  Future<enc.Key?> _loadUserHeldKey() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return Future<enc.Key?>.value(null);
+
+    if (_userHeldKeyUid != uid) {
+      _userHeldKey = null;
+      _userHeldKeyUid = uid;
+      _keyLoadInFlight = null;
+    }
+    if (_userHeldKey != null) return Future.value(_userHeldKey);
+
+    final activeLoad = _keyLoadInFlight;
+    if (activeLoad != null) return activeLoad;
+
+    late final Future<enc.Key?> pending;
+    pending = _readUserHeldKey(uid).whenComplete(() {
+      if (identical(_keyLoadInFlight, pending)) _keyLoadInFlight = null;
+    });
+    _keyLoadInFlight = pending;
+    return pending;
+  }
+
+  Future<enc.Key?> _readUserHeldKey(String uid) async {
+    try {
+      final bytes = await _keyStore.getOrCreateKey(uid);
+      final key = enc.Key(bytes);
+      if (_auth.currentUser?.uid == uid) {
+        _userHeldKey = key;
+        _userHeldKeyUid = uid;
+      }
+      return key;
+    } catch (error) {
+      // A secure-storage failure must not cause a new backup to fall back to
+      // UID-derived encryption. The legacy key remains available only to
+      // decrypt an already-existing legacy backup.
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Secure backup key unavailable: $error');
+      }
+      return null;
     }
   }
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
-  /// Signs in with Google, derives the AES key, saves user profile.
+  /// Signs in with Google, loads/creates the account's platform-held key, and
+  /// saves the user profile.
   ///
-  /// The AES key is derived from the stable Firebase UID (see [_deriveKey]),
-  /// which is available here right after a successful sign-in.
+  /// If secure storage is temporarily unavailable, authentication still
+  /// succeeds so the caller can use the rest of the app. Cloud backup writes
+  /// fail closed until the key can be loaded; old UID-derived backups can
+  /// still be attempted through the read-only migration path.
   Future<User?> signInWithGoogle() async {
     try {
       final googleSignIn = GoogleSignIn.instance;
@@ -136,7 +196,10 @@ class CloudSyncService {
       final result = await _auth.signInWithCredential(credential);
       final user = result.user;
       if (user != null) {
-        _aesKey = _deriveKey(user.uid);
+        _userHeldKey = null;
+        _userHeldKeyUid = user.uid;
+        _keyLoadInFlight = null;
+        await _loadUserHeldKey();
         await _upsertUserProfile(user);
       }
       return user;
@@ -173,7 +236,10 @@ class CloudSyncService {
       await _firestore.clearPersistence();
     } catch (_) {}
     await _auth.signOut();
-    _aesKey = null;
+    _userHeldKey = null;
+    _userHeldKeyUid = null;
+    _keyLoadInFlight = null;
+    _lastRestoreUsedLegacyKey = false;
   }
 
   /// Removes all device-local user data and ownership markers. Used on
@@ -247,7 +313,13 @@ class CloudSyncService {
       await db.restoreFromJson(cloudData);
       await taskRepo.restoreFromJson(cloudData);
       await DataOwnership.claim(uid);
-      return (restored: true, uploaded: false);
+
+      // A legacy restore is immediately re-encrypted with the user-held key.
+      // syncToCloud archives the UID-derived envelope before replacing the
+      // active fields, and a failed migration leaves the old backup intact.
+      final migrated =
+          _lastRestoreUsedLegacyKey ? await syncToCloud(db, taskRepo) : false;
+      return (restored: true, uploaded: migrated);
     }
 
     await DataOwnership.claim(uid);
@@ -308,9 +380,9 @@ class CloudSyncService {
 
   /// Silently syncs if signed in and consent was given.
   ///
-  /// Called on connectivity restore and app-resume. The AES key is derived
-  /// inside [syncToCloud] — no pre-check here, so a restored-for-nine-lives
-  /// session (no in-memory key yet) still syncs on reconnect.
+  /// Called on connectivity restore and app-resume. The secure key is loaded
+  /// inside [syncToCloud], so a restored session (no in-memory key yet) still
+  /// syncs on reconnect.
   Future<void> autoSync(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -355,9 +427,10 @@ class CloudSyncService {
   /// Uses [taskRepo.getAllCompletions()] instead of a date-bounded loop,
   /// so no historical data is truncated.
   ///
-  /// AES-GCM provides authentication — tampering by anyone who does not know
-  /// the derived key causes decryption to throw, preventing silent data
-  /// corruption.
+  /// New writes require the random account key from platform secure storage.
+  /// If that key is unavailable, this method returns false and leaves any old
+  /// cloud backup untouched; it never silently writes a weaker UID-derived
+  /// replacement.
   Future<bool> syncToCloud(
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
@@ -377,11 +450,14 @@ class CloudSyncService {
     DatabaseRepository db,
     RegularTaskRepository taskRepo,
   ) async {
-    _ensureKey();
-    if (!isSignedIn || _aesKey == null) return false;
+    final user = currentUser;
+    if (user == null) return false;
+
+    final userHeldKey = await _loadUserHeldKey();
+    if (userHeldKey == null || _auth.currentUser?.uid != user.uid) return false;
 
     try {
-      final uid = currentUser!.uid;
+      final uid = user.uid;
 
       // Never upload local data that belongs to a different account.
       if (await DataOwnership.ownedByOther(uid)) return false;
@@ -411,24 +487,41 @@ class CloudSyncService {
         'regularTasks': regularTasks.map((t) => t.toJson()).toList(),
         'regularCompletions': regularCompletions,
         'syncedAt': DateTime.now().toIso8601String(),
-        'schemaVersion': 3,
+        'schemaVersion': _currentBackupSchemaVersion,
       });
 
       // AES-256-GCM: confidentiality + integrity + authenticity
-      final encrypted = _encryptGcm(payload);
+      final encrypted = _encryptGcm(payload, userHeldKey);
 
-      await _firestore.collection('user_data').doc(uid).set({
+      final ref = _firestore.collection('user_data').doc(uid);
+      final existing = await ref.get();
+      final writeData = <String, dynamic>{};
+      if (existing.exists && existing.data() != null) {
+        // Preserve unknown fields and archive the old UID-derived envelope
+        // before replacing its active fields. This makes migration explicit
+        // and avoids silently destroying the only copy of a legacy backup.
+        writeData.addAll(existing.data()!);
+        final oldData = existing.data()!;
+        if (_isLegacyBackup(oldData)) {
+          writeData[_legacyBackupField] = _legacyEnvelope(oldData);
+        }
+      }
+      writeData.addAll({
         'enc': encrypted['cipher'], // ciphertext + 16-byte GCM auth tag
         'nonce': encrypted['nonce'], // 12-byte random nonce
         'updatedAt': FieldValue.serverTimestamp(),
-        'schemaVersion': 3,
+        'schemaVersion': _currentBackupSchemaVersion,
+        'encryptionKeySource': _secureStorageKeySource,
       });
+      await ref.set(writeData);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kLastSyncTime, DateTime.now().toIso8601String());
       await DataOwnership.claim(uid);
 
-      if (kDebugMode) debugPrint('[CloudSync] Sync complete (GCM)');
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Sync complete (GCM, secure account key)');
+      }
       return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[CloudSync] Sync failed: $e');
@@ -441,45 +534,51 @@ class CloudSyncService {
   /// Downloads and authenticates + decrypts user data from Firestore.
   ///
   /// The GCM authentication tag is verified during decryption. If the
-  /// ciphertext was tampered with by someone who does not know the derived
+  /// ciphertext was tampered with by someone who does not know the account
   /// key, decryption throws and null is returned — the corrupt data is never
   /// passed to the app.
+  ///
+  /// Current backups use the random account key. Schema v1-v3 backups use the
+  /// old UID-derived key only as a read-only migration fallback. A failed
+  /// secure-key restore does not downgrade a current backup to the UID key.
   Future<Map<String, dynamic>?> syncFromCloud() async {
-    _ensureKey();
-    if (!isSignedIn || _aesKey == null) return null;
+    final user = currentUser;
+    if (user == null) return null;
 
     try {
-      final uid = currentUser!.uid;
+      final uid = user.uid;
       final doc = await _firestore.collection('user_data').doc(uid).get();
       if (!doc.exists) return null;
 
       final data = doc.data()!;
-      final schemaVersion = data['schemaVersion'] as int? ?? 1;
+      _lastRestoreUsedLegacyKey = false;
 
-      // Schema v3+: AES-256-GCM with nonce.
-      // Decryption uses the current UID-derived key. A brief app version
-      // derived the key from uid+idToken and wrote v3 GCM with it; those
-      // backups can no longer be decrypted because the short-lived idToken is
-      // not stored, so they fail closed (null restore) instead of returning
-      // corrupt data.
-      if (schemaVersion >= 3) {
-        final cipher = data['enc'] as String?;
-        final nonce = data['nonce'] as String?;
-        if (cipher == null || nonce == null) return null;
-        final decrypted = _decryptGcm(cipher, nonce);
-        return jsonDecode(decrypted) as Map<String, dynamic>;
+      final secureKey = await _loadUserHeldKey();
+      if (_auth.currentUser?.uid != uid) return null;
+      if (_isCurrentSecureBackup(data)) {
+        final restored = _tryDecryptEnvelope(
+          data,
+          key: secureKey,
+        );
+        if (restored != null) return restored;
+
+        // A prior migration archives the old envelope alongside the current
+        // one. It remains readable if the new key is lost or the current
+        // ciphertext is damaged, without trying the UID key on current data.
+        final archived = _legacyMap(data[_legacyBackupField]);
+        if (archived != null) {
+          final legacy = _tryDecryptLegacyEnvelope(archived, uid);
+          if (legacy != null) {
+            _lastRestoreUsedLegacyKey = true;
+            return legacy;
+          }
+        }
+        return null;
       }
 
-      // Schema v1/v2: AES-256-CBC (legacy — read-only backwards compat).
-      // These backups predate GCM and were encrypted with an older UID-derived
-      // key, not the current one, so decryption throws and they fail closed
-      // (null restore) instead of returning corrupt data. New writes always
-      // re-encrypt as v3.
-      final cipher = (data['enc'] ?? data['data']) as String?;
-      if (cipher == null) return null;
-      final ivBase64 = data['iv'] as String?;
-      final decrypted = _decryptCbcLegacy(cipher, ivBase64: ivBase64);
-      return jsonDecode(decrypted) as Map<String, dynamic>;
+      final legacy = _tryDecryptLegacyEnvelope(data, uid);
+      if (legacy != null) _lastRestoreUsedLegacyKey = true;
+      return legacy;
     } catch (e) {
       if (kDebugMode) debugPrint('[CloudSync] Restore failed: $e');
       return null;
@@ -491,6 +590,107 @@ class CloudSyncService {
     return prefs.getString(_kLastSyncTime);
   }
 
+  static bool _isCurrentSecureBackup(Map<String, dynamic> data) {
+    final schemaVersion = _schemaVersion(data);
+    return schemaVersion >= _currentBackupSchemaVersion ||
+        data['encryptionKeySource'] == _secureStorageKeySource;
+  }
+
+  static bool _isLegacyBackup(Map<String, dynamic> data) {
+    if (_isCurrentSecureBackup(data)) return false;
+    final hasCipher = data['enc'] is String || data['data'] is String;
+    return hasCipher;
+  }
+
+  static int _schemaVersion(Map<String, dynamic> data) {
+    final value = data['schemaVersion'];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 1;
+    return 1;
+  }
+
+  static Map<String, dynamic> _legacyEnvelope(Map<String, dynamic> data) {
+    final envelope = <String, dynamic>{};
+    for (final field in const [
+      'enc',
+      'data',
+      'nonce',
+      'iv',
+      'schemaVersion',
+      'encryptionKeySource',
+    ]) {
+      if (data.containsKey(field)) envelope[field] = data[field];
+    }
+    // This marker is informational only. The decryptor still validates the
+    // schema and ciphertext shape before attempting the legacy key.
+    envelope['encryptionKeySource'] = _legacyUidKeySource;
+    return envelope;
+  }
+
+  static Map<String, dynamic>? _legacyMap(Object? value) {
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
+  Map<String, dynamic>? _tryDecryptEnvelope(
+    Map<String, dynamic> data, {
+    required enc.Key? key,
+  }) {
+    if (key == null) return null;
+
+    try {
+      final cipher = data['enc'] as String?;
+      final nonce = data['nonce'] as String?;
+      if (cipher == null || nonce == null) return null;
+      final decrypted = _decryptGcm(cipher, nonce, key);
+      return _decodePayload(decrypted);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Current backup decryption failed: $error');
+      }
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _tryDecryptLegacyEnvelope(
+    Map<String, dynamic> data,
+    String uid,
+  ) {
+    final key = _deriveLegacyKey(uid);
+    final schemaVersion = _schemaVersion(data);
+
+    try {
+      final cipher = (data['enc'] ?? data['data']) as String?;
+      if (cipher == null) return null;
+
+      if (schemaVersion >= 3 && data['nonce'] is String) {
+        final decrypted = _decryptGcm(cipher, data['nonce'] as String, key);
+        return _decodePayload(decrypted);
+      }
+
+      final ivBase64 = data['iv'] as String?;
+      final decrypted = _decryptCbcLegacy(
+        cipher,
+        key,
+        ivBase64: ivBase64,
+      );
+      return _decodePayload(decrypted);
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Legacy backup decryption failed: $error');
+      }
+      return null;
+    }
+  }
+
+  static Map<String, dynamic> _decodePayload(String decrypted) {
+    final decoded = jsonDecode(decrypted);
+    if (decoded is! Map) {
+      throw const FormatException('Cloud backup payload must be an object.');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
   // ── AES-256-GCM helpers ─────────────────────────────────────────────
 
   /// Encrypts [plain] with AES-256-GCM using a cryptographically random
@@ -500,9 +700,9 @@ class CloudSyncService {
   /// the encrypt package and verified on decryption — any bit-flip by an
   /// attacker who does not know the derived key causes decryption to throw
   /// [ArgumentError].
-  Map<String, String> _encryptGcm(String plain) {
+  Map<String, String> _encryptGcm(String plain, enc.Key key) {
     final nonce = enc.IV.fromSecureRandom(12); // GCM standard nonce size
-    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
     final encrypted = encrypter.encrypt(plain, iv: nonce);
     return {
       'cipher': encrypted.base64,
@@ -513,9 +713,13 @@ class CloudSyncService {
   /// Decrypts and authenticates GCM ciphertext.
   /// Throws if the authentication tag does not match, rejecting tampering by
   /// anyone who does not know the derived key.
-  String _decryptGcm(String cipherBase64, String nonceBase64) {
+  String _decryptGcm(
+    String cipherBase64,
+    String nonceBase64,
+    enc.Key key,
+  ) {
     final nonce = enc.IV.fromBase64(nonceBase64);
-    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.gcm));
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
     return encrypter.decrypt64(cipherBase64, iv: nonce);
   }
 
@@ -523,7 +727,11 @@ class CloudSyncService {
 
   /// Decrypts legacy CBC-encrypted backups (schema v1/v2).
   /// Only used for reading old data — new writes always use GCM.
-  String _decryptCbcLegacy(String cipherBase64, {String? ivBase64}) {
+  String _decryptCbcLegacy(
+    String cipherBase64,
+    enc.Key key, {
+    String? ivBase64,
+  }) {
     // Legacy read-only path for very old v1 backups. Newer backups use
     // AES-256-GCM with a per-record random nonce (see _encryptGcm). Some v1
     // records were written without a stored IV; we fall back to a zero IV to
@@ -534,7 +742,7 @@ class CloudSyncService {
     // on this path.
     final iv =
         ivBase64 != null ? enc.IV.fromBase64(ivBase64) : enc.IV.fromLength(16);
-    final encrypter = enc.Encrypter(enc.AES(_aesKey!, mode: enc.AESMode.cbc));
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
     return encrypter.decrypt64(cipherBase64, iv: iv);
   }
 }

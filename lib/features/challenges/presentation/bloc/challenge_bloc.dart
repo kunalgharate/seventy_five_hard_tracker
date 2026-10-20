@@ -85,6 +85,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   ChallengeBloc({
     required DatabaseRepository repository,
     required SmartNotificationService smartNotifications,
+    bool startMidnightTimer = true,
   })  : _repository = repository,
         _smartNotifications = smartNotifications,
         super(ChallengeInitial()) {
@@ -105,7 +106,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<RestartFromHistory>(_onRestartFromHistory);
     on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
     on<EndActiveSession>(_onEndActiveSession);
-    _startMidnightTimer();
+    if (startMidnightTimer) _startMidnightTimer();
   }
 
   @override

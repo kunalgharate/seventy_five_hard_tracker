@@ -1,0 +1,14 @@
+{
+  "name": "dailymettle-firestore-rules-tests",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node firestore_rules_smoke.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0"
+  }
+}

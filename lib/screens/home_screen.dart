@@ -159,7 +159,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _subscribeToNotifications() {
     _notificationsSub?.cancel();
-    final uid = AccountabilityService().currentUid;
+    String? uid;
+    try {
+      uid = AccountabilityService().currentUid;
+    } catch (error) {
+      // Firebase is optional for the offline/local-only experience. Avoid
+      // constructing its service before Firebase.initializeApp() completes.
+      if (kDebugMode) {
+        debugPrint('[HomeScreen] notifications unavailable: $error');
+      }
+      return;
+    }
     if (uid == null) return;
     _notificationsSub = FirebaseFirestore.instance
         .collection('fcm_notifications')

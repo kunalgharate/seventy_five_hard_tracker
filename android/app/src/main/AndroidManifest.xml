@@ -26,11 +26,12 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
 
-    <application
-        android:label="DailyMettle: Habit &amp; Challenge"
+<application
+        android:label="DailyMettle: Habit & Challenge"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
-            android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:networkSecurityConfig="@xml/network_security_config">
         
         <activity
             android:name=".MainActivity"

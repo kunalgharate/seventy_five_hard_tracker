@@ -314,6 +314,14 @@ service cloud.firestore {
                              && request.auth.uid == uid;
     }
 
+    // ── entitlements ───────────────────────────────────────────────
+    // Premium state is written by a trusted billing/backend integration.
+    // Clients may read only their own document; client writes are denied.
+    match /entitlements/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // ── user_data (encrypted cloud backup) ────────────────────────
     // Only the owner can read/write their own encrypted backup.
     // This collection stores AES-256-GCM ciphertext — unreadable without the key.

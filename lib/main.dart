@@ -44,6 +44,7 @@ import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Global navigator key — lets notification taps navigate from outside the
 /// widget tree (see FcmService).
@@ -525,6 +526,8 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   Future<void> _initApp() async {
+    unawaited(_recordAppOpen());
+
     // Fetch quote in background (non-blocking)
     unawaited(_fetchQuote());
 
@@ -609,6 +612,27 @@ class _InitialScreenState extends State<InitialScreen>
     Navigator.of(context).pushReplacementNamed('/home');
     appNavigationReady = true;
     unawaited(FcmService.instance.flushPendingNavigation());
+  }
+
+  /// Stores only a local first-seen timestamp so Analytics can receive a
+  /// coarse retention bucket (d0, d1, d2_3, ...) without receiving a date.
+  Future<void> _recordAppOpen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().toUtc();
+      final stored = prefs.getString('analytics_first_seen_at');
+      final firstSeen = stored == null ? now : DateTime.tryParse(stored);
+      if (stored == null) {
+        await prefs.setString('analytics_first_seen_at', now.toIso8601String());
+      }
+      await AnalyticsService().logAppOpen(
+        firstSeenAt: firstSeen ?? now,
+        now: now,
+      );
+    } catch (_) {
+      // App-open analytics is optional and must never delay startup.
+      unawaited(AnalyticsService().logAppOpen());
+    }
   }
 
   Future<void> _fetchQuote() async {
