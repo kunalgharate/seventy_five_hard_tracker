@@ -121,10 +121,15 @@ class CloudBackupKeyStore {
   Future<void> deleteKey(String uid) async {
     final storageKey = storageKeyForAccount(uid);
 
-    // Wait for any in-flight getOrCreateKey to complete
+    // Wait for any in-flight getOrCreateKey to complete, handling errors
+    // so a failed load never prevents the deletion attempt.
     final inFlight = _inFlight[storageKey];
     if (inFlight != null) {
-      await inFlight;
+      try {
+        await inFlight;
+      } catch (_) {
+        // Ignore failure of the in-flight operation and proceed with deletion.
+      }
     }
 
     // Mark deletion as in progress to block new getOrCreateKey calls
