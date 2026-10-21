@@ -78,7 +78,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     final guestButton = find.text('Continue as Guest (Local Only)').first;
-    await tester.scrollUntilVisible(guestButton, 100);
+    await tester.ensureVisible(guestButton);
     await tester.tap(guestButton);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
@@ -97,7 +97,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     final guestButton = find.text('Continue as Guest (Local Only)').first;
-    await tester.scrollUntilVisible(guestButton, 100);
+    await tester.ensureVisible(guestButton);
     await tester.tap(guestButton);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
@@ -127,7 +127,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     final guestButton = find.text('Continue as Guest (Local Only)').first;
-    await tester.scrollUntilVisible(guestButton, 100);
+    await tester.ensureVisible(guestButton);
     await tester.tap(guestButton);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
@@ -146,7 +146,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     final guestButton = find.text('Continue as Guest (Local Only)').first;
-    await tester.scrollUntilVisible(guestButton, 100);
+    await tester.ensureVisible(guestButton);
     await tester.tap(guestButton);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
@@ -168,7 +168,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     final guestButton = find.text('Continue as Guest (Local Only)').first;
-    await tester.scrollUntilVisible(guestButton, 100);
+    await tester.ensureVisible(guestButton);
     await tester.tap(guestButton);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
