@@ -299,8 +299,20 @@ class _JournalScreenState extends State<JournalScreen> {
               if (state is! ChallengeLoaded) {
                 return const SliverToBoxAdapter(child: SizedBox.shrink());
               }
+              // Load journal entries from ALL sessions (not just active) so
+              // entries from previous challenges/restarts remain visible.
+              final bloc = context.read<ChallengeBloc>();
+              final allProgress = <DailyProgress>[];
+              for (final session in state.allSessions) {
+                final sessionProgress = bloc.repository.getProgressForSession(
+                  session.startDate,
+                  sessionId: session.id,
+                  totalDaysTarget: session.totalDaysTarget,
+                );
+                allProgress.addAll(sessionProgress);
+              }
               // Group every entry under its calendar day, newest day first.
-              final journalEntries = _journalEntriesFor(state.currentProgress);
+              final journalEntries = _journalEntriesFor(allProgress);
               final byDay = journalEntries.entries;
               final days = journalEntries.days;
               if (days.isEmpty) {

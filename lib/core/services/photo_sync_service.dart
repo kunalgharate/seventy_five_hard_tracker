@@ -276,4 +276,138 @@ class PhotoSyncService {
       return null;
     }
   }
+
+  /// Upload profile avatar to Cloudinary. Returns secure URL or null.
+  ///
+  /// Uses a dedicated 'profile_avatars' folder and the user's UID as public_id
+  /// so each user has exactly one avatar that gets replaced on re-upload.
+  Future<String?> uploadAvatar(File file, String uid) async {
+    if (kDebugMode) {
+      debugPrint('[PhotoSyncService] uploadAvatar: uid=$uid');
+      try {
+        final stat = await file.stat();
+        debugPrint('[PhotoSyncService] uploadAvatar: file size=${stat.size} bytes');
+      } catch (_) {}
+    }
+
+    if (!hasConfiguredSigner) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] uploadAvatar: no signed uploader configured',
+        );
+      }
+      return null;
+    }
+
+    try {
+      final compressed = await _compressImage(file);
+      if (kDebugMode) {
+        final s = await compressed.stat();
+        debugPrint('[PhotoSyncService] uploadAvatar: compressed size=${s.size} bytes');
+      }
+
+      final result = await _uploadToCloudinaryAvatar(compressed, uid: uid);
+      if (result == null) {
+        if (kDebugMode) {
+          debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary upload returned null');
+        }
+        return null;
+      }
+
+      final url = result['secure_url'] as String?;
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
+      }
+      return url;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] uploadAvatar: FAILED — $e');
+        debugPrint('[PhotoSyncService] uploadAvatar: error type=${e.runtimeType}');
+      }
+      return null;
+    }
+  }
+
+  /// Upload avatar to Cloudinary with a stable public_id based on user UID.
+  Future<Map<String, dynamic>?> _uploadToCloudinaryAvatar(
+    File imageFile, {
+    required String uid,
+  }) async {
+    final signer = _signer;
+    final configuration = _configuration;
+    if (signer == null || configuration == null || !configuration.isValid) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] signed Cloudinary uploader is not configured',
+        );
+      }
+      return null;
+    }
+
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final request = CloudinarySignRequest(
+        parameters: {
+          'folder': 'profile_avatars',
+          'public_id': uid,
+          'timestamp': timestamp.toString(),
+          'overwrite': 'true',
+        },
+      );
+      final signed = await signer.sign(request);
+      if (signed.timestamp.toString() != request.parameters['timestamp']) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer timestamp does not match the requested payload.',
+        );
+      }
+      final apiKey = signed.apiKey ?? configuration.apiKey;
+      final cloudName = signed.cloudName ?? configuration.cloudName;
+      // ignore: unnecessary_null_comparison
+      if (apiKey == null || apiKey.isEmpty || cloudName == null || cloudName.isEmpty) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer response/configuration did not provide api key '
+          'and cloud name.',
+        );
+      }
+
+      final uploadUrl = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      );
+      final multipartRequest = http.MultipartRequest('POST', uploadUrl);
+      multipartRequest.fields.addAll({
+        'api_key': apiKey,
+        'folder': request.parameters['folder']!,
+        'public_id': request.parameters['public_id']!,
+        'signature': signed.signature,
+        'timestamp': signed.timestamp.toString(),
+        'overwrite': 'true',
+      });
+
+      final multipartFile =
+          await http.MultipartFile.fromPath('file', imageFile.path);
+      multipartRequest.files.add(multipartFile);
+
+      final streamedResponse = await multipartRequest.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'secure_url': data['secure_url'],
+          'public_id': data['public_id'],
+        };
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+            '[PhotoSyncService] Cloudinary avatar upload failed: status=${response.statusCode} body=${response.body}');
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] Cloudinary avatar upload error: $e');
+      }
+      return null;
+    }
+  }
 }

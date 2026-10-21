@@ -33,11 +33,13 @@ jobs:
         working-directory: ./rules-tests
         run: npm ci
 
-      - name: Start Firestore Emulator
-        uses: firebase/firebase-tools-action@v1
-        with:
-          command: emulators:exec --only=firestore "npm test"
-          working-directory: ./rules-tests
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools
+
+      - name: Start Firestore Emulator and run tests
+        working-directory: ./rules-tests
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
           GCLOUD_PROJECT: dailymettle-rules-test
+        run: |
+          firebase emulators:exec --only=firestore "npm test" --project dailymettle-rules-test

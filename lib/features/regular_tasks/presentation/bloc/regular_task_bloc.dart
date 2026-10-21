@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
@@ -85,15 +88,26 @@ class RegularTaskBloc extends Bloc<RegularTaskEvent, RegularTaskState> {
   ) async {
     try {
       await _repository.archiveTask(event.taskId);
-      // Cancel associated accountability task if any
+      // Immediately reload local tasks for instant UI feedback
+      add(LoadRegularTasks());
+      // Cancel associated accountability task in background (fire-and-forget)
+      unawaited(_cancelAssociatedAccountabilityTask(event.taskId));
+    } catch (e) {
+      emit(RegularTaskError('Failed to delete regular task: $e'));
+    }
+  }
+
+  Future<void> _cancelAssociatedAccountabilityTask(String taskId) async {
+    try {
       final svc = AccountabilityService();
-      final task = await svc.fetchTaskByChallengeId(event.taskId);
+      final task = await svc.fetchTaskByChallengeId(taskId);
       if (task != null) {
         await svc.cancelAccountabilityTask(task.id);
       }
-      add(LoadRegularTasks());
     } catch (e) {
-      emit(RegularTaskError('Failed to delete regular task: $e'));
+      if (kDebugMode) {
+        debugPrint('[_cancelAssociatedAccountabilityTask] error: $e');
+      }
     }
   }
 

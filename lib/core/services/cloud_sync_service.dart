@@ -364,6 +364,20 @@ class CloudSyncService {
     await ref.set(data, SetOptions(merge: true));
   }
 
+  /// Updates the user's photo URL in Firestore.
+  Future<void> updateUserPhotoUrl(String uid, String photoUrl) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'photoUrl': photoUrl,
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[CloudSync] Failed to update photoUrl: $e');
+      }
+    }
+  }
+
   // ── Consent ──────────────────────────────────────────────────────────────
 
   Future<bool> hasConsentBeenGiven() async {
