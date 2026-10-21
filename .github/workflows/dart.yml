@@ -20,6 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Keep Gradle on the Java version supported by this Android toolchain.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       # ── Setup Flutter ──────────────────────────────────────────────
       - uses: subosito/flutter-action@v2
         with:
