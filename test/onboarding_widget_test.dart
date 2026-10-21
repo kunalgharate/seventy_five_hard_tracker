@@ -74,7 +74,8 @@ void main() {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
-    await tester.tap(find.text('Continue as Guest (Local Only)').first, warnIfMissed: false);
+    await tester.tap(find.text('Continue as Guest (Local Only)').first,
+        warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -87,7 +88,8 @@ void main() {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
-    await tester.tap(find.text('Continue as Guest (Local Only)').first, warnIfMissed: false);
+    await tester.tap(find.text('Continue as Guest (Local Only)').first,
+        warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -104,12 +106,12 @@ void main() {
     expect(find.byType(TextField), findsNWidgets(initialFieldCount));
   });
 
-  testWidgets('onboarding challenge title input updates state',
-      (tester) async {
+  testWidgets('onboarding challenge title input updates state', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
-    await tester.tap(find.text('Continue as Guest (Local Only)').first, warnIfMissed: false);
+    await tester.tap(find.text('Continue as Guest (Local Only)').first,
+        warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -119,12 +121,12 @@ void main() {
     expect(find.text('Exercise'), findsOneWidget);
   });
 
-  testWidgets('onboarding shows reset mode selection',
-      (tester) async {
+  testWidgets('onboarding shows reset mode selection', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
-    await tester.tap(find.text('Continue as Guest (Local Only)').first, warnIfMissed: false);
+    await tester.tap(find.text('Continue as Guest (Local Only)').first,
+        warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -135,12 +137,12 @@ void main() {
     expect(find.text('Soft Reset'), findsOneWidget);
   });
 
-  testWidgets('onboarding completes without crashing',
-      (tester) async {
+  testWidgets('onboarding completes without crashing', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
-    await tester.tap(find.text('Continue as Guest (Local Only)').first, warnIfMissed: false);
+    await tester.tap(find.text('Continue as Guest (Local Only)').first,
+        warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 

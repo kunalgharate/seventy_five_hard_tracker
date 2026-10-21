@@ -286,7 +286,8 @@ class PhotoSyncService {
       debugPrint('[PhotoSyncService] uploadAvatar: uid=$uid');
       try {
         final stat = await file.stat();
-        debugPrint('[PhotoSyncService] uploadAvatar: file size=${stat.size} bytes');
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: file size=${stat.size} bytes');
       } catch (_) {}
     }
 
@@ -303,13 +304,15 @@ class PhotoSyncService {
       final compressed = await _compressImage(file);
       if (kDebugMode) {
         final s = await compressed.stat();
-        debugPrint('[PhotoSyncService] uploadAvatar: compressed size=${s.size} bytes');
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: compressed size=${s.size} bytes');
       }
 
       final result = await _uploadToCloudinaryAvatar(compressed, uid: uid);
       if (result == null) {
         if (kDebugMode) {
-          debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary upload returned null');
+          debugPrint(
+              '[PhotoSyncService] uploadAvatar: Cloudinary upload returned null');
         }
         return null;
       }
@@ -322,7 +325,8 @@ class PhotoSyncService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PhotoSyncService] uploadAvatar: FAILED — $e');
-        debugPrint('[PhotoSyncService] uploadAvatar: error type=${e.runtimeType}');
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: error type=${e.runtimeType}');
       }
       return null;
     }
@@ -362,8 +366,8 @@ class PhotoSyncService {
       }
       final apiKey = signed.apiKey ?? configuration.apiKey;
       final cloudName = signed.cloudName ?? configuration.cloudName;
-      // ignore: unnecessary_null_comparison
-      if (apiKey == null || apiKey.isEmpty || cloudName == null || cloudName.isEmpty) {
+      // cloudName is guaranteed non-null (CloudinarySignerConfiguration.cloudName is non-nullable)
+      if (apiKey == null || apiKey.isEmpty || cloudName.isEmpty) {
         throw const CloudinarySignerException(
           'Cloudinary signer response/configuration did not provide api key '
           'and cloud name.',

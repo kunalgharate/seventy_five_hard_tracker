@@ -101,8 +101,7 @@ void main() {
     expect(find.text('Insights screen'), findsOneWidget);
   });
 
-  testWidgets('navigation preserves state when switching tabs',
-      (tester) async {
+  testWidgets('navigation preserves state when switching tabs', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -132,8 +131,7 @@ void main() {
     expect(find.text('Today screen'), findsOneWidget);
   });
 
-  testWidgets('navigation bar shows all six tab labels',
-      (tester) async {
+  testWidgets('navigation bar shows all six tab labels', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -145,8 +143,7 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
   });
 
-  testWidgets('navigation bar is always visible',
-      (tester) async {
+  testWidgets('navigation bar is always visible', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -159,8 +156,7 @@ void main() {
     expect(find.byType(BottomNavigationBar), findsOneWidget);
   });
 
-  testWidgets('navigation supports programmatic tab selection',
-      (tester) async {
+  testWidgets('navigation supports programmatic tab selection', (tester) async {
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(milliseconds: 500));
 

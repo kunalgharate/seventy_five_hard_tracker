@@ -118,18 +118,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (picked == null) return;
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Uploading avatar...'), duration: Duration(seconds: 30)),
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(
+          content: Text('Uploading avatar...'),
+          duration: Duration(seconds: 30)),
     );
 
     final photoService = PhotoSyncService();
     final url = await photoService.uploadAvatar(File(picked.path), user.uid);
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    messenger.hideCurrentSnackBar();
 
     if (url == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to upload avatar. Please try again.'), backgroundColor: Colors.red),
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('Failed to upload avatar. Please try again.'),
+            backgroundColor: Colors.red),
       );
       return;
     }
@@ -141,13 +146,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Refresh cached profile
       await _cacheProfile(user);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Avatar updated successfully!'), backgroundColor: Colors.green),
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('Avatar updated successfully!'),
+            backgroundColor: Colors.green),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update profile: $e'), backgroundColor: Colors.red),
+      messenger.showSnackBar(
+        SnackBar(
+            content: Text('Failed to update profile: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
@@ -331,7 +340,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.3),
+                                        color:
+                                            Colors.black.withValues(alpha: 0.3),
                                         blurRadius: 4,
                                         offset: const Offset(0, 2),
                                       ),
