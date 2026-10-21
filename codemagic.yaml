@@ -59,7 +59,7 @@ workflows:
         script: |
           flutter build appbundle --release \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$((BUILD_NUMBER))
+            --build-number=$BUILD_NUMBER
     
     artifacts:
       - build/**/outputs/**/*.aab
