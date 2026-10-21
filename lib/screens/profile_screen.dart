@@ -938,65 +938,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _isSigningOut = true);
-    final db = context.read<ChallengeBloc>().repository;
-    final taskRepo = context.read<RegularTaskBloc>().repository;
-
-    // Back up this account's data first. The service returns a safe decision
-    // and never clears local data when backup or cleanup fails.
-    late final SignOutPreparationStatus preparation;
     try {
-      preparation = await _syncService.prepareForSignOut(db, taskRepo);
-    } catch (_) {
-      // Treat an unexpected backup error exactly like a reported failure:
-      // never proceed to local cleanup or auth sign-out.
-      preparation = SignOutPreparationStatus.backupFailed;
-    }
-    if (!preparation.maySignOut) {
-      if (mounted) {
-        setState(() => _isSigningOut = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              preparation == SignOutPreparationStatus.backupFailed
-                  ? 'Backup failed. You are still signed in and your local data was kept.'
-                  : 'Local cleanup failed. You are still signed in and your local data was kept.',
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
+
+      // Back up this account's data first. The service returns a safe decision
+      // and never clears local data when backup or cleanup fails.
+      late final SignOutPreparationStatus preparation;
+      try {
+        preparation = await _syncService.prepareForSignOut(db, taskRepo);
+      } catch (_) {
+        // Treat an unexpected backup error exactly like a reported failure:
+        // never proceed to local cleanup or auth sign-out.
+        preparation = SignOutPreparationStatus.backupFailed;
+      }
+      if (!preparation.maySignOut) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                preparation == SignOutPreparationStatus.backupFailed
+                    ? 'Backup failed. You are still signed in and your local data was kept.'
+                    : 'Local cleanup failed. You are still signed in and your local data was kept.',
+              ),
+              backgroundColor: Colors.red,
             ),
-            backgroundColor: Colors.red,
-          ),
+          );
+        }
+        return;
+      }
+
+      // Reminders were scheduled from this account's tasks — cancel them.
+      try {
+        await SmartNotificationService()
+            .cancelAllRemindersForDate(DateTime.now());
+      } catch (_) {}
+      try {
+        await NotificationService().cancelAllNotifications();
+      } catch (_) {}
+
+      // Drop cached partner read-access lists from the previous account.
+      try {
+        AccountabilityService().invalidateAllowedReaders();
+      } catch (_) {}
+
+      await _syncService.signOut();
+      await _clearCachedProfile();
+
+      if (mounted) {
+        context.read<ChallengeBloc>().add(LoadChallengeData());
+        context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
+        context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+        setState(() => _lastSync = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Signed out'), backgroundColor: Colors.grey),
         );
       }
-      return;
+    } finally {
+      if (mounted) setState(() => _isSigningOut = false);
     }
-
-    // Reminders were scheduled from this account's tasks — cancel them.
-    try {
-      await SmartNotificationService()
-          .cancelAllRemindersForDate(DateTime.now());
-    } catch (_) {}
-    try {
-      await NotificationService().cancelAllNotifications();
-    } catch (_) {}
-
-    // Drop cached partner read-access lists from the previous account.
-    try {
-      AccountabilityService().invalidateAllowedReaders();
-    } catch (_) {}
-
-    await _syncService.signOut();
-    await _clearCachedProfile();
-
-    if (mounted) {
-      context.read<ChallengeBloc>().add(LoadChallengeData());
-      context.read<RegularTaskBloc>().add(LoadRegularTasks());
-      context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
-      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
-      setState(() => _lastSync = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Signed out'), backgroundColor: Colors.grey),
-      );
-    }
-    if (mounted) setState(() => _isSigningOut = false);
   }
 
   /// Manual "Sync now" — calls the existing [CloudSyncService.syncToCloud]

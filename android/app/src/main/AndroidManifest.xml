@@ -27,7 +27,7 @@
 
 
 <application
-        android:label="DailyMettle: Habit & Challenge"
+        android:label="DailyMettle: Habit &amp; Challenge"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:requestLegacyExternalStorage="true"

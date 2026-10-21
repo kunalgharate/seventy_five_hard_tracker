@@ -91,7 +91,8 @@ class CloudinarySignedUpload {
 }
 
 abstract interface class CloudinaryUploadSigner {
-  Future<CloudinarySignedUpload> sign(CloudinarySignRequest request);
+  Future<CloudinarySignedUpload> sign(CloudinarySignRequest request,
+      {String? authToken});
 }
 
 /// HTTP implementation of the signer endpoint contract:
@@ -110,17 +111,26 @@ class HttpCloudinaryUploadSigner implements CloudinaryUploadSigner {
 
   final Uri endpoint;
   final http.Client _client;
+  static const _signTimeout = Duration(seconds: 15);
 
   @override
-  Future<CloudinarySignedUpload> sign(CloudinarySignRequest request) async {
-    final response = await _client.post(
-      endpoint,
-      headers: const {
-        'accept': 'application/json',
-        'content-type': 'application/json',
-      },
-      body: jsonEncode(request.toJson()),
-    );
+  Future<CloudinarySignedUpload> sign(CloudinarySignRequest request,
+      {String? authToken}) async {
+    final headers = <String, String>{
+      'accept': 'application/json',
+      'content-type': 'application/json',
+    };
+    if (authToken != null && authToken.isNotEmpty) {
+      headers['authorization'] = 'Bearer $authToken';
+    }
+
+    final response = await _client
+        .post(
+          endpoint,
+          headers: headers,
+          body: jsonEncode(request.toJson()),
+        )
+        .timeout(_signTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudinarySignerException(

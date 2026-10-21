@@ -77,25 +77,6 @@ void main() async {
   Hive.registerAdapter(RegularTaskCompletionAdapter());
   Hive.registerAdapter(RegularTaskAdapter());
 
-  // Migrate legacy regular-type challenge tasks before the independent Habits
-  // BLoC starts loading. The operation is idempotent and remains local-only.
-  try {
-    final challengeRepository = DatabaseRepository();
-    final regularTaskRepository = RegularTaskRepository();
-    await challengeRepository.init();
-    await regularTaskRepository.init();
-    final activeSession = await challengeRepository.getActiveSession();
-    if (activeSession != null) {
-      await challengeRepository.adoptLegacyProgressForSession(activeSession);
-    }
-    await RegularTaskMigrationService.migrateRegularTasks(
-      challengeRepository,
-      regularTaskRepository,
-    );
-  } catch (e) {
-    if (kDebugMode) print('Regular-task migration failed: $e');
-  }
-
   final smartNotifications = SmartNotificationService();
   try {
     await smartNotifications.initialize();
@@ -122,6 +103,25 @@ void main() async {
     if (kDebugMode) print('Firebase init failed (app works offline): $e');
   }
   // Listener starts only after the reconnect callback is installed.
+
+  // Migrate legacy regular-type challenge tasks AFTER Firebase is initialized
+  // (so the migration can be run again after cloud restore).
+  try {
+    final challengeRepository = DatabaseRepository();
+    final regularTaskRepository = RegularTaskRepository();
+    await challengeRepository.init();
+    await regularTaskRepository.init();
+    final activeSession = await challengeRepository.getActiveSession();
+    if (activeSession != null) {
+      await challengeRepository.adoptLegacyProgressForSession(activeSession);
+    }
+    await RegularTaskMigrationService.migrateRegularTasks(
+      challengeRepository,
+      regularTaskRepository,
+    );
+  } catch (e) {
+    if (kDebugMode) print('Regular-task migration failed: $e');
+  }
 
   // Reconnect hook: when the device regains internet, push local changes to
   // the cloud (BUG-06) and flush any tasks queued while offline.
@@ -583,6 +583,24 @@ class _InitialScreenState extends State<InitialScreen>
               CloudSyncService.hasRestorablePayload(cloudData)) {
             await bloc.repository.restoreFromJson(cloudData);
             await taskRepo.restoreFromJson(cloudData);
+            // Run migration again after cloud restore to convert any
+            // legacy sessions restored from cloud into regular tasks.
+            try {
+              final challengeRepository = bloc.repository;
+              final regularTaskRepository = taskRepo;
+              final activeSession =
+                  await challengeRepository.getActiveSession();
+              if (activeSession != null) {
+                await challengeRepository
+                    .adoptLegacyProgressForSession(activeSession);
+              }
+              await RegularTaskMigrationService.migrateRegularTasks(
+                challengeRepository,
+                regularTaskRepository,
+              );
+            } catch (e) {
+              if (kDebugMode) print('Post-restore migration failed: $e');
+            }
             if (mounted) {
               bloc.add(LoadChallengeData());
               context.read<RegularTaskBloc>().add(LoadRegularTasks());

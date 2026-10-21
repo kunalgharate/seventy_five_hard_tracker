@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -60,6 +61,7 @@ class CloudBackupKeyStore {
   final SecureKeyValueStore _storage;
   final SecureRandomBytes _randomBytes;
   final Map<String, Future<Uint8List>> _inFlight = {};
+  final Map<String, Completer<void>> _deleting = {};
 
   /// Returns the platform-storage key for an account without exposing the
   /// account's key material. Firebase UIDs are opaque strings and are safe to
@@ -86,6 +88,19 @@ class CloudBackupKeyStore {
     final existing = _inFlight[storageKey];
     if (existing != null) return existing;
 
+    // If a deletion is in progress for this key, wait for it to complete
+    // and then re-check if the key was recreated.
+    final deleting = _deleting[storageKey];
+    if (deleting != null) {
+      return deleting.future.then((_) {
+        // After deletion completes, check if a new key was created
+        final newInFlight = _inFlight[storageKey];
+        if (newInFlight != null) return newInFlight;
+        // No new key created, proceed with normal getOrCreateKey logic
+        return getOrCreateKey(uid);
+      });
+    }
+
     late final Future<Uint8List> pending;
     pending = _getOrCreateKey(storageKey).whenComplete(() {
       if (identical(_inFlight[storageKey], pending)) {
@@ -99,8 +114,30 @@ class CloudBackupKeyStore {
   /// Deletes only the requested account's key. Sign-out does not call this;
   /// retaining the key allows that same account to restore its backups after a
   /// later sign-in while still isolating it from other accounts.
-  Future<void> deleteKey(String uid) =>
-      _storage.delete(storageKeyForAccount(uid));
+  ///
+  /// This method serializes with in-flight `getOrCreateKey` operations:
+  /// it waits for any pending create to complete, then deletes the key,
+  /// and blocks new `getOrCreateKey` calls until deletion is done.
+  Future<void> deleteKey(String uid) async {
+    final storageKey = storageKeyForAccount(uid);
+
+    // Wait for any in-flight getOrCreateKey to complete
+    final inFlight = _inFlight[storageKey];
+    if (inFlight != null) {
+      await inFlight;
+    }
+
+    // Mark deletion as in progress to block new getOrCreateKey calls
+    final completer = Completer<void>();
+    _deleting[storageKey] = completer;
+
+    try {
+      await _storage.delete(storageKey);
+    } finally {
+      _deleting.remove(storageKey);
+      completer.complete();
+    }
+  }
 
   Future<Uint8List> _getOrCreateKey(String storageKey) async {
     final existing = _decodeKey(

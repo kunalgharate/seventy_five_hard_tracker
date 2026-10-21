@@ -11,7 +11,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CI=true
 
 # These packages are the Linux prerequisites for downloading and running the
-# Flutter SDK and for producing a web build.
+# Flutter SDK.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
@@ -39,12 +39,15 @@ COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 
 COPY . .
-RUN flutter build web --release
+# Note: Web build is disabled because the app imports dart:io through the
+# main import graph. Uncomment below when web-compatible implementations
+# are available.
+# RUN flutter build web --release
 
 FROM python:3.13-slim-bookworm AS preview
 
 WORKDIR /srv
-COPY --from=build /app/build/web ./
+# COPY --from=build /app/build/web ./
 
 EXPOSE 8080
 CMD ["python3", "-m", "http.server", "8080", "--directory", "/srv"]

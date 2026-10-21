@@ -56,13 +56,22 @@ class PremiumEntitlement {
     }
 
     final status = _normalizedString(data['status']);
-    final explicitFlag = _readBool(
+    // Read the explicit flag for backwards compatibility, but don't use it
+    // for the premium decision - only recognized status values grant access.
+    _readBool(
       data['isPremium'] ??
           data['premium'] ??
           data['entitled'] ??
           data['active'],
     );
-    var premium = explicitFlag ?? _activeStatusValues.contains(status);
+
+    // Require a recognized active status; explicit boolean flag alone is
+    // insufficient. This prevents a malformed document with isPremium: true
+    // but unknown/missing status from granting access.
+    var premium = false;
+    if (_activeStatusValues.contains(status)) {
+      premium = true;
+    }
 
     // A revoked/cancelled state wins over a stale boolean flag.
     if (_inactiveStatusValues.contains(status)) premium = false;
@@ -132,10 +141,18 @@ class PremiumEntitlement {
     if (value is Timestamp) return value.toDate().toUtc();
     if (value is DateTime) return value.toUtc();
     if (value is int) {
-      return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true);
+      try {
+        return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true);
+      } on RangeError {
+        return null;
+      }
     }
     if (value is double && value.isFinite) {
-      return DateTime.fromMillisecondsSinceEpoch(value.toInt(), isUtc: true);
+      try {
+        return DateTime.fromMillisecondsSinceEpoch(value.toInt(), isUtc: true);
+      } on RangeError {
+        return null;
+      }
     }
     if (value is String) {
       return DateTime.tryParse(value)?.toUtc();
@@ -222,9 +239,34 @@ class PremiumEntitlementService {
   Stream<bool> get stream => watchIsPremium();
 
   Stream<bool> watchIsPremium({String? uid}) async* {
-    final resolvedUid = uid ?? currentUid;
+    // If an explicit UID is provided (e.g., for background workers), use it
+    // without rebinding.
+    if (uid != null) {
+      yield* _watchIsPremiumForUid(uid);
+      return;
+    }
+
+    // Otherwise, track the current user's UID and rebind when it changes.
+    final auth = _auth;
+    if (auth == null) {
+      yield false;
+      return;
+    }
+
+    await for (final user in auth.authStateChanges()) {
+      if (user == null) {
+        yield false;
+        continue;
+      }
+      // Yield the entitlement stream for this user. When the user changes,
+      // this outer loop will cancel the inner stream and start a new one.
+      yield* _watchIsPremiumForUid(user.uid);
+    }
+  }
+
+  Stream<bool> _watchIsPremiumForUid(String resolvedUid) async* {
     final firestore = _firestore;
-    if (resolvedUid == null || firestore == null) {
+    if (firestore == null) {
       yield false;
       return;
     }

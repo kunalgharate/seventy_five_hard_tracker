@@ -65,7 +65,6 @@ functions/node_modules/
 
 # Firestore rules tests
 rules-tests/node_modules/
-rules-tests/package-lock.json
 rules-tests/firestore-debug.log
 
 # Build artifacts

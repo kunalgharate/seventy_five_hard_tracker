@@ -512,8 +512,18 @@ class AnalyticsService {
 
   Future<void> setCustomKey(String key, dynamic value) async {
     if (!_isFirebaseReady || _isSensitiveKey(key.trim().toLowerCase())) return;
-    final safeValue = sanitizeParameters({'status': value})['status'];
+
+    // Crashlytics supports: String, int, double, bool
+    // We allow these through without the analytics parameter sanitization.
+    Object? safeValue;
+    if (value is String || value is int || value is double || value is bool) {
+      safeValue = value;
+    } else if (value != null) {
+      safeValue = value.toString();
+    }
+
     if (safeValue == null) return;
+
     try {
       await FirebaseCrashlytics.instance.setCustomKey(key, safeValue);
     } catch (_) {

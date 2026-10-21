@@ -126,6 +126,10 @@ class RegularTaskRepository {
   ///   empty;
   /// - an omitted key leaves that local collection unchanged. This lets
   ///   partial backups (for example, tasks only) restore safely.
+  ///
+  /// A present but `null` value is treated as malformed data and causes the
+  /// restore to fail, preventing an authenticated attacker from wiping local
+  /// data by sending a signed but malformed payload.
   Future<void> restoreFromJson(Map<String, dynamic> data) async {
     await _ensureInitialized();
 
@@ -133,17 +137,28 @@ class RegularTaskRepository {
     // failed restore into an empty local collection.
     List<RegularTask>? tasksToRestore;
     if (data.containsKey('regularTasks')) {
-      final tasks = (data['regularTasks'] as List?) ?? [];
+      final rawTasks = data['regularTasks'];
+      if (rawTasks == null || rawTasks is! List) {
+        throw const FormatException(
+          'regularTasks must be a non-null list when present.',
+        );
+      }
       tasksToRestore = [
-        for (final t in tasks) RegularTask.fromJson(t as Map<String, dynamic>),
+        for (final t in rawTasks)
+          RegularTask.fromJson(t as Map<String, dynamic>),
       ];
     }
 
     List<RegularTaskCompletion>? completionsToRestore;
     if (data.containsKey('regularCompletions')) {
-      final completions = (data['regularCompletions'] as List?) ?? [];
+      final rawCompletions = data['regularCompletions'];
+      if (rawCompletions == null || rawCompletions is! List) {
+        throw const FormatException(
+          'regularCompletions must be a non-null list when present.',
+        );
+      }
       completionsToRestore = [
-        for (final c in completions)
+        for (final c in rawCompletions)
           RegularTaskCompletion.fromJson(c as Map<String, dynamic>),
       ];
     }

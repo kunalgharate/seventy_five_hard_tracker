@@ -49,6 +49,13 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
   DatabaseRepository get repository => _repository;
 
+  /// Invalidates cached permission maps so they are re-fetched on next toggle.
+  /// Call this after creating/accepting/removing accountability tasks.
+  void invalidatePermissionCaches() {
+    _cachedAssignedMap = null;
+    _cachedAccountableForMap = null;
+  }
+
   List<DailyProgress> _progressForSession(ChallengeSession session) {
     return _repository.getProgressForSession(
       session.startDate,
@@ -227,7 +234,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         isCompleted: false,
         currentDay: 1,
         resetMode: event.resetMode == 'soft' ? 'soft' : 'hard',
-        totalDaysTarget: event.totalDaysTarget.clamp(1, 3650),
+        totalDaysTarget: event.resetMode == 'soft'
+            ? event.totalDaysTarget.clamp(1, 3650)
+            : 75, // Hard mode always uses 75 days
       );
 
       await _repository.saveSession(newSession);

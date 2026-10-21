@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
@@ -59,7 +60,7 @@ class PhotoSyncService {
 
   @visibleForTesting
   bool get hasConfiguredSigner =>
-      _signer != null && (_configuration?.isValid ?? false);
+      _signer != null && (_configuration?.isValid ?? _signer != null);
 
   /// Pick a photo from camera or gallery.
   ///
@@ -222,7 +223,17 @@ class PhotoSyncService {
           'timestamp': timestamp.toString(),
         },
       );
-      final signed = await signer.sign(request);
+      // Get Firebase ID token for authenticated signer request
+      String? authToken;
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          authToken = await user.getIdToken();
+        }
+      } catch (_) {
+        // Token unavailable; proceed without it (backend may reject)
+      }
+      final signed = await signer.sign(request, authToken: authToken);
       if (signed.timestamp.toString() != request.parameters['timestamp']) {
         throw const CloudinarySignerException(
           'Cloudinary signer timestamp does not match the requested payload.',
