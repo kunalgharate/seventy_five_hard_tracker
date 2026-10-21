@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import FirebaseCore
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -14,6 +15,12 @@ import FirebaseCore
     if FirebaseApp.app() == nil {
       FirebaseApp.configure()
     }
+    
+    // Set UNUserNotificationCenter delegate to show notifications when app is in foreground on iOS 10+
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    }
+
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
