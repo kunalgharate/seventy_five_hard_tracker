@@ -10,18 +10,6 @@ import 'package:seventy_five_hard_tracker/screens/onboarding_screen.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 
 void main() {
-  setUp(() {
-    // Use a taller screen to accommodate the onboarding UI
-    TestWidgetsFlutterBinding.ensureInitialized();
-    final binding = TestWidgetsFlutterBinding.instance;
-    binding.window.physicalSizeTestValue = const Size(800, 1400);
-  });
-
-  tearDown(() {
-    final binding = TestWidgetsFlutterBinding.instance;
-    binding.window.clearPhysicalSizeTestValue();
-  });
-
   Widget buildHarness() {
     final challengeBloc = ChallengeBloc(
       repository: DatabaseRepository(),
@@ -52,6 +40,9 @@ void main() {
 
   testWidgets('onboarding renders the first page with challenge inputs',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -63,6 +54,9 @@ void main() {
 
   testWidgets('onboarding shows disclaimer about 75 Hard independence',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -77,6 +71,9 @@ void main() {
 
   testWidgets('onboarding guest flow shows challenge setup page',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -93,6 +90,9 @@ void main() {
 
   testWidgets('onboarding allows adding and removing challenges',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -120,6 +120,9 @@ void main() {
   });
 
   testWidgets('onboarding challenge title input updates state', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -136,6 +139,9 @@ void main() {
   });
 
   testWidgets('onboarding shows reset mode selection', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 
@@ -155,6 +161,9 @@ void main() {
   });
 
   testWidgets('onboarding completes without crashing', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(buildHarness());
     await tester.pump(const Duration(seconds: 3));
 

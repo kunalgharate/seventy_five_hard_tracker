@@ -70,7 +70,7 @@ class _MockRegularTaskRepository extends RegularTaskRepository {
           DateTime start, DateTime end) =>
       [];
 
-  @override
+  // ignore: unused_element
   String _dateToKey(DateTime date) => '';
 
   @override
@@ -94,11 +94,7 @@ class _MockDatabaseRepository extends DatabaseRepository {
   @override
   Future<void> saveSession(ChallengeSession session) async {}
 
-  @override
   Future<void> deleteSession(String sessionId) async {}
-
-  @override
-  Future<void> saveDailyProgress(DailyProgress progress) async {}
 
   @override
   DailyProgress? getDailyProgress(DateTime date, {String? sessionId}) => null;
@@ -117,10 +113,7 @@ class _MockDatabaseRepository extends DatabaseRepository {
   @override
   T? getSetting<T>(String key) => null;
 
-  @override
-  String _dateToKey(DateTime date) => '';
-
-  @override
+  // ignore: unused_element
   String _progressKey(DateTime date, String? sessionId) => '';
 
   @override
@@ -233,8 +226,7 @@ void main() {
 
   testWidgets('navigation preserves state when switching tabs', (tester) async {
     int tapCount = 0;
-    final statefulScreen =
-        () => _StatefulCounterScreen(onTap: () => tapCount++);
+    Widget statefulScreen() => _StatefulCounterScreen(onTap: () => tapCount++);
 
     await tester.pumpWidget(
       MultiBlocProvider(
