@@ -9,7 +9,6 @@ import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dar
 import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
-import 'package:seventy_five_hard_tracker/services/simple_background_check_service.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -22,7 +21,10 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+  const MainNavigationScreen({super.key, this.screenBuilders});
+
+  @visibleForTesting
+  final List<Widget Function()>? screenBuilders;
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -35,18 +37,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   final Set<int> _visitedTabs = {0};
   final Map<int, Widget> _builtScreens = {};
 
-  late final List<Widget Function()> _screenBuilders = [
-    () => HomeScreen(
-          onGoToSquad: () => _selectTab(4),
-        ),
-    () => const RegularTasksScreen(),
-    () => const JournalScreen(),
-    () => const InsightsScreen(),
-    () => AccountabilityScreen(
-          onGoToProfile: () => _selectTab(5),
-        ),
-    () => const ProfileScreen(),
-  ];
+  late final List<Widget Function()> _screenBuilders = widget.screenBuilders ??
+      [
+        () => HomeScreen(
+              onGoToSquad: () => _selectTab(4),
+            ),
+        () => const RegularTasksScreen(),
+        () => const JournalScreen(),
+        () => const InsightsScreen(),
+        () => AccountabilityScreen(
+              onGoToProfile: () => _selectTab(5),
+            ),
+        () => const ProfileScreen(),
+      ];
 
   @override
   void initState() {
@@ -70,7 +73,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    unawaited(SimpleBackgroundCheckService().checkOnAppOpen());
     if (FirebaseAuth.instance.currentUser != null) {
       context.read<AccountabilityBloc>().add(CheckExpiredTasks());
     }

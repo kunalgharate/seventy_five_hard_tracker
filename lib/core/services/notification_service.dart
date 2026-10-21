@@ -45,7 +45,15 @@ class NotificationService {
 
     const androidSettings =
         AndroidInitializationSettings('@drawable/ic_notification');
-    const initSettings = InitializationSettings(android: androidSettings);
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     // Create notification channels with tune.wav
     final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
@@ -116,6 +124,18 @@ class NotificationService {
       // in system settings; scheduling still falls back when denied.
       await androidImplementation.requestExactAlarmsPermission();
     }
+
+    final iosImplementation =
+        _notifications.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+
+    if (iosImplementation != null) {
+      await iosImplementation.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
   }
 
   // Test method to send immediate notification
@@ -132,6 +152,11 @@ class NotificationService {
             channelDescription: 'Test notifications to verify system works',
             importance: Importance.high,
             priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
           ),
         ),
       );
@@ -158,6 +183,11 @@ class NotificationService {
             channelDescription: 'Test notifications to verify system works',
             importance: Importance.high,
             priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -190,6 +220,11 @@ class NotificationService {
             importance: Importance.high,
             priority: Priority.high,
           ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
@@ -219,6 +254,11 @@ class NotificationService {
             sound: RawResourceAndroidNotificationSound('tune'),
             playSound: true,
             enableVibration: true,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -312,6 +352,11 @@ class NotificationService {
               sound: RawResourceAndroidNotificationSound('tune'),
               playSound: true,
               enableVibration: true,
+            ),
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -495,6 +540,11 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.max,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       ),
     );
   }
@@ -512,6 +562,11 @@ class NotificationService {
               'Notification for completing the 75 Hard Challenge',
           importance: Importance.max,
           priority: Priority.max,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       ),
     );

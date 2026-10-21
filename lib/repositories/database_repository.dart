@@ -91,20 +91,71 @@ class DatabaseRepository {
   // Daily Progress methods
   Future<void> saveDailyProgress(DailyProgress progress) async {
     await _ensureInitialized();
-    final key = _dateToKey(progress.date);
+    final key = _progressKey(progress.date, progress.sessionId);
     await _progressBox!.put(key, progress);
   }
 
-  DailyProgress? getDailyProgress(DateTime date) {
-    final key = _dateToKey(date);
-    return _progressBox?.get(key);
+  /// Adopts date-only progress written by pre-session-scoped versions of the
+  /// app into [session]. Legacy records are ambiguous when several historical
+  /// sessions exist, so only the active session is eligible for adoption.
+  /// Existing session-scoped records always win.
+  Future<void> adoptLegacyProgressForSession(ChallengeSession session) async {
+    await _ensureInitialized();
+    final legacyEntries = <MapEntry<dynamic, DailyProgress>>[];
+    for (final entry in _progressBox!.toMap().entries) {
+      if (entry.key is String &&
+          RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(entry.key as String) &&
+          entry.value.sessionId == null) {
+        legacyEntries.add(MapEntry(entry.key, entry.value));
+      }
+    }
+
+    for (final entry in legacyEntries) {
+      final date = entry.value.date;
+      final day = DateTime(date.year, date.month, date.day);
+      final start = DateTime(
+        session.startDate.year,
+        session.startDate.month,
+        session.startDate.day,
+      );
+      final end = start.add(Duration(days: session.totalDaysTarget - 1));
+      if (day.isBefore(start) || day.isAfter(end)) continue;
+
+      final scopedKey = _progressKey(date, session.id);
+      if (_progressBox!.get(scopedKey) == null) {
+        await _progressBox!.put(
+          scopedKey,
+          entry.value.copyWith(sessionId: session.id),
+        );
+      }
+      await _progressBox!.delete(entry.key);
+    }
   }
 
-  List<DailyProgress> getProgressForSession(DateTime startDate) {
+  /// Reads progress for a specific session. Callers without a session ID may
+  /// still read legacy date-only records for migration tooling.
+  DailyProgress? getDailyProgress(DateTime date, {String? sessionId}) {
+    final box = _progressBox;
+    if (box == null) return null;
+
+    if (sessionId != null) {
+      final sessionProgress = box.get(_progressKey(date, sessionId));
+      if (sessionProgress != null) return sessionProgress;
+    }
+
+    if (sessionId != null) return null;
+    return box.get(_dateToKey(date));
+  }
+
+  List<DailyProgress> getProgressForSession(
+    DateTime startDate, {
+    String? sessionId,
+    int totalDaysTarget = 75,
+  }) {
     final List<DailyProgress> sessionProgress = [];
-    for (int i = 0; i < 75; i++) {
+    for (int i = 0; i < totalDaysTarget; i++) {
       final date = startDate.add(Duration(days: i));
-      final progress = getDailyProgress(date);
+      final progress = getDailyProgress(date, sessionId: sessionId);
       if (progress != null) {
         sessionProgress.add(progress);
       }
@@ -127,6 +178,11 @@ class DatabaseRepository {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  String _progressKey(DateTime date, String? sessionId) {
+    final dateKey = _dateToKey(date);
+    return sessionId == null ? dateKey : '$sessionId|$dateKey';
+  }
+
   Future<bool> hasActiveSession() async {
     await _ensureInitialized();
     return _sessionBox!.values.any((session) =>
@@ -147,23 +203,53 @@ class DatabaseRepository {
 
   Future<void> restoreFromJson(Map<String, dynamic> data) async {
     await _ensureInitialized();
-    await clearAllData();
 
     final uid = _currentUid;
-    final sessions = (data['sessions'] as List?) ?? [];
-    for (final s in sessions) {
-      var session = ChallengeSession.fromJson(s as Map<String, dynamic>);
-      if (session.ownerUid == null && uid != null) {
-        session = session.copyWith(ownerUid: uid);
-      }
-      await _sessionBox!.put(session.id, session);
+    // Replacement semantics are field-scoped. A present collection replaces
+    // the local collection, including an intentionally empty array. An
+    // omitted collection is left untouched so partial backups are supported.
+    List<ChallengeSession>? sessionsToRestore;
+    if (data.containsKey('sessions')) {
+      final sessions = (data['sessions'] as List?) ?? [];
+      sessionsToRestore = [
+        for (final s in sessions)
+          _sessionFromJson(s as Map<String, dynamic>, uid: uid),
+      ];
     }
 
-    final progress = (data['progress'] as List?) ?? [];
-    for (final p in progress) {
-      final dp = DailyProgress.fromJson(p as Map<String, dynamic>);
-      final key = _dateToKey(dp.date);
-      await _progressBox!.put(key, dp);
+    List<DailyProgress>? progressToRestore;
+    if (data.containsKey('progress')) {
+      final progress = (data['progress'] as List?) ?? [];
+      progressToRestore = [
+        for (final p in progress)
+          DailyProgress.fromJson(p as Map<String, dynamic>),
+      ];
     }
+
+    if (sessionsToRestore != null) {
+      await _sessionBox!.clear();
+      for (final session in sessionsToRestore) {
+        await _sessionBox!.put(session.id, session);
+      }
+    }
+
+    if (progressToRestore != null) {
+      await _progressBox!.clear();
+      for (final dp in progressToRestore) {
+        final key = _progressKey(dp.date, dp.sessionId);
+        await _progressBox!.put(key, dp);
+      }
+    }
+  }
+
+  ChallengeSession _sessionFromJson(
+    Map<String, dynamic> json, {
+    required String? uid,
+  }) {
+    var session = ChallengeSession.fromJson(json);
+    if (session.ownerUid == null && uid != null) {
+      session = session.copyWith(ownerUid: uid);
+    }
+    return session;
   }
 }

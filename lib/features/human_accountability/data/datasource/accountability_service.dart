@@ -2375,25 +2375,31 @@ class AccountabilityService {
   }
 
   /// Save collaborators for a task to Firestore.
+  ///
+  /// The current user is recorded as the task owner (creator). This ensures
+  /// the Firestore security rules (which require owner.uid == auth.uid for
+  /// writes) are satisfied. For old tasks without an existing collaborators
+  /// document, this creates the document with the current user as owner.
   Future<bool> saveTaskCollaborators({
     required String taskId,
-    required Collaborator owner,
     required List<Collaborator> collaborators,
   }) async {
     if (!_isReady) return false;
+    final me = currentUserAsCollaborator;
+    if (me == null) return false;
     final path = 'task_collaborators/$taskId';
     if (kDebugMode) {
       debugPrint(
-          '[AccountabilityService] saveTaskCollaborators: path=$path, ownerUid=${owner.uid}, currentUid=$currentUid, count=${collaborators.length}');
+          '[AccountabilityService] saveTaskCollaborators: path=$path, ownerUid=${me.uid}, count=${collaborators.length}');
     }
     try {
       await _db.collection('task_collaborators').doc(taskId).set({
-        'owner': owner.toFirestore(),
+        'owner': me.toFirestore(),
         'collaborators': collaborators.map((c) => c.toFirestore()).toList(),
         // Flat list of uids (owner + collaborators) so security rules can gate
         // reads with a simple `in` check (rules can't map over object arrays).
         'collaboratorUids': [
-          owner.uid,
+          me.uid,
           ...collaborators.map((c) => c.uid),
         ],
         'updatedAt': FieldValue.serverTimestamp(),

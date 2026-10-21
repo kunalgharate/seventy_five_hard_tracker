@@ -7,6 +7,12 @@ App: **DailyMettle: Habit & Challenge**
 Developer: TheCodersHub (Kunal Gharate)
 Category: **Productivity** (Primary). Suggested Secondary: Health & Fitness
 Support email: hello@thecodershub.in
+
+**Branding note:** DailyMettle is an independent app inspired by the public 75
+Hard concept. It is not affiliated with, endorsed by, or sponsored by the
+creators or owners of the 75 Hard brand. Confirm trademark clearance and store
+metadata requirements before using the phrase in the app name, subtitle, or
+keywords in each territory.
 Website / Support URL: http://thecodershub.in
 Existing hosted Privacy Policy: https://sites.google.com/view/75hardchallengeapp/home
   ⚠️ See "Privacy Policy note" at the bottom — this page must be updated to reflect
@@ -47,7 +53,7 @@ WHY DAILYMETTLE?
 
 • Accountability Partners — Invite a partner to review your progress and keep each other on track.
 
-• Encrypted Cloud Backup — Optional AES-256 encrypted sync so your backup data is restorable across reinstalls.
+• Encrypted Cloud Backup — Optional AES-256 encrypted sync for keeping a backup on your signed-in devices. Export a recovery key before relying on restore after reinstall.
 
 • Daily Journal — Reflect on each day with per-day notes and per-task journaling.
 

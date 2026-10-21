@@ -15,11 +15,17 @@ class LoadChallengeData extends ChallengeEvent {}
 
 class StartNewSession extends ChallengeEvent {
   final List<Challenge> challenges;
+  final String resetMode;
+  final int totalDaysTarget;
 
-  const StartNewSession(this.challenges);
+  const StartNewSession(
+    this.challenges, {
+    this.resetMode = 'hard',
+    this.totalDaysTarget = 75,
+  });
 
   @override
-  List<Object> get props => [challenges];
+  List<Object> get props => [challenges, resetMode, totalDaysTarget];
 }
 
 class UpdateDailyProgress extends ChallengeEvent {

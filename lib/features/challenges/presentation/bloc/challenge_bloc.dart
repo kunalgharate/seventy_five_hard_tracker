@@ -42,7 +42,44 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
   Future<void> _journalLock = Future.value();
 
+  /// Cached permission maps — loaded once and reused on every toggle to avoid
+  /// blocking the checkbox on repeated Firestore round-trips.
+  Map<String, String>? _cachedAssignedMap;
+  Map<String, String>? _cachedAccountableForMap;
+
   DatabaseRepository get repository => _repository;
+
+  /// Invalidates cached permission maps so they are re-fetched on next toggle.
+  /// Call this after creating/accepting/removing accountability tasks.
+  void invalidatePermissionCaches() {
+    _cachedAssignedMap = null;
+    _cachedAccountableForMap = null;
+  }
+
+  List<DailyProgress> _progressForSession(ChallengeSession session) {
+    return _repository.getProgressForSession(
+      session.startDate,
+      sessionId: session.id,
+      totalDaysTarget: session.totalDaysTarget,
+    );
+  }
+
+  DailyProgress? _dailyProgressForSession(
+    ChallengeSession session,
+    DateTime date,
+  ) {
+    return _repository.getDailyProgress(date, sessionId: session.id);
+  }
+
+  bool _isDayComplete(
+    ChallengeSession session,
+    Map<String, bool> completions,
+  ) {
+    final requiredTasks = session.challenges
+        .where((challenge) => challenge.type == TaskType.hard);
+    return requiredTasks
+        .every((challenge) => completions[challenge.id] == true);
+  }
 
   // ── ACCOUNTABILITY SCORING INTEGRATION ──────────────────────────────────────
   //
@@ -55,6 +92,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   ChallengeBloc({
     required DatabaseRepository repository,
     required SmartNotificationService smartNotifications,
+    bool startMidnightTimer = true,
   })  : _repository = repository,
         _smartNotifications = smartNotifications,
         super(ChallengeInitial()) {
@@ -75,7 +113,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     on<RestartFromHistory>(_onRestartFromHistory);
     on<RemoveChallengeFromSession>(_onRemoveChallengeFromSession);
     on<EndActiveSession>(_onEndActiveSession);
-    _startMidnightTimer();
+    if (startMidnightTimer) _startMidnightTimer();
   }
 
   @override
@@ -110,12 +148,18 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     emit(ChallengeLoading());
+    // Invalidate cached permission maps on reload so they pick up any changes.
+    _cachedAssignedMap = null;
+    _cachedAccountableForMap = null;
 
     try {
       final activeSession = await _repository.getActiveSession();
+      if (activeSession != null) {
+        await _repository.adoptLegacyProgressForSession(activeSession);
+      }
       final allSessions = _repository.getAllSessions();
       final currentProgress = activeSession != null
-          ? _repository.getProgressForSession(activeSession.startDate)
+          ? _progressForSession(activeSession)
           : <DailyProgress>[];
 
       // Keep currentDay in sync with reality
@@ -182,8 +226,6 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         await _repository.updateSession(endedSession);
       }
 
-      await _repository.clearAllDailyProgress();
-
       final newSession = ChallengeSession(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         challenges: event.challenges,
@@ -191,6 +233,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         isActive: true,
         isCompleted: false,
         currentDay: 1,
+        resetMode: event.resetMode == 'soft' ? 'soft' : 'hard',
+        totalDaysTarget: event.resetMode == 'soft'
+            ? event.totalDaysTarget.clamp(1, 3650)
+            : 75, // Hard mode always uses 75 days
       );
 
       await _repository.saveSession(newSession);
@@ -207,8 +253,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       // Emit immediately so the UI shows the new session without a loading gap.
       final allSessions = _repository.getAllSessions();
-      final currentProgress =
-          _repository.getProgressForSession(newSession.startDate);
+      final currentProgress = _progressForSession(newSession);
       emit(ChallengeLoaded(
         activeSession: newSession,
         allSessions: allSessions,
@@ -253,15 +298,12 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         await _repository.updateSession(endedSession);
       }
 
-      await _repository.clearAllDailyProgress();
-
       final newSession = createRestartedSession(historicalSession);
       await _repository.saveSession(newSession);
 
       // Emit immediately so the UI shows the new session without a loading gap.
       final updatedSessions = _repository.getAllSessions();
-      final currentProgress =
-          _repository.getProgressForSession(newSession.startDate);
+      final currentProgress = _progressForSession(newSession);
       emit(ChallengeLoaded(
         activeSession: newSession,
         allSessions: updatedSessions,
@@ -299,16 +341,19 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      // ── Partner permission check ──
-      // Model: the task OWNER completes the challenge on their own Today
-      // screen and uploads photo proof. The partner is only a reviewer —
-      // they must never toggle the owner's challenge.
+      final activeSession = await _repository.getActiveSession();
+      if (activeSession == null) return;
+
+      // ── Partner permission check (cached) ──
+      // Use cached maps so the checkbox never waits on Firestore.
+      // Maps are populated lazily on first toggle and invalidated on session load.
       final svc = AccountabilityService();
-      final assignedMap = await svc.fetchAssignedChallengeMap();
-      final accountableForMap = await svc.fetchAccountableForMap();
-      final iAssignedIt = assignedMap.containsKey(event.challengeId);
+      _cachedAssignedMap ??= await svc.fetchAssignedChallengeMap();
+      _cachedAccountableForMap ??= await svc.fetchAccountableForMap();
+      final iAssignedIt = _cachedAssignedMap!.containsKey(event.challengeId);
       final iAmReviewerOnly =
-          accountableForMap.containsKey(event.challengeId) && !iAssignedIt;
+          _cachedAccountableForMap!.containsKey(event.challengeId) &&
+              !iAssignedIt;
 
       if (iAmReviewerOnly) {
         // I'm the reviewer for this task — the owner completes it, not me.
@@ -322,10 +367,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         return;
       }
 
-      final activeSession = await _repository.getActiveSession();
-      if (activeSession == null) return;
-
-      var dailyProgress = _repository.getDailyProgress(event.date);
+      var dailyProgress = _dailyProgressForSession(activeSession, event.date);
       if (dailyProgress == null) {
         final challengeCompletions = <String, bool>{};
         for (final challenge in activeSession.challenges) {
@@ -335,6 +377,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           date: event.date,
           challengeCompletions: challengeCompletions,
           isCompleted: false,
+          sessionId: activeSession.id,
         );
       }
 
@@ -342,9 +385,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           Map<String, bool>.from(dailyProgress.challengeCompletions);
       updatedCompletions[event.challengeId] = event.isCompleted;
 
-      final allCompleted = activeSession.challenges
-          .where((c) => c.taskType != 'regular')
-          .every((c) => updatedCompletions[c.id] == true);
+      final allCompleted = _isDayComplete(activeSession, updatedCompletions);
 
       final updatedProgress = dailyProgress.copyWith(
         challengeCompletions: updatedCompletions,
@@ -354,8 +395,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       await _repository.saveDailyProgress(updatedProgress);
 
       // Emit updated state IMMEDIATELY so the UI responds instantly.
-      final currentProgress =
-          _repository.getProgressForSession(activeSession.startDate);
+      final currentProgress = _progressForSession(activeSession);
       final allSessions = _repository.getAllSessions();
       emit(ChallengeLoaded(
         activeSession: activeSession,
@@ -452,7 +492,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   /// Load (creating if needed) the DailyProgress for [date].
   Future<DailyProgress?> _progressForDate(DateTime date) async {
     final activeSession = await _repository.getActiveSession();
-    var dailyProgress = _repository.getDailyProgress(date);
+    var dailyProgress = activeSession == null
+        ? null
+        : _dailyProgressForSession(activeSession, date);
     if (dailyProgress == null && activeSession != null) {
       // Create a fresh DailyProgress entry if none exists yet
       final challengeCompletions = <String, bool>{};
@@ -463,6 +505,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         date: date,
         challengeCompletions: challengeCompletions,
         isCompleted: false,
+        sessionId: activeSession.id,
       );
     }
     return dailyProgress;
@@ -548,7 +591,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
   ) async {
     try {
       final activeSession = await _repository.getActiveSession();
-      var dailyProgress = _repository.getDailyProgress(event.date);
+      var dailyProgress = activeSession == null
+          ? null
+          : _dailyProgressForSession(activeSession, event.date);
       if (dailyProgress == null && activeSession != null) {
         final challengeCompletions = <String, bool>{};
         for (final challenge in activeSession.challenges) {
@@ -558,6 +603,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           date: event.date,
           challengeCompletions: challengeCompletions,
           isCompleted: false,
+          sessionId: activeSession.id,
         );
       }
       if (dailyProgress != null) {
@@ -580,7 +626,10 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     Emitter<ChallengeState> emit,
   ) async {
     try {
-      var dailyProgress = _repository.getDailyProgress(event.date);
+      final activeSession = await _repository.getActiveSession();
+      final dailyProgress = activeSession == null
+          ? null
+          : _dailyProgressForSession(activeSession, event.date);
       if (dailyProgress != null) {
         final updatedPhotos = Map<String, String>.from(
           dailyProgress.taskPhotos ?? {},
@@ -720,7 +769,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         // Invalidate today's completion of the rejected regular task, the
         // same way an owner-toggle un-complete persists progress.
         final today = DateTime.now();
-        final progress = _repository.getDailyProgress(today);
+        final progress = _dailyProgressForSession(activeSession, today);
         if (progress == null ||
             progress.challengeCompletions[challengeId] != true) {
           return;
@@ -730,9 +779,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             Map<String, bool>.from(progress.challengeCompletions);
         updatedCompletions[challengeId] = false;
 
-        final allCompleted = activeSession.challenges
-            .where((c) => c.taskType != 'regular')
-            .every((c) => updatedCompletions[c.id] == true);
+        final allCompleted = _isDayComplete(activeSession, updatedCompletions);
 
         await _repository.saveDailyProgress(
           progress.copyWith(
@@ -786,11 +833,13 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         isActive: false,
         isCompleted: true,
         endDate: DateTime.now(),
-        currentDay: 75,
+        currentDay: activeSession.totalDaysTarget,
       );
 
       await _repository.updateSession(completedSession);
-      unawaited(_analytics.logSessionComplete(75));
+      unawaited(
+        _analytics.logSessionComplete(activeSession.totalDaysTarget),
+      );
 
       emit(ChallengeCompleted(completedSession));
 
@@ -830,8 +879,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
             .cancelCompletedTaskReminders(event.challenge.id);
       }
 
-      final currentProgress =
-          _repository.getProgressForSession(activeSession.startDate);
+      final currentProgress = _progressForSession(activeSession);
       final allSessions = _repository.getAllSessions();
       emit(ChallengeLoaded(
         activeSession: updatedSession,
@@ -883,7 +931,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       // Initialize the new challenge in today's DailyProgress so it shows immediately
       final today = DateTime.now();
-      var todayProgress = _repository.getDailyProgress(today);
+      var todayProgress = _dailyProgressForSession(activeSession, today);
       debugPrint('🟢 [BLoC] Today progress exists: ${todayProgress != null}');
 
       if (todayProgress != null) {
@@ -902,6 +950,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           date: today,
           challengeCompletions: challengeCompletions,
           isCompleted: false,
+          sessionId: activeSession.id,
         );
       }
       await _repository.saveDailyProgress(todayProgress);
@@ -918,7 +967,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
       var day = DateTime(start.year, start.month, start.day);
       final todayDate = DateTime(today.year, today.month, today.day);
       while (day.isBefore(todayDate)) {
-        final past = _repository.getDailyProgress(day);
+        final past = _dailyProgressForSession(activeSession, day);
         if (past != null && !past.challengeCompletions.containsKey(newId)) {
           await _repository.saveDailyProgress(
             past.copyWith(
@@ -932,8 +981,7 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         day = day.add(const Duration(days: 1));
       }
 
-      final currentProgress =
-          _repository.getProgressForSession(activeSession.startDate);
+      final currentProgress = _progressForSession(activeSession);
       final allSessions = _repository.getAllSessions();
       debugPrint(
           '🟢 [BLoC] Emitting ChallengeLoaded with ${updatedSession.challenges.length} challenges');
@@ -1057,18 +1105,15 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       // Recalculate daily progress completion flags for all existing progress
       // entries, since removing a challenge changes which tasks are required.
-      final allProgress =
-          _repository.getProgressForSession(activeSession.startDate);
+      final allProgress = _progressForSession(activeSession);
       for (final progress in allProgress) {
         // Remove the deleted challenge from completions map
         final updatedCompletions =
             Map<String, bool>.from(progress.challengeCompletions)
               ..remove(event.challengeId);
 
-        // Recalculate isCompleted based on remaining non-regular challenges
-        final allCompleted = updatedChallenges
-            .where((c) => c.taskType != 'regular')
-            .every((c) => updatedCompletions[c.id] == true);
+        // Recalculate isCompleted based on remaining hard challenges.
+        final allCompleted = _isDayComplete(updatedSession, updatedCompletions);
 
         final updatedProgress = progress.copyWith(
           challengeCompletions: updatedCompletions,
@@ -1128,9 +1173,6 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     _isCheckingMissedDays = true;
 
     try {
-      // Soft mode doesn't reset — only hard mode checks
-      if (session.mode != ResetMode.hard) return;
-
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final startDate = DateTime(session.startDate.year,
@@ -1138,52 +1180,55 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
 
       final daysSinceStart = today.difference(startDate).inDays;
 
-      // Don't check on the first day — nothing to miss yet
-      if (daysSinceStart <= 0) return;
+      if (session.mode == ResetMode.hard && daysSinceStart > 0) {
+        // Check each day from start until yesterday (not including today).
+        for (int i = 0; i < daysSinceStart; i++) {
+          final checkDate = startDate.add(Duration(days: i));
+          final progress = _dailyProgressForSession(session, checkDate);
 
-      // Check each day from start until yesterday (not including today)
-      for (int i = 0; i < daysSinceStart; i++) {
-        final checkDate = startDate.add(Duration(days: i));
-        final progress = _repository.getDailyProgress(checkDate);
+          // If no progress entry exists for this day, it means the day was
+          // missed entirely.
+          if (progress == null) {
+            final hardChallenges = session.challenges
+                .where((c) => c.type == TaskType.hard)
+                .toList();
+            if (hardChallenges.isNotEmpty) {
+              add(ResetChallenge(
+                reason: 'Missed day ${i + 1}',
+                failedChallenges: hardChallenges.map((c) => c.title).toList(),
+              ));
+              return;
+            }
+            continue;
+          }
 
-        // If no progress entry exists for this day, it means the day was missed entirely
-        if (progress == null) {
+          // Only hard tasks can trigger a reset.
           final hardChallenges =
               session.challenges.where((c) => c.type == TaskType.hard).toList();
-          if (hardChallenges.isNotEmpty) {
+
+          final missedHardTasks = hardChallenges
+              .where((c) => progress.challengeCompletions[c.id] != true)
+              .map((c) => c.title)
+              .toList();
+
+          if (missedHardTasks.isNotEmpty) {
             add(ResetChallenge(
               reason: 'Missed day ${i + 1}',
-              failedChallenges: hardChallenges.map((c) => c.title).toList(),
+              failedChallenges: missedHardTasks,
             ));
             return;
           }
-          continue;
-        }
-
-        // Only check hard tasks for reset
-        final hardChallenges =
-            session.challenges.where((c) => c.type == TaskType.hard).toList();
-
-        final missedHardTasks = hardChallenges
-            .where((c) => progress.challengeCompletions[c.id] != true)
-            .map((c) => c.title)
-            .toList();
-
-        if (missedHardTasks.isNotEmpty) {
-          add(ResetChallenge(
-            reason: 'Missed day ${i + 1}',
-            failedChallenges: missedHardTasks,
-          ));
-          return;
         }
       }
 
-      // Check if challenge is completed (75 days)
-      if (daysSinceStart >= 75) {
-        final allDaysCompleted = List.generate(75, (index) {
+      // Check if the configured challenge duration is complete.
+      if (daysSinceStart >= session.totalDaysTarget) {
+        final allDaysCompleted =
+            List.generate(session.totalDaysTarget, (index) {
           final date = startDate.add(Duration(days: index));
-          final progress = _repository.getDailyProgress(date);
-          return progress?.isCompleted ?? false;
+          final progress = _dailyProgressForSession(session, date);
+          return progress != null &&
+              _isDayComplete(session, progress.challengeCompletions);
         }).every((completed) => completed);
 
         if (allDaysCompleted) {

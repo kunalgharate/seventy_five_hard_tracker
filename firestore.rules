@@ -314,6 +314,14 @@ service cloud.firestore {
                              && request.auth.uid == uid;
     }
 
+    // ── entitlements ───────────────────────────────────────────────
+    // Premium state is written by a trusted billing/backend integration.
+    // Clients may read only their own document; client writes are denied.
+    match /entitlements/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // ── user_data (encrypted cloud backup) ────────────────────────
     // Only the owner can read/write their own encrypted backup.
     // This collection stores AES-256-GCM ciphertext — unreadable without the key.
@@ -555,11 +563,58 @@ service cloud.firestore {
 
     // ── fcm_notifications ─────────────────────────────────────────
     // Sender writes a notification doc, but must stamp themselves as the
-    // sender (prevents spoofing another user as the sender). Only the
-    // recipient can read, update (mark delivered), or delete (cleanup).
+    // sender and prove that the recipient belongs to the referenced
+    // partnership/accountability task. Only the recipient can read, update
+    // (mark delivered), or delete (cleanup).
+    function isNotificationParticipant() {
+      let payload = request.resource.data.get('data', {});
+      let taskId = payload.get('taskId', null);
+      let partnershipId = payload.get('partnershipId', null);
+      return (
+        taskId is string
+        && taskId.size() > 0
+        && exists(/databases/$(database)/documents/accountability_tasks/$(taskId))
+        && (
+          get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.assignedByUid == request.auth.uid
+          || get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUid == request.auth.uid
+          || get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.partnerUid == request.auth.uid
+          || (get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUserIds is list
+              && request.auth.uid in get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUserIds)
+        )
+        && (
+          request.resource.data.recipientUid == get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.assignedByUid
+          || request.resource.data.recipientUid == get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUid
+          || request.resource.data.recipientUid == get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.partnerUid
+          || (get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUserIds is list
+              && request.resource.data.recipientUid in get(/databases/$(database)/documents/accountability_tasks/$(taskId)).data.accountableUserIds)
+        )
+      )
+      || (
+        partnershipId is string
+        && partnershipId.size() > 0
+        && exists(/databases/$(database)/documents/partnerships/$(partnershipId))
+        && (
+          get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.ownerUid == request.auth.uid
+          || get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.partnerUid == request.auth.uid
+        )
+        && (
+          request.resource.data.recipientUid == get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.ownerUid
+          || request.resource.data.recipientUid == get(/databases/$(database)/documents/partnerships/$(partnershipId)).data.partnerUid
+        )
+      );
+    }
+
     match /fcm_notifications/{notifId} {
       allow create: if request.auth != null
-                    && request.resource.data.senderUid == request.auth.uid;
+                    && request.resource.data.senderUid == request.auth.uid
+                    && request.resource.data.recipientUid is string
+                    && request.resource.data.recipientUid != request.auth.uid
+                    && request.resource.data.title is string
+                    && request.resource.data.body is string
+                    && request.resource.data.title.size() <= 120
+                    && request.resource.data.body.size() <= 1000
+                    && request.resource.data.data is map
+                    && isNotificationParticipant();
       allow read, update, delete: if request.auth != null
                                   && resource.data.recipientUid == request.auth.uid;
     }

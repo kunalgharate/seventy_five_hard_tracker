@@ -104,6 +104,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Map<String, bool> _reviewOnlyChallenges = {};
   final ScrollController _scrollController = ScrollController();
 
+  /// Guard to prevent re-entrant or overlapping accountability status loads.
+  bool _isLoadingAccountabilityStatuses = false;
+
   /// Live Firestore subscriptions so an approval on the reviewer's device
   /// reflects on the owner's Today screen (and vice versa) without a restart.
   StreamSubscription<List<AccountabilityTask>>? _assignedByMeSub;
@@ -156,7 +159,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _subscribeToNotifications() {
     _notificationsSub?.cancel();
-    final uid = AccountabilityService().currentUid;
+    String? uid;
+    try {
+      uid = AccountabilityService().currentUid;
+    } catch (error) {
+      // Firebase is optional for the offline/local-only experience. Avoid
+      // constructing its service before Firebase.initializeApp() completes.
+      if (kDebugMode) {
+        debugPrint('[HomeScreen] notifications unavailable: $error');
+      }
+      return;
+    }
     if (uid == null) return;
     _notificationsSub = FirebaseFirestore.instance
         .collection('fcm_notifications')
@@ -847,7 +860,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           isCompleted: completed,
         ),
       );
-      final state = await confirmed.timeout(const Duration(seconds: 10));
+      final state = await confirmed.timeout(const Duration(seconds: 5));
       if (state is ChallengeError) {
         _showToggleError(state.message);
       }
@@ -1015,15 +1028,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Called on initial session load so DailyTaskCard shows correct review states.
   Future<void> _loadAccountabilityStatuses(List<Challenge> challenges) async {
+    // Prevent overlapping loads
+    if (_isLoadingAccountabilityStatuses) return;
+    _isLoadingAccountabilityStatuses = true;
+
     final svc = AccountabilityService();
     final myUid = svc.currentUid;
 
-    for (final challenge in challenges) {
-      try {
-        // Single query returns the full task — avoids the extra
-        // fetchTaskIdByChallengeId + fetchTaskById round-trip.
-        final task = await svc.fetchTaskByChallengeId(challenge.id);
-        if (task != null && mounted) {
+    try {
+      // Fetch all tasks in parallel instead of sequentially
+      final futures = challenges
+          .map((challenge) => svc.fetchTaskByChallengeId(challenge.id));
+      final tasks = await Future.wait(futures);
+
+      if (!mounted) return;
+
+      var hasUpdates = false;
+      for (int i = 0; i < challenges.length; i++) {
+        final challenge = challenges[i];
+        final task = tasks[i];
+        if (task != null) {
           // A partner assigned this to me for review — I don't complete it.
           final reviewOnly = myUid != null &&
               task.accountableUid == myUid &&
@@ -1034,12 +1058,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // Date-scoped: only today's approval completes today's progress.
           final partnerApproved = task.isDoneToday;
 
-          setState(() {
-            _accountabilityStatuses[challenge.id] = task.status;
-            _proofStatuses[challenge.id] = task.proofStatus;
-            _reviewOnlyChallenges[challenge.id] = reviewOnly;
-            _accountabilityTasks[challenge.id] = task;
-          });
+          _accountabilityStatuses[challenge.id] = task.status;
+          _proofStatuses[challenge.id] = task.proofStatus;
+          _reviewOnlyChallenges[challenge.id] = reviewOnly;
+          _accountabilityTasks[challenge.id] = task;
+          hasUpdates = true;
 
           if (partnerApproved && !reviewOnly && mounted) {
             context.read<ChallengeBloc>().add(
@@ -1051,9 +1074,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 );
           }
         }
-      } catch (_) {
-        // Non-critical — card will just show default state
       }
+
+      if (hasUpdates && mounted) {
+        setState(() {});
+      }
+    } catch (_) {
+      // Non-critical — card will just show default state
+    } finally {
+      _isLoadingAccountabilityStatuses = false;
     }
   }
 

@@ -23,6 +23,13 @@ class DailyProgress extends Equatable {
   @HiveField(5)
   final Map<String, String>? taskPhotos; // challengeId -> photo path
 
+  /// The challenge session this day's progress belongs to.
+  ///
+  /// This is nullable so records written before session-scoped progress was
+  /// introduced remain readable and can be adopted by the active session.
+  @HiveField(6)
+  final String? sessionId;
+
   const DailyProgress({
     required this.date,
     required this.challengeCompletions,
@@ -30,6 +37,7 @@ class DailyProgress extends Equatable {
     required this.isCompleted,
     this.taskNotes,
     this.taskPhotos,
+    this.sessionId,
   });
 
   DailyProgress copyWith({
@@ -39,6 +47,7 @@ class DailyProgress extends Equatable {
     bool? isCompleted,
     Map<String, String>? taskNotes,
     Map<String, String>? taskPhotos,
+    String? sessionId,
   }) {
     return DailyProgress(
       date: date ?? this.date,
@@ -47,6 +56,7 @@ class DailyProgress extends Equatable {
       isCompleted: isCompleted ?? this.isCompleted,
       taskNotes: taskNotes ?? this.taskNotes,
       taskPhotos: taskPhotos ?? this.taskPhotos,
+      sessionId: sessionId ?? this.sessionId,
     );
   }
 
@@ -57,6 +67,7 @@ class DailyProgress extends Equatable {
         'isCompleted': isCompleted,
         'taskNotes': taskNotes,
         'taskPhotos': taskPhotos,
+        'sessionId': sessionId,
       };
 
   factory DailyProgress.fromJson(Map<String, dynamic> json) {
@@ -68,6 +79,7 @@ class DailyProgress extends Equatable {
       isCompleted: json['isCompleted'] as bool,
       taskNotes: (json['taskNotes'] as Map?)?.cast<String, String>(),
       taskPhotos: (json['taskPhotos'] as Map?)?.cast<String, String>(),
+      sessionId: json['sessionId'] as String?,
     );
   }
 
@@ -79,5 +91,6 @@ class DailyProgress extends Equatable {
         isCompleted,
         taskNotes,
         taskPhotos,
+        sessionId,
       ];
 }

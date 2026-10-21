@@ -2,7 +2,7 @@
 
 **Version:** 1.1.0  
 **Last Updated:** April 2026  
-**Platform:** Android (Flutter)  
+**Platform:** Android and iOS (Flutter)
 **Audience:** QA Engineers, Developers, Product Stakeholders
 
 ---
@@ -319,7 +319,7 @@ Each task has:
 
 ### 8.1 Authentication
 - Anonymous Firebase sign-in (no personal data required)
-- UID used as encryption key seed
+- New backups use a random key held in platform secure storage; legacy UID-derived backups are supported only as a migration fallback
 
 ### 8.2 Encryption
 - Algorithm: AES-256

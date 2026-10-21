@@ -2,6 +2,7 @@ import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/services/api_quote_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
+import 'package:seventy_five_hard_tracker/services/regular_task_migration_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter/foundation.dart';
@@ -43,6 +44,7 @@ import 'screens/terms_of_service_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Global navigator key — lets notification taps navigate from outside the
 /// widget tree (see FcmService).
@@ -101,6 +103,25 @@ void main() async {
     if (kDebugMode) print('Firebase init failed (app works offline): $e');
   }
   // Listener starts only after the reconnect callback is installed.
+
+  // Migrate legacy regular-type challenge tasks AFTER Firebase is initialized
+  // (so the migration can be run again after cloud restore).
+  try {
+    final challengeRepository = DatabaseRepository();
+    final regularTaskRepository = RegularTaskRepository();
+    await challengeRepository.init();
+    await regularTaskRepository.init();
+    final activeSession = await challengeRepository.getActiveSession();
+    if (activeSession != null) {
+      await challengeRepository.adoptLegacyProgressForSession(activeSession);
+    }
+    await RegularTaskMigrationService.migrateRegularTasks(
+      challengeRepository,
+      regularTaskRepository,
+    );
+  } catch (e) {
+    if (kDebugMode) print('Regular-task migration failed: $e');
+  }
 
   // Reconnect hook: when the device regains internet, push local changes to
   // the cloud (BUG-06) and flush any tasks queued while offline.
@@ -505,6 +526,8 @@ class _InitialScreenState extends State<InitialScreen>
   }
 
   Future<void> _initApp() async {
+    unawaited(_recordAppOpen());
+
     // Fetch quote in background (non-blocking)
     unawaited(_fetchQuote());
 
@@ -557,9 +580,27 @@ class _InitialScreenState extends State<InitialScreen>
           final syncSvc = CloudSyncService();
           final cloudData = await syncSvc.syncFromCloud();
           if (cloudData != null &&
-              (cloudData['sessions'] as List?)?.isNotEmpty == true) {
+              CloudSyncService.hasRestorablePayload(cloudData)) {
             await bloc.repository.restoreFromJson(cloudData);
             await taskRepo.restoreFromJson(cloudData);
+            // Run migration again after cloud restore to convert any
+            // legacy sessions restored from cloud into regular tasks.
+            try {
+              final challengeRepository = bloc.repository;
+              final regularTaskRepository = taskRepo;
+              final activeSession =
+                  await challengeRepository.getActiveSession();
+              if (activeSession != null) {
+                await challengeRepository
+                    .adoptLegacyProgressForSession(activeSession);
+              }
+              await RegularTaskMigrationService.migrateRegularTasks(
+                challengeRepository,
+                regularTaskRepository,
+              );
+            } catch (e) {
+              if (kDebugMode) print('Post-restore migration failed: $e');
+            }
             if (mounted) {
               bloc.add(LoadChallengeData());
               context.read<RegularTaskBloc>().add(LoadRegularTasks());
@@ -589,6 +630,27 @@ class _InitialScreenState extends State<InitialScreen>
     Navigator.of(context).pushReplacementNamed('/home');
     appNavigationReady = true;
     unawaited(FcmService.instance.flushPendingNavigation());
+  }
+
+  /// Stores only a local first-seen timestamp so Analytics can receive a
+  /// coarse retention bucket (d0, d1, d2_3, ...) without receiving a date.
+  Future<void> _recordAppOpen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().toUtc();
+      final stored = prefs.getString('analytics_first_seen_at');
+      final firstSeen = stored == null ? now : DateTime.tryParse(stored);
+      if (stored == null) {
+        await prefs.setString('analytics_first_seen_at', now.toIso8601String());
+      }
+      await AnalyticsService().logAppOpen(
+        firstSeenAt: firstSeen ?? now,
+        now: now,
+      );
+    } catch (_) {
+      // App-open analytics is optional and must never delay startup.
+      unawaited(AnalyticsService().logAppOpen());
+    }
   }
 
   Future<void> _fetchQuote() async {

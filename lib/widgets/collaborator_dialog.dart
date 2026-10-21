@@ -265,7 +265,6 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
 
     final success = await _svc.saveTaskCollaborators(
       taskId: widget.taskId,
-      owner: _owner!,
       collaborators: _collaborators,
     );
 

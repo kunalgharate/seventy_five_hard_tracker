@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
@@ -15,6 +17,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/photo_sync_service.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/notification_service.dart';
 import 'package:seventy_five_hard_tracker/widgets/discipline_heatmap.dart';
@@ -32,6 +35,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _syncService = CloudSyncService();
   bool _isSyncing = false;
+  bool _isSigningOut = false;
   String? _lastSync;
 
   // Offline-cached profile (SharedPreferences — same KV store the sync
@@ -102,6 +106,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _cachedEmail = null;
         _cachedPhotoUrl = null;
       });
+    }
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(
+          content: Text('Uploading avatar...'),
+          duration: Duration(seconds: 30)),
+    );
+
+    final photoService = PhotoSyncService();
+    final url = await photoService.uploadAvatar(File(picked.path), user.uid);
+    messenger.hideCurrentSnackBar();
+
+    if (url == null) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('Failed to upload avatar. Please try again.'),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    try {
+      await user.updatePhotoURL(url);
+      // Also update the users doc in Firestore
+      await _syncService.updateUserPhotoUrl(user.uid, url);
+      // Refresh cached profile
+      await _cacheProfile(user);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('Avatar updated successfully!'),
+            backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+            content: Text('Failed to update profile: $e'),
+            backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -248,25 +304,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                        child: CircleAvatar(
-                          radius: 45,
-                          backgroundColor: Colors.white,
-                          backgroundImage: photoImage,
-                          onBackgroundImageError:
-                              photoImage != null ? (_, __) {} : null,
-                          child: photoImage != null
-                              ? null
-                              : const Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: AppColors.primary,
+                      GestureDetector(
+                        onTap: isSignedIn ? _pickAndUploadAvatar : null,
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              child: CircleAvatar(
+                                radius: 45,
+                                backgroundColor: Colors.white,
+                                backgroundImage: photoImage,
+                                onBackgroundImageError:
+                                    photoImage != null ? (_, __) {} : null,
+                                child: photoImage != null
+                                    ? null
+                                    : const Icon(
+                                        Icons.person,
+                                        size: 50,
+                                        color: AppColors.primary,
+                                      ),
+                              ),
+                            ),
+                            if (isSignedIn)
+                              Positioned(
+                                bottom: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                            Colors.black.withValues(alpha: 0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
                                 ),
+                              ),
+                          ],
                         ),
                       )
                           .animate()
@@ -322,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: _signOut,
+              onPressed: _isSigningOut ? null : _signOut,
               icon: const Icon(Icons.logout, size: 18),
               label: const Text('Sign Out'),
               style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
@@ -827,45 +915,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
-    final db = context.read<ChallengeBloc>().repository;
-    final taskRepo = context.read<RegularTaskBloc>().repository;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your data will be backed up before signing out. If backup fails, '
+          'you will stay signed in and your local data will be kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Back up & sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
 
-    // Back up this account's data first, then remove every trace of it from
-    // the device so the next account never sees it (cross-account isolation).
+    setState(() => _isSigningOut = true);
     try {
-      await _syncService.syncToCloud(db, taskRepo);
-    } catch (_) {}
-    try {
-      await _syncService.clearLocalData(db, taskRepo);
-    } catch (_) {}
+      final db = context.read<ChallengeBloc>().repository;
+      final taskRepo = context.read<RegularTaskBloc>().repository;
 
-    // Reminders were scheduled from this account's tasks — cancel them.
-    try {
-      await SmartNotificationService()
-          .cancelAllRemindersForDate(DateTime.now());
-    } catch (_) {}
-    try {
-      await NotificationService().cancelAllNotifications();
-    } catch (_) {}
+      // Back up this account's data first. The service returns a safe decision
+      // and never clears local data when backup or cleanup fails.
+      late final SignOutPreparationStatus preparation;
+      try {
+        preparation = await _syncService.prepareForSignOut(db, taskRepo);
+      } catch (_) {
+        // Treat an unexpected backup error exactly like a reported failure:
+        // never proceed to local cleanup or auth sign-out.
+        preparation = SignOutPreparationStatus.backupFailed;
+      }
+      if (!preparation.maySignOut) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                preparation == SignOutPreparationStatus.backupFailed
+                    ? 'Backup failed. You are still signed in and your local data was kept.'
+                    : 'Local cleanup failed. You are still signed in and your local data was kept.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
-    // Drop cached partner read-access lists from the previous account.
-    try {
-      AccountabilityService().invalidateAllowedReaders();
-    } catch (_) {}
+      // Reminders were scheduled from this account's tasks — cancel them.
+      try {
+        await SmartNotificationService()
+            .cancelAllRemindersForDate(DateTime.now());
+      } catch (_) {}
+      try {
+        await NotificationService().cancelAllNotifications();
+      } catch (_) {}
 
-    await _syncService.signOut();
-    await _clearCachedProfile();
+      // Drop cached partner read-access lists from the previous account.
+      try {
+        AccountabilityService().invalidateAllowedReaders();
+      } catch (_) {}
 
-    if (mounted) {
-      context.read<ChallengeBloc>().add(LoadChallengeData());
-      context.read<RegularTaskBloc>().add(LoadRegularTasks());
-      context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
-      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
-      setState(() => _lastSync = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Signed out'), backgroundColor: Colors.grey),
-      );
+      await _syncService.signOut();
+      await _clearCachedProfile();
+
+      if (mounted) {
+        context.read<ChallengeBloc>().add(LoadChallengeData());
+        context.read<RegularTaskBloc>().add(LoadRegularTasks());
+        context.read<DisciplineScoreBloc>().add(ResetDisciplineScore());
+        context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+        setState(() => _lastSync = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Signed out'), backgroundColor: Colors.grey),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSigningOut = false);
     }
   }
 

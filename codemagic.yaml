@@ -18,7 +18,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.seventyfive.hard.challenge"
         CM_KEYSTORE_PATH: /tmp/keystore.jks
-      flutter: stable
+      flutter: 3.38.3
       xcode: latest
       cocoapods: default
     
@@ -59,7 +59,7 @@ workflows:
         script: |
           flutter build appbundle --release \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$((BUILD_NUMBER))
+            --build-number=$BUILD_NUMBER
     
     artifacts:
       - build/**/outputs/**/*.aab
@@ -78,3 +78,57 @@ workflows:
         credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
         track: production
         submit_as_draft: false
+
+  ios-testflight:
+    name: iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*.*.*'
+          include: true
+      cancel_previous_builds: true
+
+    environment:
+      groups:
+        - AppStoreConnect
+      flutter: 3.38.3
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.seventyfive.hard.challenge
+
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Install CocoaPods dependencies
+        script: pod install --project-directory=ios
+      - name: Apply iOS signing profiles
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive/**/dSYMs/**/*.dSYM
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+      email:
+        recipients:
+          - kunalgharate@gmail.com
+        notify:
+          success: true
+          failure: true

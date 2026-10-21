@@ -1,22 +1,66 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:seventy_five_hard_tracker/core/services/cloudinary_upload_signer.dart';
 
 /// Uploads task proof photos to Cloudinary.
 class PhotoSyncService {
-  static const String _cloudName = 'dudjztvui';
-  static const String _uploadPreset = 'jiremalisamajapp-prod';
-  static const String _uploadUrl =
-      'https://api.cloudinary.com/v1_1/$_cloudName/image/upload';
-
   static final PhotoSyncService _instance = PhotoSyncService._internal();
-  factory PhotoSyncService() => _instance;
-  PhotoSyncService._internal();
+  factory PhotoSyncService({
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  }) {
+    if (signer != null || configuration != null) {
+      _instance.configureSigner(
+        signer: signer,
+        configuration: configuration,
+      );
+    }
+    return _instance;
+  }
 
-  final _picker = ImagePicker();
+  PhotoSyncService._internal()
+      : _picker = ImagePicker(),
+        _configuration = CloudinarySignerConfiguration.fromEnvironment(),
+        _signer = _createEnvironmentSigner();
+
+  @visibleForTesting
+  PhotoSyncService.forTesting({
+    ImagePicker? picker,
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  })  : _picker = picker ?? ImagePicker(),
+        _signer = signer,
+        _configuration = configuration;
+
+  final ImagePicker _picker;
+  CloudinaryUploadSigner? _signer;
+  CloudinarySignerConfiguration? _configuration;
+
+  static CloudinaryUploadSigner? _createEnvironmentSigner() {
+    final configuration = CloudinarySignerConfiguration.fromEnvironment();
+    if (configuration == null || !configuration.isValid) return null;
+    return HttpCloudinaryUploadSigner(endpoint: configuration.endpoint);
+  }
+
+  /// Configures the signed-upload path. Passing null clears that component;
+  /// uploads fail closed until both a signer and valid configuration exist.
+  @visibleForTesting
+  void configureSigner({
+    CloudinaryUploadSigner? signer,
+    CloudinarySignerConfiguration? configuration,
+  }) {
+    _signer = signer;
+    _configuration = configuration;
+  }
+
+  @visibleForTesting
+  bool get hasConfiguredSigner =>
+      _signer != null && (_configuration?.isValid ?? _signer != null);
 
   /// Pick a photo from camera or gallery.
   ///
@@ -56,6 +100,15 @@ class PhotoSyncService {
       } catch (_) {}
     }
 
+    if (!hasConfiguredSigner) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] uploadPhoto: no signed uploader configured',
+        );
+      }
+      return null;
+    }
+
     try {
       final compressed = await _compressImage(file);
       if (kDebugMode) {
@@ -64,7 +117,11 @@ class PhotoSyncService {
             '[PhotoSyncService] uploadPhoto: compressed size=${s.size} bytes');
       }
 
-      final result = await _uploadToCloudinary(compressed);
+      final result = await _uploadToCloudinary(
+        compressed,
+        challengeId: challengeId,
+        date: date,
+      );
       if (result == null) {
         if (kDebugMode) {
           debugPrint(
@@ -137,17 +194,77 @@ class PhotoSyncService {
     }
   }
 
-  Future<Map<String, dynamic>?> _uploadToCloudinary(File imageFile) async {
+  Future<Map<String, dynamic>?> _uploadToCloudinary(
+    File imageFile, {
+    required String challengeId,
+    required DateTime date,
+  }) async {
+    final signer = _signer;
+    final configuration = _configuration;
+    if (signer == null || configuration == null || !configuration.isValid) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] signed Cloudinary uploader is not configured',
+        );
+      }
+      return null;
+    }
+
     try {
-      final request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
-      request.fields['upload_preset'] = _uploadPreset;
-      request.fields['folder'] = 'task_proofs';
+      // Cloudinary signatures expire quickly, so the signature timestamp is
+      // the current time. The task date is used only to keep public IDs
+      // stable for a task proof.
+      final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final proofDate = date.toIso8601String().split('T').first;
+      final request = CloudinarySignRequest(
+        parameters: {
+          'folder': 'task_proofs',
+          'public_id': '${challengeId}_$proofDate',
+          'timestamp': timestamp.toString(),
+        },
+      );
+      // Get Firebase ID token for authenticated signer request
+      String? authToken;
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          authToken = await user.getIdToken();
+        }
+      } catch (_) {
+        // Token unavailable; proceed without it (backend may reject)
+      }
+      final signed = await signer.sign(request, authToken: authToken);
+      if (signed.timestamp.toString() != request.parameters['timestamp']) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer timestamp does not match the requested payload.',
+        );
+      }
+      final apiKey = signed.apiKey ?? configuration.apiKey;
+      final cloudName = signed.cloudName ?? configuration.cloudName;
+      if (apiKey == null || apiKey.isEmpty || cloudName.isEmpty) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer response/configuration did not provide api key '
+          'and cloud name.',
+        );
+      }
+
+      final uploadUrl = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      );
+      final multipartRequest = http.MultipartRequest('POST', uploadUrl);
+      multipartRequest.fields.addAll({
+        'api_key': apiKey,
+        'folder': request.parameters['folder']!,
+        'public_id': request.parameters['public_id']!,
+        'signature': signed.signature,
+        'timestamp': signed.timestamp.toString(),
+      });
 
       final multipartFile =
           await http.MultipartFile.fromPath('file', imageFile.path);
-      request.files.add(multipartFile);
+      multipartRequest.files.add(multipartFile);
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await multipartRequest.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
@@ -166,6 +283,144 @@ class PhotoSyncService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PhotoSyncService] Cloudinary upload error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Upload profile avatar to Cloudinary. Returns secure URL or null.
+  ///
+  /// Uses a dedicated 'profile_avatars' folder and the user's UID as public_id
+  /// so each user has exactly one avatar that gets replaced on re-upload.
+  Future<String?> uploadAvatar(File file, String uid) async {
+    if (kDebugMode) {
+      debugPrint('[PhotoSyncService] uploadAvatar: uid=$uid');
+      try {
+        final stat = await file.stat();
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: file size=${stat.size} bytes');
+      } catch (_) {}
+    }
+
+    if (!hasConfiguredSigner) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] uploadAvatar: no signed uploader configured',
+        );
+      }
+      return null;
+    }
+
+    try {
+      final compressed = await _compressImage(file);
+      if (kDebugMode) {
+        final s = await compressed.stat();
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: compressed size=${s.size} bytes');
+      }
+
+      final result = await _uploadToCloudinaryAvatar(compressed, uid: uid);
+      if (result == null) {
+        if (kDebugMode) {
+          debugPrint(
+              '[PhotoSyncService] uploadAvatar: Cloudinary upload returned null');
+        }
+        return null;
+      }
+
+      final url = result['secure_url'] as String?;
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
+      }
+      return url;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] uploadAvatar: FAILED — $e');
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: error type=${e.runtimeType}');
+      }
+      return null;
+    }
+  }
+
+  /// Upload avatar to Cloudinary with a stable public_id based on user UID.
+  Future<Map<String, dynamic>?> _uploadToCloudinaryAvatar(
+    File imageFile, {
+    required String uid,
+  }) async {
+    final signer = _signer;
+    final configuration = _configuration;
+    if (signer == null || configuration == null || !configuration.isValid) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PhotoSyncService] signed Cloudinary uploader is not configured',
+        );
+      }
+      return null;
+    }
+
+    try {
+      final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final request = CloudinarySignRequest(
+        parameters: {
+          'folder': 'profile_avatars',
+          'public_id': uid,
+          'timestamp': timestamp.toString(),
+          'overwrite': 'true',
+        },
+      );
+      final signed = await signer.sign(request);
+      if (signed.timestamp.toString() != request.parameters['timestamp']) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer timestamp does not match the requested payload.',
+        );
+      }
+      final apiKey = signed.apiKey ?? configuration.apiKey;
+      final cloudName = signed.cloudName ?? configuration.cloudName;
+      // cloudName is guaranteed non-null (CloudinarySignerConfiguration.cloudName is non-nullable)
+      if (apiKey == null || apiKey.isEmpty || cloudName.isEmpty) {
+        throw const CloudinarySignerException(
+          'Cloudinary signer response/configuration did not provide api key '
+          'and cloud name.',
+        );
+      }
+
+      final uploadUrl = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      );
+      final multipartRequest = http.MultipartRequest('POST', uploadUrl);
+      multipartRequest.fields.addAll({
+        'api_key': apiKey,
+        'folder': request.parameters['folder']!,
+        'public_id': request.parameters['public_id']!,
+        'signature': signed.signature,
+        'timestamp': signed.timestamp.toString(),
+        'overwrite': 'true',
+      });
+
+      final multipartFile =
+          await http.MultipartFile.fromPath('file', imageFile.path);
+      multipartRequest.files.add(multipartFile);
+
+      final streamedResponse = await multipartRequest.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'secure_url': data['secure_url'],
+          'public_id': data['public_id'],
+        };
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+            '[PhotoSyncService] Cloudinary avatar upload failed: status=${response.statusCode} body=${response.body}');
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] Cloudinary avatar upload error: $e');
       }
       return null;
     }

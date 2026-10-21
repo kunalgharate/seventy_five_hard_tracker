@@ -48,7 +48,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _buildSection(
                 context,
                 'Cloud Backup (Optional)',
-                'When cloud backup is enabled, your task names, journal notes, and progress are encrypted on your device using AES-256 before being uploaded to Firebase Firestore, where they are stored as encrypted content. The encryption key is tied to your account, and access to your backup is restricted to your account by Firebase security rules. If you do not enable backup, no full backup data leaves your device. Note: if you use the accountability partner feature, limited progress and task data is shared separately with your partners as described below, regardless of the backup setting.',
+                'When cloud backup is enabled, your task names, journal notes, and progress are encrypted on your device using AES-256 before being uploaded to Firebase Firestore, where they are stored as encrypted content. New backups use a random key held in the device secure storage (iOS Keychain or Android secure storage), while older backups may use the legacy account-derived migration format. If you uninstall the app, secure-storage keys may be removed; export a recovery key when that feature is available before relying on restore after reinstall. If you do not enable backup, no full backup data leaves your device. Note: if you use the accountability partner feature, limited progress and task data is shared separately with your partners as described below, regardless of the backup setting.',
               ),
               _buildSection(
                 context,
@@ -63,7 +63,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _buildSection(
                 context,
                 'Analytics & Crash Reporting',
-                'We use Firebase Analytics and Firebase Crashlytics to understand usage patterns and to diagnose crashes so we can improve stability. Analytics events may include app opens, feature usage, device model, crash diagnostics, and the names of challenges and tasks you create. This data is associated with your app installation for analysis but is not linked to your sign-in account and is not used to track you across other companies\u2019 apps or websites.',
+                'We use Firebase Analytics and Firebase Crashlytics to understand usage patterns and to diagnose crashes so we can improve stability. Analytics events may include app opens, coarse retention day buckets, and aggregate feature usage. We do not send challenge titles, task names, journal text, notes, or other user-entered content to Analytics. This data is associated with your app installation for analysis but is not used to track you across other companies\u2019 apps or websites.',
               ),
               _buildSection(
                 context,

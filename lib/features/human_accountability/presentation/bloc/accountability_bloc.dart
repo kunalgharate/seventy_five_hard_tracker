@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/core/services/fcm_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_notification_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/review_expiry_service.dart';
@@ -72,6 +73,7 @@ class AccountabilityBloc
   final AccountabilityNotificationService _notificationService;
   final ReviewExpiryService _expiryService;
   final ReviewScoringEngine _scoringEngine;
+  final AnalyticsService _analytics;
 
   AccountabilityBloc({
     AccountabilityService? service,
@@ -79,12 +81,14 @@ class AccountabilityBloc
     AccountabilityNotificationService? notificationService,
     ReviewExpiryService? expiryService,
     ReviewScoringEngine? scoringEngine,
+    AnalyticsService? analytics,
   })  : _service = service ?? AccountabilityService(),
         _repository = repository ?? DatabaseRepository(),
         _notificationService =
             notificationService ?? AccountabilityNotificationService(),
         _expiryService = expiryService ?? ReviewExpiryService(),
         _scoringEngine = scoringEngine ?? const ReviewScoringEngine(),
+        _analytics = analytics ?? AnalyticsService(),
         super(AccountabilityInitial()) {
     on<LoadAccountabilityData>(_onLoad);
     on<InvitePartner>(_onInvitePartner);
@@ -238,6 +242,7 @@ class AccountabilityBloc
         role: event.role,
       );
       if (partner != null) {
+        unawaited(_analytics.logPartnerInvitationSent(channel: 'code'));
         if (isClosed) return;
         emit(PartnerInvited(partner));
         // Reload the full list after emitting the success state
@@ -261,6 +266,7 @@ class AccountabilityBloc
       final partner = await _service.acceptInvite(event.code);
       if (isClosed) return;
       if (partner != null) {
+        unawaited(_analytics.logPartnerInvitationAccepted(channel: 'code'));
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {
@@ -287,6 +293,9 @@ class AccountabilityBloc
       final partner = await _service.acceptPartnerRequest(event.partner);
       if (isClosed) return;
       if (partner != null) {
+        unawaited(_analytics.logPartnerInvitationAccepted(
+          channel: event.partner.inviteType == 'email' ? 'email' : 'code',
+        ));
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {
@@ -414,6 +423,7 @@ class AccountabilityBloc
         role: event.role,
       );
       emit(EmailInviteSent(invitation));
+      unawaited(_analytics.logPartnerInvitationSent(channel: 'email'));
       add(LoadAccountabilityData());
     } on Exception catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -432,6 +442,7 @@ class AccountabilityBloc
       final partner = await _service.acceptEmailInvite(event.invitationId);
       if (isClosed) return;
       if (partner != null) {
+        unawaited(_analytics.logPartnerInvitationAccepted(channel: 'email'));
         emit(EmailInviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {

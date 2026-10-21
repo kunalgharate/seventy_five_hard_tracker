@@ -7,6 +7,7 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
+import 'package:seventy_five_hard_tracker/core/services/analytics_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
@@ -15,6 +16,7 @@ import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
+import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import '../widgets/icon_picker_widget.dart';
 import '../widgets/challenge_icon_widget.dart';
 import '../widgets/reminder_bottom_sheet.dart';
@@ -43,10 +45,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   late AnimationController _headerAnimationController;
   late AnimationController _pulseController;
   bool _isLoggingIn = false;
+  String _resetMode = 'hard';
+  int _totalDaysTarget = 75;
 
   @override
   void initState() {
     super.initState();
+    unawaited(AnalyticsService().logOnboardingStarted());
     _headerAnimationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -66,14 +71,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _loadPartners();
   }
 
+  /// Safe auth-state read; falls back to signed-out when Firebase is
+  /// unavailable (tests, or a device where Firebase init failed).
+  User? _currentUserOrNull() {
+    try {
+      return FirebaseAuth.instance.currentUser;
+    } on Object {
+      return null;
+    }
+  }
+
   Future<void> _loadPartners() async {
-    final partners = await AccountabilityService().fetchMyPartnerships();
-    if (mounted) {
-      setState(() {
-        _availablePartners = partners
-            .where((p) => p.status == PartnershipStatus.accepted)
-            .toList();
-      });
+    // Partnership loading is best-effort: without Firebase (tests, or a
+    // device where init failed) the screen still works with no partners.
+    try {
+      final partners = await AccountabilityService().fetchMyPartnerships();
+      if (mounted) {
+        setState(() {
+          _availablePartners = partners
+              .where((p) => p.status == PartnershipStatus.accepted)
+              .toList();
+        });
+      }
+    } on Object {
+      // Leave _availablePartners empty.
     }
   }
 
@@ -222,6 +243,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         .map((c) => c.copyWith(title: sanitizeTaskName(c.title)))
         .toList();
 
+    if (sanitizedChallenges
+        .every((challenge) => challenge.taskType == 'regular')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add at least one Hard or Soft challenge to start.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     // Validate that hard tasks have a reminder time set
     final hardTasksWithoutReminder = validChallenges
         .where((c) =>
@@ -246,7 +278,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       return;
     }
 
-    context.read<ChallengeBloc>().add(StartNewSession(sanitizedChallenges));
+    final challengeTasks = sanitizedChallenges
+        .where((challenge) => challenge.taskType != 'regular')
+        .toList();
+    final regularTasks = sanitizedChallenges
+        .where((challenge) => challenge.taskType == 'regular')
+        .map(_regularTaskFromChallenge)
+        .toList();
+
+    context.read<ChallengeBloc>().add(
+          StartNewSession(
+            challengeTasks,
+            resetMode: _resetMode,
+            totalDaysTarget: _totalDaysTarget,
+          ),
+        );
+    for (final task in regularTasks) {
+      context.read<RegularTaskBloc>().add(AddRegularTask(task));
+    }
 
     // Create accountability task requests for challenges with assigned partners
     final svc = AccountabilityService();
@@ -255,7 +304,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       final challenge = _challenges[i];
       if (challenge.title.trim().isEmpty) continue;
       final partner = _selectedPartners[i];
-      if (partner == null || partner.id == '__ai__') continue;
+      if (partner == null ||
+          partner.id == '__ai__' ||
+          challenge.taskType == 'regular') {
+        continue;
+      }
       // Always assign to the OTHER person
       final otherUid =
           partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
@@ -284,6 +337,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           (state) => state is ChallengeLoaded && state.hasActiveSession,
         );
 
+    unawaited(AnalyticsService().logOnboardingCompleted(
+      challengeCount: sanitizedChallenges.length,
+      setupMode: _resetMode,
+    ));
+
     // The widget may have been disposed while awaiting the session stream.
     if (!mounted) return;
 
@@ -311,6 +369,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         navigator.pushReplacementNamed('/home');
       }
     }
+  }
+
+  RegularTask _regularTaskFromChallenge(Challenge challenge) {
+    return RegularTask(
+      id: challenge.id,
+      title: challenge.title,
+      reminderTime: challenge.reminderTime,
+      isReminderEnabled: challenge.isReminderEnabled,
+      imagePath: challenge.imagePath,
+      iconName: challenge.iconName,
+      iconColor: challenge.iconColor,
+      category: challenge.category,
+      reminderType: challenge.reminderType,
+      reminderStartHour: challenge.reminderStartHour,
+      reminderEndHour: challenge.reminderEndHour,
+      allowNightReminders: challenge.allowNightReminders,
+      reminderIntervalMinutes: challenge.reminderIntervalMinutes,
+      createdAt: DateTime.now(),
+    );
   }
 
   /// Handles Google Sign-In inline within onboarding.
@@ -607,6 +684,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               .fadeIn(delay: 1000.ms, duration: 600.ms)
               .slideY(begin: 0.3, end: 0),
 
+          const SizedBox(height: 10),
+          Text(
+            'DailyMettle is an independent app inspired by the public 75 Hard concept and is not affiliated with its creators.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+              height: 1.35,
+            ),
+          ),
+
           const SizedBox(height: 40),
 
           // Rules with Staggered Animation
@@ -620,8 +708,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   valueColor: AlwaysStoppedAnimation<Color>(FigmaTokens.coral))
               : Column(
                   children: [
-                    // Show different button based on auth state
-                    if (FirebaseAuth.instance.currentUser == null) ...[
+                    // Fail closed to the sign-in branch when Firebase is not
+                    // initialized, so onboarding still renders (local-only path).
+                    if (_currentUserOrNull() == null) ...[
                       // Not signed in — offer sign-in
                       _buildAnimatedButton(
                         text: 'Sign In & Start Setup',
@@ -1311,15 +1400,74 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           const SizedBox(height: 8),
 
           Text(
-            'You will need to complete ALL of these challenges EVERY DAY for 75 days.',
+            _resetMode == 'hard'
+                ? 'Complete every hard challenge each day for 75 days. Missing a hard challenge resets the run.'
+                : 'Track your progress without resets. Choose a target duration and keep building consistency.',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.red[600],
+              color: _resetMode == 'hard' ? Colors.red[600] : Colors.blue[700],
               fontWeight: FontWeight.w500,
             ),
           ),
 
           const SizedBox(height: 24),
+
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Challenge mode',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'hard', label: Text('Hard')),
+                      ButtonSegment(value: 'soft', label: Text('Soft')),
+                    ],
+                    selected: {_resetMode},
+                    onSelectionChanged: (selection) {
+                      setState(() => _resetMode = selection.first);
+                    },
+                  ),
+                  if (_resetMode == 'soft') ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Target duration'),
+                        ),
+                        IconButton(
+                          tooltip: 'Decrease duration',
+                          onPressed: _totalDaysTarget <= 1
+                              ? null
+                              : () => setState(() => _totalDaysTarget--),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(
+                          '$_totalDaysTarget days',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          tooltip: 'Increase duration',
+                          onPressed: _totalDaysTarget >= 3650
+                              ? null
+                              : () => setState(() => _totalDaysTarget++),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
 
           // Challenges Preview
           Expanded(
@@ -1382,23 +1530,34 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
           ),
 
-          // Warning
+          // Mode-specific guidance
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.red[50],
+              color: _resetMode == 'hard' ? Colors.red[50] : Colors.blue[50],
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.red[200]!),
+              border: Border.all(
+                color:
+                    _resetMode == 'hard' ? Colors.red[200]! : Colors.blue[200]!,
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.warning, color: Colors.red[600]),
+                Icon(
+                  _resetMode == 'hard' ? Icons.warning : Icons.info_outline,
+                  color:
+                      _resetMode == 'hard' ? Colors.red[600] : Colors.blue[600],
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Missing ANY challenge on ANY day will reset your progress to Day 1!',
+                    _resetMode == 'hard'
+                        ? 'Missing a hard challenge on a past day resets your progress to Day 1.'
+                        : 'Soft mode never resets. Soft and hard task completion is still shown in your progress history.',
                     style: TextStyle(
-                      color: Colors.red[700],
+                      color: _resetMode == 'hard'
+                          ? Colors.red[700]
+                          : Colors.blue[700],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1411,7 +1570,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
           // Start Button
           _buildAnimatedButton(
-            text: 'Start 75 Hard Challenge!',
+            text: _resetMode == 'hard'
+                ? 'Start 75 Hard Challenge!'
+                : 'Start $_totalDaysTarget-Day Challenge',
             onPressed: _startChallenge,
             gradient: FigmaTokens.brandGradient,
           ),

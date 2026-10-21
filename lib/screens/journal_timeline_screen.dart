@@ -45,8 +45,11 @@ class JournalTimelineScreen extends StatelessWidget {
               final bloc = context.read<ChallengeBloc>();
               final allProgress = <DailyProgress>[];
               for (final session in state.allSessions) {
-                final sessionProgress =
-                    bloc.repository.getProgressForSession(session.startDate);
+                final sessionProgress = bloc.repository.getProgressForSession(
+                  session.startDate,
+                  sessionId: session.id,
+                  totalDaysTarget: session.totalDaysTarget,
+                );
                 allProgress.addAll(sessionProgress);
               }
 

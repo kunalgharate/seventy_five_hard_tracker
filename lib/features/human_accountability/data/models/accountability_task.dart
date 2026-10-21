@@ -366,13 +366,13 @@ class AccountabilityTask extends Equatable {
           {String? id}) =>
       AccountabilityTask(
         id: id ?? d['id'] as String,
-        assignedByUid: d['assignedByUid'] as String,
+        assignedByUid: d['assignedByUid'] as String? ?? '',
         assignedByName: d['assignedByName'] as String? ?? 'Partner',
-        accountableUid: d['accountableUid'] as String,
+        accountableUid: d['accountableUid'] as String? ?? '',
         accountableName: d['accountableName'] as String? ?? 'Partner',
-        partnershipId: d['partnershipId'] as String,
+        partnershipId: d['partnershipId'] as String? ?? '',
         challengeId: d['challengeId'] as String?,
-        title: d['title'] as String,
+        title: d['title'] as String? ?? '',
         description: d['description'] as String?,
         status: AccountabilityTaskStatusExtension.fromString(
             d['status'] as String? ?? 'pending'),
@@ -386,7 +386,7 @@ class AccountabilityTask extends Equatable {
         proofReviewedAt: _parseDate(d['proofReviewedAt']),
         accountableUserIds:
             (d['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
-                [d['accountableUid'] as String],
+                [d['accountableUid'] as String? ?? ''],
         taskType: d['taskType'] as String? ?? 'hard',
         submittedAt: _parseDate(d['submittedAt']),
         expiresAt: _parseDate(d['expiresAt']),

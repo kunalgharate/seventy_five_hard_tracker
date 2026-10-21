@@ -119,26 +119,60 @@ class RegularTaskRepository {
   }
 
   /// Restores regular tasks and completions from a cloud backup JSON payload.
+  ///
+  /// Replacement semantics are explicit and field-scoped:
+  /// - a present `regularTasks` or `regularCompletions` key replaces that
+  ///   entire local collection, including when its array is intentionally
+  ///   empty;
+  /// - an omitted key leaves that local collection unchanged. This lets
+  ///   partial backups (for example, tasks only) restore safely.
+  ///
+  /// A present but `null` value is treated as malformed data and causes the
+  /// restore to fail, preventing an authenticated attacker from wiping local
+  /// data by sending a signed but malformed payload.
   Future<void> restoreFromJson(Map<String, dynamic> data) async {
     await _ensureInitialized();
 
-    // Restore tasks
-    final tasks = (data['regularTasks'] as List?) ?? [];
-    if (tasks.isNotEmpty) {
+    // Parse before clearing so a malformed authenticated payload cannot turn a
+    // failed restore into an empty local collection.
+    List<RegularTask>? tasksToRestore;
+    if (data.containsKey('regularTasks')) {
+      final rawTasks = data['regularTasks'];
+      if (rawTasks == null || rawTasks is! List) {
+        throw const FormatException(
+          'regularTasks must be a non-null list when present.',
+        );
+      }
+      tasksToRestore = [
+        for (final t in rawTasks)
+          RegularTask.fromJson(t as Map<String, dynamic>),
+      ];
+    }
+
+    List<RegularTaskCompletion>? completionsToRestore;
+    if (data.containsKey('regularCompletions')) {
+      final rawCompletions = data['regularCompletions'];
+      if (rawCompletions == null || rawCompletions is! List) {
+        throw const FormatException(
+          'regularCompletions must be a non-null list when present.',
+        );
+      }
+      completionsToRestore = [
+        for (final c in rawCompletions)
+          RegularTaskCompletion.fromJson(c as Map<String, dynamic>),
+      ];
+    }
+
+    if (tasksToRestore != null) {
       await _tasksBox!.clear();
-      for (final t in tasks) {
-        final task = RegularTask.fromJson(t as Map<String, dynamic>);
+      for (final task in tasksToRestore) {
         await _tasksBox!.put(task.id, task);
       }
     }
 
-    // Restore completions
-    final completions = (data['regularCompletions'] as List?) ?? [];
-    if (completions.isNotEmpty) {
+    if (completionsToRestore != null) {
       await _completionsBox!.clear();
-      for (final c in completions) {
-        final completion =
-            RegularTaskCompletion.fromJson(c as Map<String, dynamic>);
+      for (final completion in completionsToRestore) {
         await _completionsBox!.put(_dateToKey(completion.date), completion);
       }
     }

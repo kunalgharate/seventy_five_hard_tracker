@@ -62,3 +62,16 @@ ios/build/
 
 # Cloud Functions
 functions/node_modules/
+
+# Firestore rules tests
+rules-tests/node_modules/
+rules-tests/firestore-debug.log
+
+# Build artifacts
+*.log
+build.log
+firestore-debug.log
+proof_vote_rules_smoke.js
+
+# OS files
+.DS_Store
