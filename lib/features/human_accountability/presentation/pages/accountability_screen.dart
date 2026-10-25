@@ -186,21 +186,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
           },
         ),
       ),
-      floatingActionButton: _buildFab(),
-    );
-  }
-
-  Widget _buildFab() {
-    return FloatingActionButton.extended(
-      heroTag: 'invitePartner',
-      onPressed: _showInviteDialog,
-      icon: const Icon(Icons.person_add),
-      label: const Text('Add a Partner'),
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
     );
   }
 
