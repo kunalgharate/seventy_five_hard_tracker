@@ -217,95 +217,98 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          final isLoaded = state is ChallengeLoaded;
-          return CustomScrollView(
-            slivers: [
-              _buildSliverAppBar(),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Auth status card
-                      _buildAuthActionCard()
-                          .animate()
-                          .fadeIn(duration: 300.ms)
-                          .slideY(begin: 0.2),
-                      const SizedBox(height: 24),
-
-                      if (isLoaded) ...[
-                        // Achievements
-                        AchievementsShowcase(state: state)
-                            .animate(delay: 100.ms)
+      body: SafeArea(
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            final isLoaded = state is ChallengeLoaded;
+            return CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Auth status card
+                        _buildAuthActionCard()
+                            .animate()
                             .fadeIn(duration: 300.ms)
                             .slideY(begin: 0.2),
                         const SizedBox(height: 24),
 
-                        // Discipline Grade
-                        _buildDisciplineGradeCard()
-                            .animate(delay: 200.ms)
-                            .fadeIn(duration: 300.ms)
-                            .slideY(begin: 0.2),
-                        const SizedBox(height: 24),
+                        if (isLoaded) ...[
+                          // Achievements
+                          AchievementsShowcase(state: state)
+                              .animate(delay: 100.ms)
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: 0.2),
+                          const SizedBox(height: 24),
 
-                        // Stats Grid
-                        _buildPremiumStatsGrid(state)
-                            .animate(delay: 700.ms)
-                            .fadeIn(duration: 300.ms)
-                            .slideY(begin: 0.1),
-                        const SizedBox(height: 16),
+                          // Discipline Grade
+                          _buildDisciplineGradeCard()
+                              .animate(delay: 200.ms)
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: 0.2),
+                          const SizedBox(height: 24),
 
-                        _buildJournalTimelineButton()
-                            .animate(delay: 800.ms)
-                            .fadeIn(duration: 300.ms)
-                            .slideY(begin: 0.1),
-                        const SizedBox(height: 32),
+                          // Stats Grid
+                          _buildPremiumStatsGrid(state)
+                              .animate(delay: 700.ms)
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: 0.1),
+                          const SizedBox(height: 16),
 
-                        // Heatmap
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(
-                                color: Colors.grey.withValues(alpha: 0.2)),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: DisciplineHeatmap(
-                              progressList: state.currentProgress,
-                              challengeTaskIds: state.activeSession?.challenges
-                                  .where((c) => c.taskType != 'regular')
-                                  .map((c) => c.id)
-                                  .toSet(),
+                          _buildJournalTimelineButton()
+                              .animate(delay: 800.ms)
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: 0.1),
+                          const SizedBox(height: 32),
+
+                          // Heatmap
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                  color: Colors.grey.withValues(alpha: 0.2)),
                             ),
-                          ),
-                        )
-                            .animate(delay: 400.ms)
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: DisciplineHeatmap(
+                                progressList: state.currentProgress,
+                                challengeTaskIds: state
+                                    .activeSession?.challenges
+                                    .where((c) => c.taskType != 'regular')
+                                    .map((c) => c.id)
+                                    .toSet(),
+                              ),
+                            ),
+                          )
+                              .animate(delay: 400.ms)
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: 0.2),
+                          const SizedBox(height: 24),
+                        ],
+
+                        _buildSyncStatusCard()
+                            .animate(delay: 500.ms)
                             .fadeIn(duration: 300.ms)
                             .slideY(begin: 0.2),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
+                        _buildPrivacyCard()
+                            .animate(delay: 600.ms)
+                            .fadeIn(duration: 300.ms)
+                            .slideY(begin: 0.2),
+                        const SizedBox(height: 40),
                       ],
-
-                      _buildSyncStatusCard()
-                          .animate(delay: 500.ms)
-                          .fadeIn(duration: 300.ms)
-                          .slideY(begin: 0.2),
-                      const SizedBox(height: 16),
-                      _buildPrivacyCard()
-                          .animate(delay: 600.ms)
-                          .fadeIn(duration: 300.ms)
-                          .slideY(begin: 0.2),
-                      const SizedBox(height: 40),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }

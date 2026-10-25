@@ -66,12 +66,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               ? FigmaTokens.darkBg
               : FigmaTokens.soft,
           appBar: const CustomAppBar(title: 'Your habits'),
-          body: state is RegularTaskLoading
-              ? const Center(child: CircularProgressIndicator())
-              : tasks.isNotEmpty
-                  ? _buildTaskList(
-                      context, tasks, todayCompletions, recentCompletions)
-                  : _buildEmptyState(context),
+          body: SafeArea(
+            child: state is RegularTaskLoading
+                ? const Center(child: CircularProgressIndicator())
+                : tasks.isNotEmpty
+                    ? _buildTaskList(
+                        context, tasks, todayCompletions, recentCompletions)
+                    : _buildEmptyState(context),
+          ),
           floatingActionButton: tasks.isEmpty
               ? null
               : FloatingActionButton(

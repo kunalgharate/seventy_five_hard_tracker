@@ -460,26 +460,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          final hasSession = (state is ChallengeLoaded &&
-                  state.hasActiveSession) ||
-              (_lastLoadedState != null && _lastLoadedState!.hasActiveSession);
-          if (!hasSession) return const SizedBox.shrink();
-          return FloatingActionButton.extended(
-            heroTag: 'addChallengeTask',
-            onPressed: () => _showTaskSheet(context, null),
-            backgroundColor: Colors.orange[600],
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Add Task',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            tooltip: 'Add Task',
-          );
-        },
-      ),
       body: BlocListener<DisciplineScoreBloc, DisciplineScoreState>(
         listenWhen: (previous, current) =>
             previous is! DisciplineScoreInitial &&
@@ -776,18 +756,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       const SizedBox(height: 120),
     ];
 
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const ClampingScrollPhysics(),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        try {
-          return items[index];
-        } catch (e) {
-          debugPrint('HomeScreen item $index error: $e');
-          return const SizedBox.shrink();
-        }
-      },
+    return SafeArea(
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const ClampingScrollPhysics(),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          try {
+            return items[index];
+          } catch (e) {
+            debugPrint('HomeScreen item $index error: $e');
+            return const SizedBox.shrink();
+          }
+        },
+      ),
     );
   }
 

@@ -151,38 +151,40 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
           ),
         ],
       ),
-      body: BlocConsumer<AccountabilityBloc, AccountabilityState>(
-        listener: _handleStateChange,
-        builder: (context, state) {
-          // Not signed in (e.g. a partner who hasn't logged in yet) — the
-          // Firestore reads all return empty, so ask them to sign in instead
-          // of pretending the squad is empty.
-          if (!CloudSyncService().isSignedIn) {
-            return _buildSignInPrompt();
-          }
-
-          // Remember the freshest data so transient states (Loading,
-          // EmailInviteSent, TaskRequestAccepted, …) never blank the screen.
-          if (state is AccountabilityLoaded) {
-            _lastLoaded = state;
-          }
-
-          final loaded = _lastLoaded;
-          if (loaded == null) {
-            // Nothing loaded yet — only now is a spinner/error correct.
-            if (state is AccountabilityError) {
-              return _buildError(state.message);
+      body: SafeArea(
+        child: BlocConsumer<AccountabilityBloc, AccountabilityState>(
+          listener: _handleStateChange,
+          builder: (context, state) {
+            // Not signed in (e.g. a partner who hasn't logged in yet) — the
+            // Firestore reads all return empty, so ask them to sign in instead
+            // of pretending the squad is empty.
+            if (!CloudSyncService().isSignedIn) {
+              return _buildSignInPrompt();
             }
-            return const Center(child: CircularProgressIndicator());
-          }
 
-          return _PartnersTab(
-            partners: loaded.partners,
-            incomingRequests: loaded.incomingRequests,
-            emailInvitations: loaded.emailInvitations,
-            taskRequests: loaded.taskRequests,
-          );
-        },
+            // Remember the freshest data so transient states (Loading,
+            // EmailInviteSent, TaskRequestAccepted, …) never blank the screen.
+            if (state is AccountabilityLoaded) {
+              _lastLoaded = state;
+            }
+
+            final loaded = _lastLoaded;
+            if (loaded == null) {
+              // Nothing loaded yet — only now is a spinner/error correct.
+              if (state is AccountabilityError) {
+                return _buildError(state.message);
+              }
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            return _PartnersTab(
+              partners: loaded.partners,
+              incomingRequests: loaded.incomingRequests,
+              emailInvitations: loaded.emailInvitations,
+              taskRequests: loaded.taskRequests,
+            );
+          },
+        ),
       ),
       floatingActionButton: _buildFab(),
     );
