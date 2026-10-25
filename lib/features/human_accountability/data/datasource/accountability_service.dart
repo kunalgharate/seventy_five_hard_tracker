@@ -3187,8 +3187,9 @@ class AccountabilityService {
   /// their own proof.
   bool _isReviewerOf(Map<String, dynamic> data, String uid) {
     if (data['accountableUid'] == uid) return false;
-    if ((data['accountableUserIds'] as List<dynamic>?)?.contains(uid) == true)
+    if ((data['accountableUserIds'] as List<dynamic>?)?.contains(uid) == true) {
       return false;
+    }
     if (data['assignedByUid'] == uid) return true;
     if (data['partnerUid'] == uid) return true;
     return false;
