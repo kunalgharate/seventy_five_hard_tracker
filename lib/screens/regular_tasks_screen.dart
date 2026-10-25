@@ -427,10 +427,21 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
       date: DateTime.now(),
     );
     if (result == true && mounted) {
-      setState(() {
-        _proofStatuses[task.id] = ProofStatus.submitted;
-      });
-      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+      final updated = await svc.fetchTaskById(taskId);
+      if (updated?.proofUrl != null && mounted) {
+        context.read<AccountabilityBloc>().add(
+              SubmitProofForReview(
+                taskId: taskId,
+                challengeId: task.id,
+                proofUrl: updated!.proofUrl!,
+              ),
+            );
+        setState(() {
+          _proofStatuses[task.id] = ProofStatus.submitted;
+          _accountabilityStatuses[task.id] =
+              AccountabilityTaskStatus.pendingReview;
+        });
+      }
     }
   }
 

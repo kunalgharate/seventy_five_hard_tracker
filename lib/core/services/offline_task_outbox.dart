@@ -211,14 +211,20 @@ class OfflineTaskOutbox {
       try {
         var partnershipId = (item['partnershipId'] as String?) ?? '';
         final accountableUid = (item['accountableUid'] as String?) ?? '';
-        final accountableName = (item['accountableName'] as String?) ?? '';
-        if (partnershipId.isEmpty && accountableUid.isNotEmpty) {
+        final partnerUid = (item['partnerUid'] as String?) ?? '';
+        final targetUid = partnerUid.isNotEmpty && partnerUid != creator
+            ? partnerUid
+            : accountableUid;
+        final targetName = (item['accountableName'] as String?) ?? '';
+        if (partnershipId.isEmpty &&
+            targetUid.isNotEmpty &&
+            targetUid != creator) {
           if (!_isReady() || _currentUid() != creator) {
             succeeded = false;
             continue;
           }
           partnershipId =
-              await _resolvePartnership(accountableUid, accountableName) ?? '';
+              await _resolvePartnership(targetUid, targetName) ?? '';
           if (!_isReady() || _currentUid() != creator) {
             succeeded = false;
             continue;

@@ -2768,7 +2768,7 @@ class AccountabilityService {
   // ── One-time cleanup ────────────────────────────────────────────────────
 
   /// One-time cleanup: deletes accountability tasks where accountableUid == assignedByUid
-  /// (tasks accidentally assigned to self due to a previous bug).
+  /// AND there is no partnerUid or reviewer assigned (accidental self-assignment without reviewer).
   /// Safe to call on every app start — it's a no-op if no bad data exists.
   Future<void> cleanupSelfAssignedTasks() async {
     if (!_isReady) return;
@@ -2783,15 +2783,38 @@ class AccountabilityService {
 
       if (snap.docs.isEmpty) return;
 
+      int deletedCount = 0;
       final batch = _db.batch();
       for (final doc in snap.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
+        final data = doc.data();
+        final partnerUid = data['partnerUid'] as String?;
+        final userIds =
+            (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
+                [];
+        final reviewerEmails =
+            (data['reviewerEmails'] as List<dynamic>?)?.cast<String>() ?? [];
+        final accountableEmail = data['accountableEmail'] as String?;
 
-      if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] cleanupSelfAssignedTasks: deleted ${snap.docs.length} bad tasks');
+        // Keep valid tasks that have a reviewer assigned or invited
+        final hasReviewer = (partnerUid != null &&
+                partnerUid.isNotEmpty &&
+                partnerUid != uid) ||
+            userIds.any((u) => u != uid) ||
+            reviewerEmails.isNotEmpty ||
+            (accountableEmail != null && accountableEmail.isNotEmpty);
+
+        if (!hasReviewer) {
+          batch.delete(doc.reference);
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        await batch.commit();
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] cleanupSelfAssignedTasks: deleted $deletedCount unreviewed self-tasks');
+        }
       }
     } catch (e) {
       if (kDebugMode) {
@@ -3031,15 +3054,24 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('status', isEqualTo: 'requested')
-          .get();
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .where((t) => t.assignedByUid != uid) // exclude own tasks
-          .toList();
+      final tasks = _db.collection('accountability_tasks');
+      final snaps = await Future.wait([
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('status', isEqualTo: 'requested')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'requested')
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      return map.values.where((t) => t.assignedByUid != uid).toList();
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -3055,13 +3087,24 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
-          .get();
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+      final tasks = _db.collection('accountability_tasks');
+      final snaps = await Future.wait([
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      return map.values
           .where((t) => t.assignedByUid != uid) // exclude own tasks
           .where((t) => !t.hasApprovedBy(uid)) // not already reviewed by me
           .toList();
@@ -3116,12 +3159,18 @@ class AccountabilityService {
             whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks.where('accountableUserIds', arrayContains: uid).where('status',
             whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks.where('partnerUid', isEqualTo: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks
             .where('assignedByUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)
             .get(),
         tasks
             .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)
             .get(),
       ]);

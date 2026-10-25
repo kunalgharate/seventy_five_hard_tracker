@@ -53,21 +53,17 @@ service cloud.firestore {
     }
 
     // The client clock supplies the exact 24-hour offset; constrain the
-    // submission timestamp to a short window around trusted server time.
+    // submission timestamp so future dates are rejected while offline flushes succeed.
     function hasValidReviewWindow() {
       return request.resource.data.submittedAt is timestamp
           && request.resource.data.expiresAt is timestamp
-          && request.resource.data.submittedAt
-                 >= request.time - duration.value(5, 'm')
           && request.resource.data.submittedAt
                  <= request.time + duration.value(5, 'm')
           && request.resource.data.expiresAt
                  == request.resource.data.submittedAt
                       + duration.value(24, 'h')
           && request.resource.data.expiresAt
-                 >= request.time + duration.value(1435, 'm')
-          && request.resource.data.expiresAt
-                 <= request.time + duration.value(24, 'h');
+                 > request.resource.data.submittedAt;
     }
 
     function hasSingleVoteAppend(uidField, voteField) {
