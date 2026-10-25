@@ -122,7 +122,7 @@ service cloud.firestore {
       let decision = request.resource.data.get('reviewDecision', null);
       return (
         // Owners start a new proof round with empty vote histories.
-        (resource.data.assignedByUid == request.auth.uid
+        ((resource.data.assignedByUid == request.auth.uid || resource.data.accountableUid == request.auth.uid)
           && resource.data.get('proofStatus', 'not_required') != 'submitted'
           && resource.data.status in ['pending', 'rejected', 'completed',
                                       'approved']

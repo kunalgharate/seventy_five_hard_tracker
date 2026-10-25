@@ -113,16 +113,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Change Profile Photo',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked = await picker.pickImage(source: source);
     if (picked == null) return;
 
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
       const SnackBar(
-          content: Text('Uploading avatar...'),
-          duration: Duration(seconds: 30)),
+        content: Text('Uploading avatar...'),
+        duration: Duration(seconds: 30),
+      ),
     );
 
     final photoService = PhotoSyncService();
@@ -133,8 +180,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(
-            content: Text('Failed to upload avatar. Please try again.'),
-            backgroundColor: Colors.red),
+          content: Text('Failed to upload avatar. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -146,17 +194,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Refresh cached profile
       await _cacheProfile(user);
       if (!mounted) return;
+      setState(() {
+        _cachedPhotoUrl = url;
+      });
       messenger.showSnackBar(
         const SnackBar(
-            content: Text('Avatar updated successfully!'),
-            backgroundColor: Colors.green),
+          content: Text('Avatar updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-            content: Text('Failed to update profile: $e'),
-            backgroundColor: Colors.red),
+          content: Text('Failed to update profile: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -266,20 +319,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Never a blank screen: on stream error or while waiting, fall back
         // to the locally cached profile (or the signed-out state).
         final user = snapshot.data;
+        final currentUser = user ?? FirebaseAuth.instance.currentUser;
         final hasCache = _cachedName != null ||
             _cachedEmail != null ||
             _cachedPhotoUrl != null;
-        final isSignedIn = user != null;
-        final displayName = user?.displayName ??
+        final isSignedIn = currentUser != null;
+        final displayName = currentUser?.displayName ??
             (isSignedIn ? 'Signed In' : (_cachedName ?? 'Local Challenger'));
-        final email = user?.email ?? _cachedEmail;
-        final photoUrl = user?.photoURL ?? _cachedPhotoUrl;
+        final email = currentUser?.email ?? _cachedEmail;
+        final photoUrl = currentUser?.photoURL ?? _cachedPhotoUrl;
         final photoImage = photoUrl != null && photoUrl.isNotEmpty
             ? NetworkImage(photoUrl)
             : null;
         // Offline hint: auth stream has no live user but we have saved data,
         // or the stream itself errored.
-        final showOfflineHint = (user == null && hasCache) || snapshot.hasError;
+        final showOfflineHint = (currentUser == null && hasCache) || snapshot.hasError;
 
         return SliverAppBar(
           expandedHeight: 250,
@@ -359,7 +413,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       )
                           .animate()
                           .scale(duration: 400.ms, curve: Curves.easeOutBack),
-                      const SizedBox(height: 12),
+                      if (isSignedIn) ...[
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: _pickAndUploadAvatar,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.camera_alt_outlined,
+                                    size: 12, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Change Photo',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
                       Text(
                         displayName,
                         style: GoogleFonts.poppins(

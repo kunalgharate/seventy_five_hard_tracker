@@ -1695,11 +1695,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     final isCompleted = task.isDoneToday;
                     final proofStatus = task.proofStatus;
                     final myUid = AccountabilityService().currentUid;
-                    final iAmOwner = task.assignedByUid == myUid;
+                    final iAmOwner = task.accountableUid == myUid ||
+                        task.accountableUserIds.contains(myUid) ||
+                        (task.assignedByUid == myUid && task.partnerUid != myUid);
                     final iAmReviewer = !iAmOwner &&
-                        (task.accountableUid == myUid ||
-                            task.accountableUserIds.contains(myUid) ||
-                            task.partnerUid == myUid);
+                        (task.partnerUid == myUid || (task.assignedByUid == myUid && task.accountableUid != myUid));
                     return InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () => PartnerTaskDetailsDialog.show(context, task),
@@ -2188,13 +2188,11 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   Widget _buildPartnerTaskAction(AccountabilityTask task) {
     final myUid = AccountabilityService().currentUid;
-    // Owner = assigner (submits proof). Reviewer = accountable/partner side
-    // (reviews proof). This matches the Reviews tab + Today screen model.
-    final iAmOwner = task.assignedByUid == myUid;
+    final iAmOwner = task.accountableUid == myUid ||
+        task.accountableUserIds.contains(myUid) ||
+        (task.assignedByUid == myUid && task.partnerUid != myUid);
     final iAmReviewer = !iAmOwner &&
-        (task.accountableUid == myUid ||
-            task.accountableUserIds.contains(myUid) ||
-            task.partnerUid == myUid);
+        (task.partnerUid == myUid || (task.assignedByUid == myUid && task.accountableUid != myUid));
 
     // ── REVIEWER: approve / reject submitted proof ──
     if (iAmReviewer && task.proofStatus == ProofStatus.submitted) {

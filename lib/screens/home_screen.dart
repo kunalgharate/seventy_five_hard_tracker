@@ -228,8 +228,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final cid = task.challengeId;
       if (cid == null || !challengeIds.contains(cid)) continue;
       final reviewOnly = myUid != null &&
-          task.accountableUid == myUid &&
-          task.assignedByUid != myUid;
+          task.partnerUid == myUid &&
+          task.accountableUid != myUid;
       if (_accountabilityStatuses[cid] != task.status ||
           _proofStatuses[cid] != task.proofStatus ||
           _reviewOnlyChallenges[cid] != reviewOnly) {

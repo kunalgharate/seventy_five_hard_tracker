@@ -2533,7 +2533,7 @@ class AccountabilityService {
   // ── Photo Proof ─────────────────────────────────────────────────────────
 
   /// Submit photo proof for a task. Sets proofStatus → submitted.
-  /// Only the OWNER (assignedByUid) can submit — reviewers cannot.
+  /// Only the ASSIGNEE (accountableUid/accountableUserIds) can submit — reviewers cannot.
   Future<bool> submitTaskProof({
     required String taskId,
     required String proofUrl,
@@ -2554,8 +2554,12 @@ class AccountabilityService {
           await _db.collection('accountability_tasks').doc(taskId).get();
       if (!doc.exists) return false;
       final data = doc.data()!;
-      // Owner-only: the task owner (assigner) submits proof, never the reviewer.
-      if (data['assignedByUid'] != currentUid) {
+      // Owner-only: either the task assignee (accountableUid) or the assigner (assignedByUid) can submit proof, never the reviewer (partnerUid).
+      final isOwner = data['accountableUid'] == currentUid ||
+          data['assignedByUid'] == currentUid ||
+          (data['accountableUserIds'] as List<dynamic>?)?.contains(currentUid) == true;
+      final isReviewer = !isOwner && data['partnerUid'] == currentUid;
+      if (!isOwner || isReviewer) {
         if (kDebugMode) {
           debugPrint(
               '[AccountabilityService] submitTaskProof: denied — only the owner can submit proof');
@@ -3177,20 +3181,19 @@ class AccountabilityService {
 
   /// True when [uid] is a designated reviewer of the task described by
   /// raw Firestore [data] — i.e. listed in accountableUserIds/accountableUid
-  /// or as partnerUid, and NOT the owner. The owner can never review
+  /// True when [uid] is the task reviewer (the assigner) — the owner can never review
   /// their own proof.
   bool _isReviewerOf(Map<String, dynamic> data, String uid) {
-    if (data['assignedByUid'] == uid) return false;
+    if (data['accountableUid'] == uid) return false;
+    if ((data['accountableUserIds'] as List<dynamic>?)?.contains(uid) == true) return false;
+    if (data['assignedByUid'] == uid) return true;
     if (data['partnerUid'] == uid) return true;
-    if (data['accountableUid'] == uid) return true;
-    final ids =
-        (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
-    return ids.contains(uid);
+    return false;
   }
 
-  /// True when [uid] is the task owner (the assigner who must submit proof).
+  /// True when [uid] is the task **assignee** (the person who must submit proof).
   bool _isOwnerOf(Map<String, dynamic> data, String uid) =>
-      data['assignedByUid'] == uid;
+      data['accountableUid'] == uid || (data['accountableUserIds'] as List<dynamic>?)?.contains(uid) == true;
 
   /// Submit proof and move task to pendingReview status.
   /// Called when the owner toggles a task that has reviewers.
