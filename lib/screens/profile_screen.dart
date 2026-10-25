@@ -333,7 +333,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             : null;
         // Offline hint: auth stream has no live user but we have saved data,
         // or the stream itself errored.
-        final showOfflineHint = (currentUser == null && hasCache) || snapshot.hasError;
+        final showOfflineHint =
+            (currentUser == null && hasCache) || snapshot.hasError;
 
         return SliverAppBar(
           expandedHeight: 250,

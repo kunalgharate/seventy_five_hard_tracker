@@ -1697,9 +1697,12 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     final myUid = AccountabilityService().currentUid;
                     final iAmOwner = task.accountableUid == myUid ||
                         task.accountableUserIds.contains(myUid) ||
-                        (task.assignedByUid == myUid && task.partnerUid != myUid);
+                        (task.assignedByUid == myUid &&
+                            task.partnerUid != myUid);
                     final iAmReviewer = !iAmOwner &&
-                        (task.partnerUid == myUid || (task.assignedByUid == myUid && task.accountableUid != myUid));
+                        (task.partnerUid == myUid ||
+                            (task.assignedByUid == myUid &&
+                                task.accountableUid != myUid));
                     return InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () => PartnerTaskDetailsDialog.show(context, task),
@@ -2192,7 +2195,8 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
         task.accountableUserIds.contains(myUid) ||
         (task.assignedByUid == myUid && task.partnerUid != myUid);
     final iAmReviewer = !iAmOwner &&
-        (task.partnerUid == myUid || (task.assignedByUid == myUid && task.accountableUid != myUid));
+        (task.partnerUid == myUid ||
+            (task.assignedByUid == myUid && task.accountableUid != myUid));
 
     // ── REVIEWER: approve / reject submitted proof ──
     if (iAmReviewer && task.proofStatus == ProofStatus.submitted) {

@@ -317,7 +317,8 @@ class PhotoSyncService {
           final url = result['secure_url'] as String?;
           if (url != null && url.isNotEmpty) {
             if (kDebugMode) {
-              debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
+              debugPrint(
+                  '[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
             }
             return url;
           }
@@ -349,10 +350,8 @@ class PhotoSyncService {
     try {
       final proofDate = date.toIso8601String().split('T').first;
       final fileName = '${challengeId}_$proofDate.jpg';
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('task_proofs')
-          .child(fileName);
+      final ref =
+          FirebaseStorage.instance.ref().child('task_proofs').child(fileName);
 
       final uploadTask = await ref.putFile(
         imageFile,
@@ -393,7 +392,8 @@ class PhotoSyncService {
       return url;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[PhotoSyncService] Firebase Storage avatar upload failed: $e');
+        debugPrint(
+            '[PhotoSyncService] Firebase Storage avatar upload failed: $e');
       }
       return null;
     }
