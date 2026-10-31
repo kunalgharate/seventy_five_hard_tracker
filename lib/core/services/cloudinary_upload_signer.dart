@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 /// The upload parameters sent to a trusted server-side Cloudinary signer.
@@ -143,23 +144,67 @@ class HttpCloudinaryUploadSigner implements CloudinaryUploadSigner {
   }
 }
 
+/// Signs Cloudinary upload parameters on-device. Used when no signing
+/// endpoint is deployed — the API secret ships inside the build (less
+/// secure than a server signer; acceptable for this app's threat model).
+class LocalCloudinaryUploadSigner implements CloudinaryUploadSigner {
+  LocalCloudinaryUploadSigner({
+    required this.apiSecret,
+    this.apiKey,
+    this.cloudName,
+  });
+
+  final String apiSecret;
+  final String? apiKey;
+  final String? cloudName;
+
+  @override
+  Future<CloudinarySignedUpload> sign(CloudinarySignRequest request,
+      {String? authToken}) async {
+    // Cloudinary signature: SHA-1 hex of the alphabetically sorted
+    // "key=value" pairs, joined with '&', with the API secret appended.
+    final entries = request.parameters.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final payload =
+        entries.map((e) => '${e.key}=${e.value}').join('&') + apiSecret;
+    final signature = sha1.convert(utf8.encode(payload)).toString();
+    final timestamp =
+        int.tryParse(request.parameters['timestamp'] ?? '') ??
+            DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return CloudinarySignedUpload(
+      signature: signature,
+      timestamp: timestamp,
+      apiKey: apiKey,
+      cloudName: cloudName,
+    );
+  }
+}
+
 /// Client-side configuration that is safe to ship with the app. The API
-/// secret is intentionally absent; it must remain on the signer server.
+/// secret is intentionally absent; it must remain on the signer server —
+/// unless the app uses the local signer, in which case it comes from
+/// dart-define at build time and is never committed to source control.
 class CloudinarySignerConfiguration {
   const CloudinarySignerConfiguration({
     required this.endpoint,
     required this.cloudName,
     this.apiKey,
+    this.apiSecret,
   });
 
+  /// Empty when signing happens on-device (local signer mode).
   final Uri endpoint;
   final String cloudName;
   final String? apiKey;
+  final String? apiSecret;
 
   bool get isValid =>
-      endpoint.scheme == 'https' &&
-      endpoint.host.isNotEmpty &&
-      cloudName.isNotEmpty;
+      cloudName.isNotEmpty &&
+      ((endpoint.scheme == 'https' && endpoint.host.isNotEmpty) ||
+          (apiKey != null &&
+              apiKey!.isNotEmpty &&
+              apiSecret != null &&
+              apiSecret!.isNotEmpty));
 
   /// Reads an endpoint and cloud name supplied at build time. Without both,
   /// [PhotoSyncService] has no signer and fails closed.
@@ -167,7 +212,20 @@ class CloudinarySignerConfiguration {
     const endpoint = String.fromEnvironment('CLOUDINARY_SIGNER_ENDPOINT');
     const cloudName = String.fromEnvironment('CLOUDINARY_CLOUD_NAME');
     const apiKey = String.fromEnvironment('CLOUDINARY_API_KEY');
-    if (endpoint.isEmpty || cloudName.isEmpty) return null;
+    const apiSecret = String.fromEnvironment('CLOUDINARY_API_SECRET');
+    if (cloudName.isEmpty) return null;
+
+    // Local-signer mode: no endpoint, but key+secret let the app sign
+    // upload parameters directly.
+    if (endpoint.isEmpty) {
+      if (apiKey.isEmpty || apiSecret.isEmpty) return null;
+      return CloudinarySignerConfiguration(
+        endpoint: Uri.https('localhost', '/'),
+        cloudName: cloudName,
+        apiKey: apiKey,
+        apiSecret: apiSecret,
+      );
+    }
 
     final parsed = Uri.tryParse(endpoint);
     if (parsed == null) return null;
@@ -175,6 +233,7 @@ class CloudinarySignerConfiguration {
       endpoint: parsed,
       cloudName: cloudName,
       apiKey: apiKey.isEmpty ? null : apiKey,
+      apiSecret: apiSecret.isEmpty ? null : apiSecret,
     );
   }
 }

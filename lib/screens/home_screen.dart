@@ -673,6 +673,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             reviewerName: n['reviewer'] ?? '',
             taskName: n['task'] ?? '',
             action: n['action'] ?? 'approved',
+            notificationId: n['id'] ?? '',
             comment: n['comment'],
             onDismiss: () => _dismissNotification(n),
           )),
@@ -1030,10 +1031,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final challenge = challenges[i];
         final task = tasks[i];
         if (task != null) {
-          // A partner assigned this to me for review — I don't complete it.
-          final reviewOnly = myUid != null &&
-              task.accountableUid == myUid &&
-              task.assignedByUid != myUid;
+          // Review-only: I'm the assigned reviewer (partnerUid) for this
+          // task, so I don't complete it or upload proof — I review it.
+          // The creator (= doer, accountableUid) uploads the proof.
+          final reviewOnly = myUid != null && task.partnerUid == myUid;
 
           // Partner approved my proof → the task is complete; mirror it onto
           // my local challenge so the Today card shows the checkmark.
@@ -1096,9 +1097,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Extra guard: only the owner (assigner) may submit proof.
+    // Extra guard: only the doer (accountableUid) may submit proof.
     final myUid = svc.currentUid;
-    if (task != null && myUid != null && task.assignedByUid != myUid) {
+    if (task != null && myUid != null && task.accountableUid != myUid) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

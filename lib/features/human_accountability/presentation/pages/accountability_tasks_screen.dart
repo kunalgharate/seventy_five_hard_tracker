@@ -396,22 +396,31 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       return;
     }
     setState(() => _submitting = true);
+    // Creator = doer model: the task creator (me) completes the task and
+    // uploads proof; the partner (widget.accountableUid) reviews it.
+    // The reviewer must be a listed participant to accept the review
+    // request (firestore rules r-accept).
+    final myUid = _svc.currentUid;
+    final reviewerUid = widget.accountableUid;
     final task = await _svc.createAccountabilityTask(
-      accountableUid: widget.accountableUid,
-      accountableName: widget.accountableName,
+      accountableUid: myUid ?? '',
+      accountableName: _svc.currentUserDisplayName,
       partnershipId: widget.partner.id,
       title: title,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       dueDate: _dueDate,
-      // The task creator reviews the assignee's work.
-      partnerUid: _svc.currentUid,
+      partnerUid: reviewerUid.isEmpty ? null : reviewerUid,
+      accountableUserIds: [
+        if (myUid != null) myUid,
+        if (reviewerUid.isNotEmpty) reviewerUid,
+      ],
     );
     if (!mounted) return;
     setState(() => _submitting = false);
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(task != null
-          ? 'Task assigned to ${widget.accountableName}!'
+          ? 'Task created — ${widget.accountableName} will review your proof'
           : 'Failed to assign task'),
       backgroundColor: task != null ? Colors.green : Colors.red,
       behavior: SnackBarBehavior.floating,

@@ -27,7 +27,6 @@ import 'package:seventy_five_hard_tracker/widgets/custom_app_bar.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/main.dart';
-import 'package:seventy_five_hard_tracker/widgets/photo_proof_sheet.dart';
 import 'package:seventy_five_hard_tracker/widgets/proof_review_dialog.dart';
 import 'package:seventy_five_hard_tracker/core/theme/figma_tokens.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_state.dart';
@@ -1631,18 +1630,16 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                   // the submitter/owner, or the friend submitted it and it
                   // is awaiting MY review. The user's own tasks
                   // (assignedByUid == me) never render in a partner card.
+                  // Tasks that came FROM this friend and involve me —
+                  // partnershipId alone is unreliable (older docs may have
+                  // it empty), so scope by the people relationship instead.
                   final visibleTasks = _accountabilityTasks
                       .where(
                         (t) =>
-                            t.partnershipId == widget.partner.id &&
-                            (t.assignedByUid == friendUid ||
-                                (t.assignedByUid != myUid &&
-                                    t.partnerUid == myUid &&
-                                    (t.status ==
-                                            AccountabilityTaskStatus
-                                                .pendingReview ||
-                                        t.proofStatus ==
-                                            ProofStatus.submitted))),
+                            t.assignedByUid == friendUid &&
+                            (t.partnerUid == myUid ||
+                                t.accountableUid == myUid ||
+                                t.accountableUserIds.contains(myUid)),
                       )
                       .toList();
                   if (visibleTasks.isEmpty) {
@@ -1682,14 +1679,18 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                     final isCompleted = task.isDoneToday;
                     final proofStatus = task.proofStatus;
                     final myUid = AccountabilityService().currentUid;
+                    // accountableUserIds is the participants list (doers +
+                    // reviewers) — it must NOT count toward ownership.
                     final iAmOwner = task.accountableUid == myUid ||
-                        task.accountableUserIds.contains(myUid) ||
                         (task.assignedByUid == myUid &&
                             task.partnerUid != myUid);
                     final iAmReviewer = !iAmOwner &&
                         (task.partnerUid == myUid ||
                             (task.assignedByUid == myUid &&
                                 task.accountableUid != myUid));
+                    // The squad tab is review-only — tasks I own live on
+                    // the Today tab and never appear in the partner card.
+                    if (!iAmReviewer) return const SizedBox.shrink();
                     return InkWell(
                       borderRadius: BorderRadius.circular(10),
                       onTap: () => PartnerTaskDetailsDialog.show(context, task),
@@ -1991,115 +1992,6 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     );
   }
 
-  // ignore: unused_element
-  Widget _buildPendingActions(AccountabilityTask task) {
-    if (task.challengeId != null) {
-      if (task.proofStatus == ProofStatus.rejected) {
-        return SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final bloc = context.read<AccountabilityBloc>();
-              final ok = await PhotoProofSheet.show(
-                context: context,
-                taskId: task.id,
-                taskName: task.title,
-                date: DateTime.now(),
-              );
-              if (ok == true && mounted) {
-                bloc.add(LoadAccountabilityData());
-              }
-            },
-            icon: const Icon(Icons.camera_alt_outlined, size: 16),
-            label: Text(
-              task.proofStatus == ProofStatus.rejected
-                  ? 'Resubmit Photo Proof'
-                  : 'Submit Photo Proof',
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        );
-      }
-      if (task.proofStatus == ProofStatus.submitted) {
-        return SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.hourglass_empty, size: 16),
-            label: const Text('Awaiting Review'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.blue[400],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        );
-      }
-      if (task.proofStatus == ProofStatus.approved) {
-        return SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: null,
-            icon: Icon(Icons.check_circle, size: 16, color: Colors.green[600]),
-            label: Text('Approved', style: TextStyle(color: Colors.green[700])),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.green,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
-          final accBloc = context.read<AccountabilityBloc>();
-          final challBloc = context.read<ChallengeBloc>();
-          setState(() => _loading = true);
-          final ok = await AccountabilityService().completeAccountabilityTask(
-            task.id,
-          );
-          if (mounted) setState(() => _loading = false);
-          if (ok && mounted) {
-            accBloc.add(LoadAccountabilityData());
-            if (task.challengeId != null) {
-              try {
-                challBloc.add(
-                  UpdateDailyProgress(
-                    date: DateTime.now(),
-                    challengeId: task.challengeId!,
-                    isCompleted: true,
-                  ),
-                );
-              } catch (_) {
-                // safe to ignore
-              }
-            }
-          }
-        },
-        icon: const Icon(Icons.check, size: 16),
-        label: const Text('Mark Complete'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Checkbox tap routing: owner → submit proof, reviewer → review proof.
   /// Proof can ONLY be added by the owner, never by the reviewer.
   Future<void> _onTaskCheckboxTapped(
@@ -2109,42 +2001,20 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
     required bool iAmReviewer,
   }) async {
     if (iAmOwner) {
-      if (task.proofStatus == ProofStatus.submitted ||
-          task.status == AccountabilityTaskStatus.pendingReview) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Proof submitted — waiting for reviewer approval.'),
-            backgroundColor: Colors.orange,
-            behavior: SnackBarBehavior.floating,
+      // The squad tab is review-only — owners submit proof from the
+      // Today tab's task card, never from the partner card.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            task.proofStatus == ProofStatus.submitted ||
+                    task.status == AccountabilityTaskStatus.pendingReview
+                ? 'Proof submitted — waiting for reviewer approval.'
+                : 'You own this task — submit proof from the Today tab.',
           ),
-        );
-        return;
-      }
-      final bloc = context.read<AccountabilityBloc>();
-      final ok = await PhotoProofSheet.show(
-        context: context,
-        taskId: task.id,
-        taskName: task.title,
-        date: DateTime.now(),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-      if (ok == true && mounted) {
-        // PhotoProofSheet calls submitTaskProof (owner-only). Now move the
-        // task into pendingReview so the reviewer is notified — same two-step
-        // as the Today screen checkbox flow.
-        final svc = AccountabilityService();
-        final updated = await svc.fetchTaskById(task.id);
-        if (updated?.proofUrl != null && mounted) {
-          try {
-            bloc.add(SubmitProofForReview(
-              taskId: task.id,
-              challengeId: task.challengeId ?? '',
-              proofUrl: updated!.proofUrl!,
-            ));
-          } catch (_) {}
-        }
-        bloc.add(LoadAccountabilityData());
-        _loadTasks(forceRefresh: true);
-      }
       return;
     }
     if (iAmReviewer) {
@@ -2178,8 +2048,9 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
 
   Widget _buildPartnerTaskAction(AccountabilityTask task) {
     final myUid = AccountabilityService().currentUid;
+    // accountableUserIds is the participants list (doers + reviewers) —
+    // it must NOT count toward ownership.
     final iAmOwner = task.accountableUid == myUid ||
-        task.accountableUserIds.contains(myUid) ||
         (task.assignedByUid == myUid && task.partnerUid != myUid);
     final iAmReviewer = !iAmOwner &&
         (task.partnerUid == myUid ||
@@ -2210,57 +2081,19 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       );
     }
 
-    // ── OWNER: submit / resubmit proof, or wait for review ──
+    // ── OWNER: no action here — the squad tab is review-only. Owners
+    // submit proof from the Today tab's own task card.
     if (iAmOwner) {
-      if (task.proofStatus == ProofStatus.submitted ||
-          task.status == AccountabilityTaskStatus.pendingReview) {
-        return SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.hourglass_empty, size: 16),
-            label: const Text('Awaiting Review'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.blue[400],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        );
-      }
       return SizedBox(
         width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () async {
-            final bloc = context.read<AccountabilityBloc>();
-            final ok = await PhotoProofSheet.show(
-              context: context,
-              taskId: task.id,
-              taskName: task.title,
-              date: DateTime.now(),
-            );
-            if (ok == true && mounted) {
-              bloc.add(LoadAccountabilityData());
-            }
-          },
-          icon: Icon(
-            task.proofStatus == ProofStatus.rejected
-                ? Icons.refresh
-                : Icons.camera_alt_outlined,
-            size: 16,
-          ),
-          label: Text(
-            task.proofStatus == ProofStatus.rejected
-                ? 'Resubmit Proof'
-                : 'Submit Proof',
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            task.proofStatus == ProofStatus.submitted ||
+                    task.status == AccountabilityTaskStatus.pendingReview
+                ? 'Awaiting reviewer approval'
+                : 'You own this task — submit proof from the Today tab',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ),
       );
@@ -2520,18 +2353,22 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
                                 final title = titleCtrl.text.trim();
                                 if (title.isEmpty) return;
                                 setModalState(() => submitting = true);
+                                // Creator = doer, partner = reviewer —
+                                // same model as the collaborator dialog.
+                                final myUid =
+                                    AccountabilityService().currentUid;
                                 await AccountabilityService()
                                     .createAccountabilityTask(
-                                  accountableUid: partnerUid,
-                                  accountableName: partner.partnerName,
+                                  accountableUid: myUid!,
+                                  accountableName: AccountabilityService()
+                                      .currentUserDisplayName,
                                   partnershipId: partner.id,
                                   title: title,
                                   description: descCtrl.text.trim().isEmpty
                                       ? null
                                       : descCtrl.text.trim(),
-                                  // The task creator reviews the assignee's work.
-                                  partnerUid:
-                                      AccountabilityService().currentUid,
+                                  partnerUid: partnerUid,
+                                  accountableUserIds: [myUid, partnerUid],
                                 );
                                 if (ctx.mounted) Navigator.pop(ctx);
                                 // Refresh the task list in the card
@@ -4412,7 +4249,17 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
   }
 
   Widget _buildPendingActions(AccountabilityTask task) {
-    if (task.proofStatus == ProofStatus.submitted) {
+    final myUid = AccountabilityService().currentUid;
+    // accountableUserIds is the participants list (doers + reviewers) —
+    // it must NOT count toward ownership.
+    final iAmOwner = task.accountableUid == myUid ||
+        (task.assignedByUid == myUid && task.partnerUid != myUid);
+    final iAmReviewer = !iAmOwner &&
+        (task.partnerUid == myUid ||
+            (task.assignedByUid == myUid && task.accountableUid != myUid));
+
+    if (task.proofStatus == ProofStatus.submitted ||
+        task.status == AccountabilityTaskStatus.pendingReview) {
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
@@ -4428,36 +4275,26 @@ class _TaskRequestCardState extends State<_TaskRequestCard> {
         ),
       );
     }
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
-          final bloc = context.read<AccountabilityBloc>();
-          final ok = await PhotoProofSheet.show(
-            context: context,
-            taskId: task.id,
-            taskName: task.title,
-            date: DateTime.now(),
-          );
-          if (ok == true && mounted) {
-            bloc.add(LoadAccountabilityData());
-          }
-        },
-        icon: const Icon(Icons.check, size: 16),
-        label: Text(
-          task.proofStatus == ProofStatus.rejected
-              ? 'Resubmit'
-              : 'Mark Complete',
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+    // The squad tab is review-only — owners submit proof from the Today
+    // tab, reviewers see a waiting state. No submit button for either here.
+    if (iAmOwner || iAmReviewer) {
+      return SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(
+            iAmOwner
+                ? 'You own this task — submit proof from the Today tab'
+                : 'Waiting for the owner to submit proof',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ),
-      ),
-    );
+      );
+    }
+    // No submit action for anyone outside the owner role — the squad tab
+    // is review-only. A stale doc that doesn't list the viewer would
+    // otherwise render an upload button for the wrong person.
+    return const SizedBox.shrink();
   }
 }
 

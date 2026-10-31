@@ -309,25 +309,27 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           challenge.taskType == 'regular') {
         continue;
       }
-      // Always assign to the OTHER person
-      final otherUid =
-          partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
-      if (otherUid == null) continue;
-
-      // The reviewer is the partnership member that is NOT the doer —
-      // the task creator (me) reviews the partner's work.
+      // Creator = doer model: the task creator (me) completes the task and
+      // uploads proof; the partner is the reviewer who approves/rejects.
       final reviewerUid =
-          partner.ownerUid == otherUid ? partner.partnerUid : partner.ownerUid;
+          partner.ownerUid == myUid ? partner.partnerUid : partner.ownerUid;
+      if (reviewerUid == null) continue;
 
       // Fire-and-forget — don't block navigation
       svc.createAccountabilityTask(
-        accountableUid: otherUid,
-        accountableName: partner.partnerName,
+        accountableUid: myUid ?? '',
+        accountableName: svc.currentUserDisplayName,
         partnershipId: partner.id,
         title: challenge.title.trim(),
         description: 'Daily challenge task from 75 Hard',
         challengeId: challenge.id,
         partnerUid: reviewerUid,
+        // The reviewer must be a listed participant to accept the
+        // review request (firestore rules r-accept).
+        accountableUserIds: [
+          if (myUid != null) myUid,
+          reviewerUid,
+        ],
         // taskType is persisted as 'hard' unless this IS a routine task
         taskType: challenge.taskType == 'regular' ? 'regular' : null,
       );

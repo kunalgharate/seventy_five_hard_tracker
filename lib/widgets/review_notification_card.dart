@@ -10,11 +10,17 @@ class ReviewNotificationCard extends StatelessWidget {
   final String? comment;
   final VoidCallback? onDismiss;
 
+  /// Unique Firestore doc id backing this card. Used for the Dismissible
+  /// key — reviewer+task is not unique (two approvals for the same task
+  /// collide and crash the dismiss animation).
+  final String notificationId;
+
   const ReviewNotificationCard({
     super.key,
     required this.reviewerName,
     required this.taskName,
     required this.action,
+    required this.notificationId,
     this.comment,
     this.onDismiss,
   });
@@ -46,7 +52,7 @@ class ReviewNotificationCard extends StatelessWidget {
     }
 
     return Dismissible(
-      key: Key('notif_${reviewerName}_$taskName'),
+      key: Key('notif_$notificationId'),
       direction: DismissDirection.horizontal,
       onDismissed: (_) => onDismiss?.call(),
       child: Container(

@@ -45,6 +45,15 @@ class PhotoSyncService {
   static CloudinaryUploadSigner? _createEnvironmentSigner() {
     final configuration = CloudinarySignerConfiguration.fromEnvironment();
     if (configuration == null || !configuration.isValid) return null;
+    // No signing endpoint → sign on-device with the shipped API secret.
+    if (configuration.endpoint.host == 'localhost' &&
+        configuration.apiSecret != null) {
+      return LocalCloudinaryUploadSigner(
+        apiSecret: configuration.apiSecret!,
+        apiKey: configuration.apiKey,
+        cloudName: configuration.cloudName,
+      );
+    }
     return HttpCloudinaryUploadSigner(endpoint: configuration.endpoint);
   }
 
