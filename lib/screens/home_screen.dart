@@ -1188,12 +1188,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final task = await svc.fetchTaskByChallengeId(challenge.id);
     if (task == null) return;
     // Reviewer-only: the owner cannot approve their own proof.
+    // Under creator=doer model:
+    //  - Assigned reviewer: partnerUid == me
+    //  - Self-review: no partnerUid assigned, AND I'm the doer (accountableUid == me)
     final myUid = svc.currentUid;
+    final partner = task.partnerUid;
+    final hasPartner = partner != null && partner.isNotEmpty;
     final iAmReviewer = myUid != null &&
-        task.assignedByUid != myUid &&
-        (task.accountableUid == myUid ||
-            task.accountableUserIds.contains(myUid) ||
-            task.partnerUid == myUid);
+        (task.partnerUid == myUid ||
+            (!hasPartner && task.accountableUid == myUid));
     if (!iAmReviewer) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -1487,7 +1487,10 @@ class AccountabilityService {
   }
 
   /// Accept a task request — sets status to pending.
-  /// Only the accountable user can accept.
+  /// Doers (accountableUid == me) accept a task request they received. Under
+  /// creator=doer model, the doer is the one creating the task, so this path
+  /// is used for email-claimed tasks or tasks assigned to self. Reviewers
+  /// use acceptReviewRequest instead.
   Future<bool> acceptTaskRequest(String taskId) async {
     if (!_isReady) return false;
     try {
@@ -1500,22 +1503,27 @@ class AccountabilityService {
         return false;
       }
       final email = _auth.currentUser?.email?.toLowerCase();
-      final isMine = data['accountableUid'] == uid ||
-          ((email != null && email.isNotEmpty) &&
-              (data['accountableEmail'] as String?)?.toLowerCase() == email);
+
+      // Under creator=doer model: the doer (accountableUid) is the one who accepts.
+      // Reviewers use acceptReviewRequest. Email claim is the only other path.
+      final isMyDoer = data['accountableUid'] == uid;
+      final isEmailClaim = ((email != null && email.isNotEmpty) &&
+          (data['accountableEmail'] as String?)?.toLowerCase() == email);
+      final isMine = isMyDoer || isEmailClaim;
       if (!isMine) return false;
-      // Accepting also claims the task if it was addressed by email only.
+
       final ids =
           (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
       if (!ids.contains(uid)) ids.add(uid);
+
       final update = <String, dynamic>{
         'status': AccountabilityTaskStatus.pending.name,
-        'accountableUid': uid,
         'accountableUserIds': ids,
       };
-      // Email-claimed tasks have no reviewer yet. The creator reviews the
-      // acceptor's work — backfilling here makes submitForReview notifications
-      // and the review queues (partnerUid == uid) reach them.
+
+      // Email-claimed tasks have no reviewer yet — backfill partnerUid to the
+      // creator (who is also the doer) for self-review capability.
+      // Only for self-review tasks: the doer accepts and reviews their own proof.
       final partnerUid = data['partnerUid'] as String?;
       if (partnerUid == null || partnerUid.isEmpty) {
         final creatorUid = data['assignedByUid'] as String?;
@@ -2740,29 +2748,45 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
-      // Scope the query to the current user (as creator) so it satisfies the
+      // Scope each query to the current user so it satisfies the
       // accountability_tasks read rule — an unscoped challengeId-only query is
-      // rejected with permission-denied.
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('challengeId', isEqualTo: challengeId)
-          .where('assignedByUid', isEqualTo: uid)
-          .get();
-      if (snap.docs.isEmpty) return null;
-      // Prefer a doc where I'm the doer — stale flipped docs (legacy docs
-      // keyed by challengeId) also match this query and would poison the
-      // owner/reviewer role checks downstream.
-      final owned = snap.docs.where((d) {
-        final data = d.data();
-        return data['accountableUid'] == uid ||
-            (data['accountableUserIds'] as List<dynamic>?)?.contains(uid) ==
-                true;
-      }).toList();
-      final chosen = owned.isNotEmpty ? owned.first : snap.docs.first;
-      return AccountabilityTask.fromFirestore(
-        chosen.data(),
-        id: chosen.id,
-      );
+      // rejected with permission-denied. The same challengeId can appear in a
+      // task I created (assignedByUid == me), one where I'm the reviewer
+      // (partnerUid == me), or one where I'm the doer (accountableUid == me).
+      final snaps = await Future.wait([
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('assignedByUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('partnerUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('accountableUid', isEqualTo: uid)
+            .get(),
+      ]);
+      final candidates = <AccountabilityTask>[];
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          candidates.add(
+            AccountabilityTask.fromFirestore(d.data(), id: d.id),
+          );
+        }
+      }
+      if (candidates.isEmpty) return null;
+      // Prefer a doc where I'm the doer (accountableUid) — stale flipped docs
+      // (legacy docs keyed by challengeId) would poison the owner/reviewer
+      // role checks downstream. When I'm only the reviewer (partnerUid), any
+      // matching doc is fine.
+      final doerDocs =
+          candidates.where((t) => t.accountableUid == uid).toList();
+      if (doerDocs.isNotEmpty) return doerDocs.first;
+      return candidates.first;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchTaskByChallengeId error: $e');
@@ -2776,25 +2800,34 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
-      // Scope the query to the current user (as creator) so it satisfies the
+      // Scope each query to the current user so it satisfies the
       // accountability_tasks read rule — an unscoped challengeId-only query is
-      // rejected with permission-denied (same as fetchTaskByChallengeId).
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('challengeId', isEqualTo: challengeId)
-          .where('assignedByUid', isEqualTo: uid)
-          .get();
-      if (snap.docs.isEmpty) return null;
-      // Prefer a doc where I'm the doer — stale flipped docs (legacy docs
-      // keyed by challengeId, from before the owner/reviewer fix) also
-      // match this query and would poison proof submission.
-      final owned = snap.docs.where((d) {
-        final data = d.data();
-        return data['accountableUid'] == uid ||
-            (data['accountableUserIds'] as List<dynamic>?)?.contains(uid) ==
-                true;
-      }).toList();
-      return (owned.isNotEmpty ? owned : snap.docs).first.id;
+      // rejected with permission-denied. Match tasks I created, review, or do.
+      final snaps = await Future.wait([
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('assignedByUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('partnerUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('accountableUid', isEqualTo: uid)
+            .get(),
+      ]);
+      final ids = <String>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          ids.add(d.id);
+        }
+      }
+      if (ids.isEmpty) return null;
+      return ids.first;
     } catch (e) {
       if (kDebugMode) {
         debugPrint(

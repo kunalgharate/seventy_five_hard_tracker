@@ -35,12 +35,43 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
   final Set<String> _tasksIAssigned = {};
+  final Set<String> _accountabilityChecked = {};
   final Map<String, List<Collaborator>> _taskCollaborators = {};
 
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
+  }
+
+  /// Loads the accountability connection for every regular task so the proof
+  /// button renders correctly after a reload (the in-session assign action
+  /// alone cannot survive an app restart / tab switch).
+  Future<void> _loadAccountabilityData(List<RegularTask> tasks) async {
+    final svc = AccountabilityService();
+    final myUid = svc.currentUid;
+    if (myUid == null) return;
+    var changed = false;
+    for (final task in tasks) {
+      if (_accountabilityChecked.contains(task.id)) continue;
+      _accountabilityChecked.add(task.id);
+      try {
+        final acc = await svc.fetchTaskByChallengeId(task.id);
+        if (acc == null) continue;
+        final isDoer = acc.accountableUid == myUid;
+        final isReviewer = acc.partnerUid == myUid;
+        if (isDoer || isReviewer) {
+          _accountabilityStatuses[task.id] = acc.status;
+          _proofStatuses[task.id] = acc.proofStatus;
+          if (isDoer) _tasksIAssigned.add(task.id);
+          if (isReviewer) {
+            _assignedPartnerNames[task.id] = acc.accountableName;
+          }
+          changed = true;
+        }
+      } catch (_) {}
+    }
+    if (changed && mounted) setState(() {});
   }
 
   @override
@@ -55,6 +86,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           tasks = state.tasks;
           todayCompletions = state.todayCompletions;
           recentCompletions = state.recentCompletions;
+          // Restore accountability connections (proof button) after reload.
+          _loadAccountabilityData(tasks);
         } else {
           tasks = [];
           todayCompletions = {};
