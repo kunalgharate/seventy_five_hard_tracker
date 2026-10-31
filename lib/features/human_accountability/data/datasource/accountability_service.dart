@@ -3072,23 +3072,40 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('partnerUid', isEqualTo: uid)
-          .where('status', isEqualTo: 'pendingReview')
-          .get();
-
-      final tasks = snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          // Already-voted tasks can't be voted on again — a stale doc would
-          // just show an approve button that always errors out.
+      final tasks = _db.collection('accountability_tasks');
+      // Two types of pending reviews:
+      // 1. Assigned reviewer: partnerUid == me
+      // 2. Self-review: no partnerUid (null/empty) AND accountableUid == me
+      final snaps = await Future.wait([
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: '')
+            .where('accountableUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: null)
+            .where('accountableUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      // Already-voted tasks can't be voted on again.
+      final tasksList = map.values
           .where((t) =>
               !t.approvalUids.contains(uid) && !t.rejectionUids.contains(uid))
           .toList();
-      // Dedupe by title+doer — stale duplicate docs (from earlier bugs)
-      // leave a phantom "pending review" card next to the real one.
+      // Dedupe by title+doer — stale duplicate docs leave a phantom card.
       final deduped = <String, AccountabilityTask>{};
-      for (final t in tasks) {
+      for (final t in tasksList) {
         final key = '${t.title.toLowerCase().trim()}|${t.accountableUid}';
         if (!deduped.containsKey(key) ||
             t.assignedAt.isAfter(deduped[key]!.assignedAt)) {
@@ -3345,18 +3362,19 @@ class AccountabilityService {
   }
 
   /// True when [uid] is a designated reviewer of the task described by
-  /// raw Firestore [data] — i.e. listed in accountableUserIds/accountableUid
-  /// True when [uid] is the task reviewer (the assigner) — the owner can never review
-  /// their own proof.
-  /// Mirrors `isProofReviewer()` in firestore.rules: a reviewer is any
-  /// NON-assigner listed as partnerUid, accountableUid, or a participant
-  /// in accountableUserIds. The assigner can never vote — the rules
-  /// require assignedByUid != caller.
+  /// raw Firestore [data].
+  /// Mirrors `isProofReviewer()` in firestore.rules:
+  ///  - Assigned reviewer: partnerUid set → only them can review (never
+  ///    the assigner/doer).
+  ///  - Self-review: no partnerUid assigned → the doer (accountableUid)
+  ///    can review their own proof.
   bool _isReviewerOf(Map<String, dynamic> data, String uid) {
-    if (data['assignedByUid'] == uid) return false;
-    return data['partnerUid'] == uid ||
-        data['accountableUid'] == uid ||
-        (data['accountableUserIds'] as List<dynamic>?)?.contains(uid) == true;
+    final partner = data['partnerUid'] as String?;
+    final hasPartner = partner != null && partner.isNotEmpty;
+    if (hasPartner) {
+      return partner == uid && data['assignedByUid'] != uid;
+    }
+    return data['accountableUid'] == uid;
   }
 
   /// True when [uid] is the task **doer** (accountableUid) — the only role

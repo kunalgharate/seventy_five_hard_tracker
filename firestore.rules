@@ -97,11 +97,20 @@ service cloud.firestore {
     }
 
     function isProofReviewer() {
-      return resource.data.assignedByUid != request.auth.uid
-          && (resource.data.partnerUid == request.auth.uid
-              || resource.data.accountableUid == request.auth.uid
-              || (resource.data.accountableUserIds is list
-                  && request.auth.uid in resource.data.accountableUserIds));
+      // In the creator=doer model: assigner == doer (assignedByUid ==
+      // accountableUid). Two reviewer scenarios:
+      // 1. Assigned reviewer: partnerUid is set → only them can review
+      //    (never the assigner/doer).
+      // 2. Self-review: no partnerUid assigned → the doer (assigner) can
+      //    review their own proof and complete the task.
+      let isAssignedReviewer = resource.data.get('partnerUid', '') is string
+          && resource.data.partnerUid != ''
+          && resource.data.partnerUid == request.auth.uid
+          && resource.data.assignedByUid != request.auth.uid;
+      let isSelfReview = (resource.data.get('partnerUid', '') == null
+          || resource.data.get('partnerUid', '') == '')
+          && resource.data.accountableUid == request.auth.uid;
+      return isAssignedReviewer || isSelfReview;
     }
 
     function hasNotVotedOnProof() {
