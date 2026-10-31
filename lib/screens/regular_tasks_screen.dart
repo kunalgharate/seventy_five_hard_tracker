@@ -617,12 +617,16 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     final accStatus = _accountabilityStatuses[task.id];
 
     // For tasks with accountability, doers must submit proof before completing
+    // Allow completion when:
+    // 1. No accountability requirement
+    // 2. User is reviewer (reviewers can't complete the task itself)
+    // 3. Proof submitted & under review
+    // 4. Proof approved (doer can now complete)
     final canToggle = !hasAccountability ||
         !iAmDoer || // Reviewers can't complete
         (proofStatus == ProofStatus.submitted &&
             accStatus == AccountabilityTaskStatus.pendingReview) ||
-        (proofStatus == ProofStatus.approved &&
-            accStatus == AccountabilityTaskStatus.approved);
+        proofStatus == ProofStatus.approved; // Doer can complete after approval
 
     return GestureDetector(
       onTap: canToggle
