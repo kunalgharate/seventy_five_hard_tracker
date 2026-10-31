@@ -614,51 +614,51 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     final hasAccountability = _assignedPartnerNames.containsKey(task.id);
     final iAmDoer = _tasksIAssigned.contains(task.id);
     final proofStatus = _proofStatuses[task.id];
-    final accStatus = _accountabilityStatuses[task.id];
 
-    // For tasks with accountability, doers must submit proof before completing
-    // Allow completion when:
-    // 1. No accountability requirement
-    // 2. User is reviewer (reviewers can't complete the task itself)
-    // 3. Proof submitted & under review
-    // 4. Proof approved (doer can now complete)
-    final canToggle = !hasAccountability ||
+    // Determine the effective completion state
+    // For doers with approved proof, task is automatically complete
+    final effectiveCompleted = isCompleted ||
+        (hasAccountability && iAmDoer && proofStatus == ProofStatus.approved);
+
+    // Determine if checkbox is interactive
+    // Regular tasks: always interactive
+    // Accountability tasks: only interactive for reviewers (can't complete their tasks)
+    //                    or before proof is approved
+    final isInteractive = !hasAccountability ||
         !iAmDoer || // Reviewers can't complete
-        (proofStatus == ProofStatus.submitted &&
-            accStatus == AccountabilityTaskStatus.pendingReview) ||
-        proofStatus == ProofStatus.approved; // Doer can complete after approval
+        proofStatus != ProofStatus.approved;
 
     return GestureDetector(
-      onTap: canToggle
+      onTap: isInteractive
           ? () {
               context.read<RegularTaskBloc>().add(
                     ToggleRegularTaskCompletion(
                       taskId: task.id,
                       date: DateTime.now(),
-                      isCompleted: !isCompleted,
+                      isCompleted: !effectiveCompleted,
                     ),
                   );
             }
-          : null, // Disabled if proof not submitted for accountability task
+          : null, // Disabled when proof already approved (auto-complete)
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: isCompleted ? Colors.green : Colors.transparent,
+          color: effectiveCompleted ? Colors.green : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isCompleted
+            color: effectiveCompleted
                 ? Colors.green
-                : (canToggle
+                : (isInteractive
                     ? Colors.grey[350]!
-                    : Colors.orange), // Orange = needs action
+                    : Colors.orange), // Orange = needs action / auto-complete
             width: 2,
           ),
         ),
-        child: isCompleted
+        child: effectiveCompleted
             ? const Icon(Icons.check, color: Colors.white, size: 18)
-            : (canToggle
+            : (isInteractive
                 ? null
                 : const Icon(Icons.rate_review_outlined,
                     color: Colors.orange, size: 16)), // Proof needed icon
