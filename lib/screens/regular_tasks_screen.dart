@@ -61,12 +61,11 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
         final isDoer = acc.accountableUid == myUid;
         final isReviewer = acc.partnerUid == myUid;
         if (isDoer || isReviewer) {
+          // Both doers and reviewers should see the proof button
+          _assignedPartnerNames[task.id] = acc.accountableName;
           _accountabilityStatuses[task.id] = acc.status;
           _proofStatuses[task.id] = acc.proofStatus;
           if (isDoer) _tasksIAssigned.add(task.id);
-          if (isReviewer) {
-            _assignedPartnerNames[task.id] = acc.accountableName;
-          }
           changed = true;
         }
       } catch (_) {}
@@ -611,16 +610,32 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
 
   Widget _buildCheckbox(
       BuildContext context, RegularTask task, bool isCompleted) {
+    // Check if this task has an accountability requirement (partner assigned)
+    final hasAccountability = _assignedPartnerNames.containsKey(task.id);
+    final iAmDoer = _tasksIAssigned.contains(task.id);
+    final proofStatus = _proofStatuses[task.id];
+    final accStatus = _accountabilityStatuses[task.id];
+
+    // For tasks with accountability, doers must submit proof before completing
+    final canToggle = !hasAccountability ||
+        !iAmDoer || // Reviewers can't complete
+        (proofStatus == ProofStatus.submitted &&
+            accStatus == AccountabilityTaskStatus.pendingReview) ||
+        (proofStatus == ProofStatus.approved &&
+            accStatus == AccountabilityTaskStatus.approved);
+
     return GestureDetector(
-      onTap: () {
-        context.read<RegularTaskBloc>().add(
-              ToggleRegularTaskCompletion(
-                taskId: task.id,
-                date: DateTime.now(),
-                isCompleted: !isCompleted,
-              ),
-            );
-      },
+      onTap: canToggle
+          ? () {
+              context.read<RegularTaskBloc>().add(
+                    ToggleRegularTaskCompletion(
+                      taskId: task.id,
+                      date: DateTime.now(),
+                      isCompleted: !isCompleted,
+                    ),
+                  );
+            }
+          : null, // Disabled if proof not submitted for accountability task
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 28,
@@ -629,13 +644,20 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           color: isCompleted ? Colors.green : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isCompleted ? Colors.green : Colors.grey[350]!,
+            color: isCompleted
+                ? Colors.green
+                : (canToggle
+                    ? Colors.grey[350]!
+                    : Colors.orange), // Orange = needs action
             width: 2,
           ),
         ),
         child: isCompleted
             ? const Icon(Icons.check, color: Colors.white, size: 18)
-            : null,
+            : (canToggle
+                ? null
+                : const Icon(Icons.rate_review_outlined,
+                    color: Colors.orange, size: 16)), // Proof needed icon
       ),
     );
   }
