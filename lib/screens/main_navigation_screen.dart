@@ -7,6 +7,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:seventy_five_hard_tracker/core/services/cloud_sync_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/connectivity_service.dart';
 import 'package:seventy_five_hard_tracker/core/services/offline_task_outbox.dart';
+import 'package:seventy_five_hard_tracker/core/services/widget_bridge_service.dart';
+import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task_sheet.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
@@ -36,6 +38,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Future<void>? _resumeSyncInFlight;
   final Set<int> _visitedTabs = {0};
   final Map<int, Widget> _builtScreens = {};
+  StreamSubscription<void>? _widgetChangesSub;
 
   late final List<Widget Function()> _screenBuilders = widget.screenBuilders ??
       [
@@ -55,12 +58,63 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Widget deep links (dailymettle://add-task, dailymettle://tasks) land
+    // here — the widget can't reach into the tab navigator by itself.
+    WidgetBridgeService.instance.registerNavigationHandlers(
+      openTasksTab: () => _selectTab(1),
+      openAddTask: _openWidgetAddTask,
+    );
+    _widgetChangesSub = WidgetBridgeService.instance.changes.listen((_) {
+      if (mounted) {
+        context.read<RegularTaskBloc>().add(LoadRegularTasks());
+      }
+    });
+    unawaited(_drainWidgetChanges().catchError((Object e) {
+      if (kDebugMode) {
+        debugPrint('[MainNav] widget drain failed: $e');
+      }
+    }));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    WidgetBridgeService.instance.unregisterNavigationHandlers();
+    _widgetChangesSub?.cancel();
     super.dispose();
+  }
+
+  /// Applies quick-adds and toggles the widgets queued while the app was
+  /// closed, then refreshes the widget snapshot. Uses the bloc's repository
+  /// and notification service so test doubles are honored. The repository is
+  /// deliberately not opened eagerly — the drain only touches Hive when the
+  /// widget actually queued work, so this is a no-op in test environments.
+  Future<void> _drainWidgetChanges() async {
+    try {
+      final bloc = context.read<RegularTaskBloc>();
+      final repo = bloc.repository;
+      await WidgetBridgeService.instance.drainWidgetChanges(
+        repository: repo,
+        notifications: bloc.notifications,
+      );
+      await WidgetBridgeService.instance.syncWidgetDataFromRepository(repo);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MainNav] widget drain failed: $e');
+      }
+    }
+  }
+
+  void _openWidgetAddTask() {
+    _selectTab(1);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) =>
+          AddRegularTaskSheet(bloc: context.read<RegularTaskBloc>()),
+    );
   }
 
   void _selectTab(int index) {
@@ -76,6 +130,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     if (FirebaseAuth.instance.currentUser != null) {
       context.read<AccountabilityBloc>().add(CheckExpiredTasks());
     }
+    // Pick up anything the widget queued while the app was away.
+    unawaited(_drainWidgetChanges().catchError((Object e) {
+      if (kDebugMode) {
+        debugPrint('[MainNav] widget drain failed: $e');
+      }
+    }));
     unawaited(_syncLocalChanges());
   }
 

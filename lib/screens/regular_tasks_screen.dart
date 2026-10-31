@@ -35,12 +35,42 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   final Map<String, ProofStatus> _proofStatuses = {};
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
   final Set<String> _tasksIAssigned = {};
+  final Set<String> _accountabilityChecked = {};
   final Map<String, List<Collaborator>> _taskCollaborators = {};
 
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
+  }
+
+  /// Loads the accountability connection for every regular task so the proof
+  /// button renders correctly after a reload (the in-session assign action
+  /// alone cannot survive an app restart / tab switch).
+  Future<void> _loadAccountabilityData(List<RegularTask> tasks) async {
+    final svc = AccountabilityService();
+    final myUid = svc.currentUid;
+    if (myUid == null) return;
+    var changed = false;
+    for (final task in tasks) {
+      if (_accountabilityChecked.contains(task.id)) continue;
+      _accountabilityChecked.add(task.id);
+      try {
+        final acc = await svc.fetchTaskByChallengeId(task.id);
+        if (acc == null) continue;
+        final isDoer = acc.accountableUid == myUid;
+        final isReviewer = acc.partnerUid == myUid;
+        if (isDoer || isReviewer) {
+          // Both doers and reviewers should see the proof button
+          _assignedPartnerNames[task.id] = acc.accountableName;
+          _accountabilityStatuses[task.id] = acc.status;
+          _proofStatuses[task.id] = acc.proofStatus;
+          if (isDoer) _tasksIAssigned.add(task.id);
+          changed = true;
+        }
+      } catch (_) {}
+    }
+    if (changed && mounted) setState(() {});
   }
 
   @override
@@ -55,6 +85,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           tasks = state.tasks;
           todayCompletions = state.todayCompletions;
           recentCompletions = state.recentCompletions;
+          // Restore accountability connections (proof button) after reload.
+          _loadAccountabilityData(tasks);
         } else {
           tasks = [];
           todayCompletions = {};
@@ -66,12 +98,14 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
               ? FigmaTokens.darkBg
               : FigmaTokens.soft,
           appBar: const CustomAppBar(title: 'Your habits'),
-          body: state is RegularTaskLoading
-              ? const Center(child: CircularProgressIndicator())
-              : tasks.isNotEmpty
-                  ? _buildTaskList(
-                      context, tasks, todayCompletions, recentCompletions)
-                  : _buildEmptyState(context),
+          body: SafeArea(
+            child: state is RegularTaskLoading
+                ? const Center(child: CircularProgressIndicator())
+                : tasks.isNotEmpty
+                    ? _buildTaskList(
+                        context, tasks, todayCompletions, recentCompletions)
+                    : _buildEmptyState(context),
+          ),
           floatingActionButton: tasks.isEmpty
               ? null
               : FloatingActionButton(
@@ -427,10 +461,21 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
       date: DateTime.now(),
     );
     if (result == true && mounted) {
-      setState(() {
-        _proofStatuses[task.id] = ProofStatus.submitted;
-      });
-      context.read<AccountabilityBloc>().add(LoadAccountabilityData());
+      final updated = await svc.fetchTaskById(taskId);
+      if (updated?.proofUrl != null && mounted) {
+        context.read<AccountabilityBloc>().add(
+              SubmitProofForReview(
+                taskId: taskId,
+                challengeId: task.id,
+                proofUrl: updated!.proofUrl!,
+              ),
+            );
+        setState(() {
+          _proofStatuses[task.id] = ProofStatus.submitted;
+          _accountabilityStatuses[task.id] =
+              AccountabilityTaskStatus.pendingReview;
+        });
+      }
     }
   }
 
@@ -565,31 +610,58 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
 
   Widget _buildCheckbox(
       BuildContext context, RegularTask task, bool isCompleted) {
+    // Check if this task has an accountability requirement (partner assigned)
+    final hasAccountability = _assignedPartnerNames.containsKey(task.id);
+    final iAmDoer = _tasksIAssigned.contains(task.id);
+    final proofStatus = _proofStatuses[task.id];
+
+    // Determine the effective completion state
+    // For doers with approved proof, task is automatically complete
+    final effectiveCompleted = isCompleted ||
+        (hasAccountability && iAmDoer && proofStatus == ProofStatus.approved);
+
+    // Determine if checkbox is interactive
+    // Regular tasks: always interactive
+    // Accountability tasks: only interactive for reviewers (can't complete their tasks)
+    //                    or before proof is approved
+    final isInteractive = !hasAccountability ||
+        !iAmDoer || // Reviewers can't complete
+        proofStatus != ProofStatus.approved;
+
     return GestureDetector(
-      onTap: () {
-        context.read<RegularTaskBloc>().add(
-              ToggleRegularTaskCompletion(
-                taskId: task.id,
-                date: DateTime.now(),
-                isCompleted: !isCompleted,
-              ),
-            );
-      },
+      onTap: isInteractive
+          ? () {
+              context.read<RegularTaskBloc>().add(
+                    ToggleRegularTaskCompletion(
+                      taskId: task.id,
+                      date: DateTime.now(),
+                      isCompleted: !effectiveCompleted,
+                    ),
+                  );
+            }
+          : null, // Disabled when proof already approved (auto-complete)
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: isCompleted ? Colors.green : Colors.transparent,
+          color: effectiveCompleted ? Colors.green : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isCompleted ? Colors.green : Colors.grey[350]!,
+            color: effectiveCompleted
+                ? Colors.green
+                : (isInteractive
+                    ? Colors.grey[350]!
+                    : Colors.orange), // Orange = needs action / auto-complete
             width: 2,
           ),
         ),
-        child: isCompleted
+        child: effectiveCompleted
             ? const Icon(Icons.check, color: Colors.white, size: 18)
-            : null,
+            : (isInteractive
+                ? null
+                : const Icon(Icons.rate_review_outlined,
+                    color: Colors.orange, size: 16)), // Proof needed icon
       ),
     );
   }
@@ -812,18 +884,22 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                   subtitle: Text(p.role.label),
                   onTap: () async {
                     Navigator.pop(context);
-                    // The doer is the partnership member that is not me;
-                    // the reviewer is therefore me (the other member).
-                    final doerUid = p.partnerUid ?? '';
-                    final reviewerUid =
-                        p.ownerUid == doerUid ? p.partnerUid : p.ownerUid;
+                    // Creator = doer, partner = reviewer (GitHub-reviewer
+                    // model). uidOf resolves the partner on either side of
+                    // the partnership doc.
+                    final myUid = svc.currentUid;
+                    final reviewerUid = p.uidOf(myUid) ?? '';
                     final createdTask = await svc.createAccountabilityTask(
                       partnershipId: p.id,
                       title: task.title,
                       challengeId: task.id,
-                      accountableUid: doerUid,
-                      accountableName: p.partnerName,
-                      partnerUid: doerUid.isEmpty ? null : reviewerUid,
+                      accountableUid: myUid ?? '',
+                      accountableName: svc.currentUserDisplayName,
+                      partnerUid: reviewerUid.isEmpty ? null : reviewerUid,
+                      accountableUserIds: [
+                        if (myUid != null) myUid,
+                        if (reviewerUid.isNotEmpty) reviewerUid,
+                      ],
                       taskType: 'regular',
                     );
                     if (createdTask != null && mounted) {

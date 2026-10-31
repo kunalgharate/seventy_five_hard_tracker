@@ -278,10 +278,6 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
       final myUid = _svc.currentUid;
       debugPrint(
           '[CollaboratorDialog] Creating accountability tasks for ${_collaborators.length} collaborator(s)');
-      final allUids = _collaborators
-          .where((c) => c.uid != myUid)
-          .map((c) => c.uid)
-          .toList();
       for (final c in _collaborators) {
         if (c.uid == myUid) continue; // skip self
         try {
@@ -302,16 +298,19 @@ class _CollaboratorDialogState extends State<CollaboratorDialog> {
             continue;
           }
 
+          // The task creator is the doer — they complete the task and
+          // upload proof. The collaborator is the reviewer.
           final task = await _svc.createAccountabilityTask(
-            accountableUid: c.uid,
-            accountableName: c.name,
+            accountableUid: myUid!,
+            accountableName: _svc.currentUserDisplayName,
             partnershipId: partnershipId ?? '',
             title: widget.taskName!,
             description: 'Collaborator task from Daily Mettle',
             challengeId: widget.taskId,
-            accountableUserIds: allUids,
-            // The task creator reviews the collaborator's work.
-            partnerUid: myUid,
+            // accountableUserIds is the participants list — the reviewer
+            // must be in it to accept the review request (firestore rules).
+            accountableUserIds: [myUid, c.uid],
+            partnerUid: c.uid,
           );
           if (task != null) {
             debugPrint('[CollaboratorDialog] Created accountability task:');

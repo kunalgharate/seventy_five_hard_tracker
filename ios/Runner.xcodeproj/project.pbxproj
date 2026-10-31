@@ -18,6 +18,11 @@
 		A1B2C3D4E5F60001PRIVACY0 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002PRIVACY0 /* PrivacyInfo.xcprivacy */; };
 		D65AB07317004A0F288F28D2 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3D59685FECE0884160C79C96 /* GoogleService-Info.plist */; };
 		E495663C8C08F0FDE64F8B8A /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FD3AD6AC54BF27C02BC18B50 /* Pods_RunnerTests.framework */; };
+		D90D0A9D649B4A2DBA082263 /* DailyMettleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FDB5F8451E4F55B2973D2A /* DailyMettleWidget.swift */; };
+		16957ED2B8DC494BB76F6585 /* WidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA8E2430434418FA50347A6 /* WidgetModels.swift */; };
+		1C1717D37F264168A633CB89 /* DailyTasksWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BD550F7DC048F587F5880E /* DailyTasksWidgetView.swift */; };
+		2D819D5FC12B4FB0833C39F5 /* ToggleTaskIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0CFD3667C14316A1B4D80A /* ToggleTaskIntent.swift */; };
+		856F97DF6B9A46D0B2AF614F /* DailyMettleWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F3FFB206B53F4D3EBDF230DA /* DailyMettleWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,6 +32,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
+		};
+		884498CAFD044F5A8D2D2620 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C204ADF188FE4980BA2E6AD8;
+			remoteInfo = DailyMettleWidget;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -39,6 +51,17 @@
 			files = (
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A993948CE75D471FAD8C08E7 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				856F97DF6B9A46D0B2AF614F /* DailyMettleWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -69,6 +92,13 @@
 		C0AADBFA4967BCE09082E9F3 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		F8CD66828A40689A7B51EF9F /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		FD3AD6AC54BF27C02BC18B50 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5FDB5F8451E4F55B2973D2A /* DailyMettleWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMettleWidget.swift; sourceTree = "<group>"; };
+		6FA8E2430434418FA50347A6 /* WidgetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetModels.swift; sourceTree = "<group>"; };
+		B8BD550F7DC048F587F5880E /* DailyTasksWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksWidgetView.swift; sourceTree = "<group>"; };
+		CC0CFD3667C14316A1B4D80A /* ToggleTaskIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToggleTaskIntent.swift; sourceTree = "<group>"; };
+		0ED79C9191F54E4A8D5D29BB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9A1066142CF04638A2C11236 /* DailyMettleWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DailyMettleWidget.entitlements; sourceTree = "<group>"; };
+		F3FFB206B53F4D3EBDF230DA /* DailyMettleWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DailyMettleWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +115,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				26FC85CE1DC9845C2DFD1988 /* Pods_Runner.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		99316BEAE6A1422EA4C5026F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,6 +165,7 @@
 			children = (
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
+				982F944F16314E0796F83982 /* DailyMettleWidget */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				0F04ED5B24C9B7C2B0E4B013 /* Pods */,
@@ -140,6 +178,7 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				F3FFB206B53F4D3EBDF230DA /* DailyMettleWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -168,6 +207,19 @@
 				FD3AD6AC54BF27C02BC18B50 /* Pods_RunnerTests.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		982F944F16314E0796F83982 /* DailyMettleWidget */ = {
+			isa = PBXGroup;
+			children = (
+				C5FDB5F8451E4F55B2973D2A /* DailyMettleWidget.swift */,
+				6FA8E2430434418FA50347A6 /* WidgetModels.swift */,
+				B8BD550F7DC048F587F5880E /* DailyTasksWidgetView.swift */,
+				CC0CFD3667C14316A1B4D80A /* ToggleTaskIntent.swift */,
+				0ED79C9191F54E4A8D5D29BB /* Info.plist */,
+				9A1066142CF04638A2C11236 /* DailyMettleWidget.entitlements */,
+			);
+			path = DailyMettleWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -202,6 +254,7 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				A993948CE75D471FAD8C08E7 /* Embed App Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				42F923EBC877535AE487B0E2 /* FlutterFire: "flutterfire upload-crashlytics-symbols" */,
 				A372134A988CBC911F442CDA /* [CP] Embed Pods Frameworks */,
@@ -210,11 +263,29 @@
 			buildRules = (
 			);
 			dependencies = (
+				59264685964644B0A6EC78CF /* PBXTargetDependency */,
 			);
 			name = Runner;
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		C204ADF188FE4980BA2E6AD8 /* DailyMettleWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F241003371924AC7A7C617DE /* Build configuration list for PBXNativeTarget "DailyMettleWidget" */;
+			buildPhases = (
+				15C94E78023D4B3F88B0850E /* Sources */,
+				2F1C56B3FC754CC08D16BF39 /* Resources */,
+				99316BEAE6A1422EA4C5026F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DailyMettleWidget;
+			productName = DailyMettleWidget;
+			productReference = F3FFB206B53F4D3EBDF230DA /* DailyMettleWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -234,6 +305,9 @@
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
 					};
+					C204ADF188FE4980BA2E6AD8 = {
+						CreatedOnToolsVersion = 16.0;
+					};
 				};
 			};
 			buildConfigurationList = 97C146E91CF9000F007C117D /* Build configuration list for PBXProject "Runner" */;
@@ -251,6 +325,7 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				C204ADF188FE4980BA2E6AD8 /* DailyMettleWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -273,6 +348,13 @@
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				A1B2C3D4E5F60001PRIVACY0 /* PrivacyInfo.xcprivacy in Resources */,
 				D65AB07317004A0F288F28D2 /* GoogleService-Info.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2F1C56B3FC754CC08D16BF39 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -426,6 +508,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		15C94E78023D4B3F88B0850E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D90D0A9D649B4A2DBA082263 /* DailyMettleWidget.swift in Sources */,
+				16957ED2B8DC494BB76F6585 /* WidgetModels.swift in Sources */,
+				1C1717D37F264168A633CB89 /* DailyTasksWidgetView.swift in Sources */,
+				2D819D5FC12B4FB0833C39F5 /* ToggleTaskIntent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -433,6 +526,11 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		59264685964644B0A6EC78CF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C204ADF188FE4980BA2E6AD8 /* DailyMettleWidget */;
+			targetProxy = 884498CAFD044F5A8D2D2620 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -760,6 +858,86 @@
 			};
 			name = Release;
 		};
+		BDF1D63E695948D296ABBF99 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = DailyMettleWidget/DailyMettleWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = XJ2WNZKCMT;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DailyMettleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.seventyfive.hard.challenge.DailyMettleWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		EE94A93191F6477688FED328 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = DailyMettleWidget/DailyMettleWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = XJ2WNZKCMT;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DailyMettleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.seventyfive.hard.challenge.DailyMettleWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		99C9FE41F6974704ADB1292C /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = DailyMettleWidget/DailyMettleWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = XJ2WNZKCMT;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DailyMettleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.seventyfive.hard.challenge.DailyMettleWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Profile;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -789,6 +967,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F241003371924AC7A7C617DE /* Build configuration list for PBXNativeTarget "DailyMettleWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BDF1D63E695948D296ABBF99 /* Debug */,
+				EE94A93191F6477688FED328 /* Release */,
+				99C9FE41F6974704ADB1292C /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

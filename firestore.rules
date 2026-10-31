@@ -53,21 +53,17 @@ service cloud.firestore {
     }
 
     // The client clock supplies the exact 24-hour offset; constrain the
-    // submission timestamp to a short window around trusted server time.
+    // submission timestamp so future dates are rejected while offline flushes succeed.
     function hasValidReviewWindow() {
       return request.resource.data.submittedAt is timestamp
           && request.resource.data.expiresAt is timestamp
-          && request.resource.data.submittedAt
-                 >= request.time - duration.value(5, 'm')
           && request.resource.data.submittedAt
                  <= request.time + duration.value(5, 'm')
           && request.resource.data.expiresAt
                  == request.resource.data.submittedAt
                       + duration.value(24, 'h')
           && request.resource.data.expiresAt
-                 >= request.time + duration.value(1435, 'm')
-          && request.resource.data.expiresAt
-                 <= request.time + duration.value(24, 'h');
+                 > request.resource.data.submittedAt;
     }
 
     function hasSingleVoteAppend(uidField, voteField) {
@@ -101,11 +97,20 @@ service cloud.firestore {
     }
 
     function isProofReviewer() {
-      return resource.data.assignedByUid != request.auth.uid
-          && (resource.data.partnerUid == request.auth.uid
-              || resource.data.accountableUid == request.auth.uid
-              || (resource.data.accountableUserIds is list
-                  && request.auth.uid in resource.data.accountableUserIds));
+      // In the creator=doer model: assigner == doer (assignedByUid ==
+      // accountableUid). Two reviewer scenarios:
+      // 1. Assigned reviewer: partnerUid is set → only them can review
+      //    (never the assigner/doer).
+      // 2. Self-review: no partnerUid assigned → the doer (assigner) can
+      //    review their own proof and complete the task.
+      let isAssignedReviewer = resource.data.get('partnerUid', '') is string
+          && resource.data.partnerUid != ''
+          && resource.data.partnerUid == request.auth.uid
+          && resource.data.assignedByUid != request.auth.uid;
+      let isSelfReview = (resource.data.get('partnerUid', '') == null
+          || resource.data.get('partnerUid', '') == '')
+          && resource.data.accountableUid == request.auth.uid;
+      return isAssignedReviewer || isSelfReview;
     }
 
     function hasNotVotedOnProof() {
@@ -122,7 +127,7 @@ service cloud.firestore {
       let decision = request.resource.data.get('reviewDecision', null);
       return (
         // Owners start a new proof round with empty vote histories.
-        (resource.data.assignedByUid == request.auth.uid
+        ((resource.data.assignedByUid == request.auth.uid || resource.data.accountableUid == request.auth.uid)
           && resource.data.get('proofStatus', 'not_required') != 'submitted'
           && resource.data.status in ['pending', 'rejected', 'completed',
                                       'approved']

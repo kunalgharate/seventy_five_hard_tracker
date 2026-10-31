@@ -157,85 +157,87 @@ Respond as a supportive but firm coach. Keep it under 60 words.
             ? 'AI Coach: ${widget.taskName}'
             : 'AI Accountability Coach',
       ),
-      body: Column(
-        children: [
-          // Header card
-          if (widget.taskName != null)
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Text('🤖', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('AI Accountability',
-                            style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600, fontSize: 13)),
-                        Text('Monitoring: ${widget.taskName}',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey[600])),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: (widget.taskCompleted ?? false)
-                          ? Colors.green.withValues(alpha: 0.12)
-                          : Colors.orange.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      (widget.taskCompleted ?? false) ? 'Done ✓' : 'Pending',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: (widget.taskCompleted ?? false)
-                            ? Colors.green[700]
-                            : Colors.orange[700],
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header card
+            if (widget.taskName != null)
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🤖', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('AI Accountability',
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text('Monitoring: ${widget.taskName}',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[600])),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (widget.taskCompleted ?? false)
+                            ? Colors.green.withValues(alpha: 0.12)
+                            : Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        (widget.taskCompleted ?? false) ? 'Done ✓' : 'Pending',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: (widget.taskCompleted ?? false)
+                              ? Colors.green[700]
+                              : Colors.orange[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+
+            // Messages
+            Expanded(
+              child: _loading
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 12),
+                          Text('AI is analyzing your progress...',
+                              style: TextStyle(color: Colors.grey[600])),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      itemCount: _messages.length,
+                      itemBuilder: (_, i) =>
+                          _MessageBubble(message: _messages[i]),
+                    ),
             ),
 
-          // Messages
-          Expanded(
-            child: _loading
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 12),
-                        Text('AI is analyzing your progress...',
-                            style: TextStyle(color: Colors.grey[600])),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, i) =>
-                        _MessageBubble(message: _messages[i]),
-                  ),
-          ),
-
-          // Input
-          SafeArea(top: false, child: _buildInput()),
-        ],
+            // Input
+            _buildInput(),
+          ],
+        ),
       ),
     );
   }
