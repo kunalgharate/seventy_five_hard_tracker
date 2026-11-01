@@ -1231,42 +1231,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                task.proofUrl!,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  return const SizedBox(
-                    height: 300,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                },
-                errorBuilder: (_, __, ___) => const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Column(
-                    children: [
-                      Icon(Icons.broken_image, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('Failed to load image',
-                          style: TextStyle(color: Colors.grey)),
-                    ],
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        clipBehavior: Clip.antiAlias,
+        // SafeArea keeps the photo and the Close button clear of the notch,
+        // status bar and home indicator while the image is being viewed.
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  // A portrait photo sized to the full screen width would
+                  // otherwise run off the bottom of the screen; cap the box
+                  // so BoxFit.contain always shows the whole image.
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+                  ),
+                  child: Image.network(
+                    task.proofUrl!,
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    loadingBuilder: (_, child, progress) {
+                      if (progress == null) return child;
+                      return const SizedBox(
+                        height: 300,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Column(
+                        children: [
+                          Icon(Icons.broken_image,
+                              size: 48, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text('Failed to load image',
+                              style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child:
+                    const Text('Close', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
         ),
       ),
     );

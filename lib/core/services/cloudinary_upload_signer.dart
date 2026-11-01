@@ -168,9 +168,8 @@ class LocalCloudinaryUploadSigner implements CloudinaryUploadSigner {
     final payload =
         entries.map((e) => '${e.key}=${e.value}').join('&') + apiSecret;
     final signature = sha1.convert(utf8.encode(payload)).toString();
-    final timestamp =
-        int.tryParse(request.parameters['timestamp'] ?? '') ??
-            DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final timestamp = int.tryParse(request.parameters['timestamp'] ?? '') ??
+        DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return CloudinarySignedUpload(
       signature: signature,
       timestamp: timestamp,

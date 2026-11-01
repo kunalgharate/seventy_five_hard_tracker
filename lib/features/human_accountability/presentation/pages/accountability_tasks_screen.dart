@@ -429,116 +429,120 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+    // SafeArea: without it the submit button sat under the home indicator.
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text('Assign Task to ${widget.accountableName}',
-                style: GoogleFonts.poppins(
-                    fontSize: 17, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Task Title *',
-                prefixIcon: Icon(Icons.task_alt_outlined),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Description (optional)',
-                alignLabelWithHint: true,
-                prefixIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 24),
-                  child: Icon(Icons.notes_outlined),
+              const SizedBox(height: 16),
+              Text('Assign Task to ${widget.accountableName}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 17, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Task Title *',
+                  prefixIcon: Icon(Icons.task_alt_outlined),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _pickDate,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.event_outlined,
-                        color: AppColors.primary, size: 20),
-                    const SizedBox(width: 12),
-                    Text(
-                      _dueDate != null
-                          ? 'Due: ${DateFormat('MMM d, yyyy').format(_dueDate!)}'
-                          : 'Set due date (optional)',
-                      style: TextStyle(
-                        color: _dueDate != null
-                            ? Colors.black87
-                            : Colors.grey[500],
-                        fontSize: 14,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_dueDate != null)
-                      GestureDetector(
-                        onTap: () => setState(() => _dueDate = null),
-                        child: Icon(Icons.close,
-                            size: 16, color: Colors.grey[400]),
-                      ),
-                  ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optional)',
+                  alignLabelWithHint: true,
+                  prefixIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 24),
+                    child: Icon(Icons.notes_outlined),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _submitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('Assign Task',
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: _pickDate,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.event_outlined,
+                          color: AppColors.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Text(
+                        _dueDate != null
+                            ? 'Due: ${DateFormat('MMM d, yyyy').format(_dueDate!)}'
+                            : 'Set due date (optional)',
                         style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                          color: _dueDate != null
+                              ? Colors.black87
+                              : Colors.grey[500],
+                          fontSize: 14,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_dueDate != null)
+                        GestureDetector(
+                          onTap: () => setState(() => _dueDate = null),
+                          child: Icon(Icons.close,
+                              size: 16, color: Colors.grey[400]),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _submitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('Assign Task',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

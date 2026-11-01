@@ -842,77 +842,80 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Text(
-              'Assign to Partner',
-              style: GoogleFonts.poppins(
-                  fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Select a partner to hold accountable for "${task.title}"',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            ...acceptedPartners.map((p) => ListTile(
-                  leading:
-                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
-                  title: Text(p.partnerName,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(p.role.label),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    // Creator = doer, partner = reviewer (GitHub-reviewer
-                    // model). uidOf resolves the partner on either side of
-                    // the partnership doc.
-                    final myUid = svc.currentUid;
-                    final reviewerUid = p.uidOf(myUid) ?? '';
-                    final createdTask = await svc.createAccountabilityTask(
-                      partnershipId: p.id,
-                      title: task.title,
-                      challengeId: task.id,
-                      accountableUid: myUid ?? '',
-                      accountableName: svc.currentUserDisplayName,
-                      partnerUid: reviewerUid.isEmpty ? null : reviewerUid,
-                      accountableUserIds: [
-                        if (myUid != null) myUid,
-                        if (reviewerUid.isNotEmpty) reviewerUid,
-                      ],
-                      taskType: 'regular',
-                    );
-                    if (createdTask != null && mounted) {
-                      setState(() {
-                        _assignedPartnerNames[task.id] = p.partnerName;
-                        _accountabilityStatuses[task.id] = createdTask.status;
-                        _tasksIAssigned.add(task.id);
-                      });
-                    }
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
+              Text(
+                'Assign to Partner',
+                style: GoogleFonts.poppins(
+                    fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Select a partner to hold accountable for "${task.title}"',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              ...acceptedPartners.map((p) => ListTile(
+                    leading: Text(p.role.emoji,
+                        style: const TextStyle(fontSize: 22)),
+                    title: Text(p.partnerName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(p.role.label),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      // Creator = doer, partner = reviewer (GitHub-reviewer
+                      // model). uidOf resolves the partner on either side of
+                      // the partnership doc.
+                      final myUid = svc.currentUid;
+                      final reviewerUid = p.uidOf(myUid) ?? '';
+                      final createdTask = await svc.createAccountabilityTask(
+                        partnershipId: p.id,
+                        title: task.title,
+                        challengeId: task.id,
+                        accountableUid: myUid ?? '',
+                        accountableName: svc.currentUserDisplayName,
+                        partnerUid: reviewerUid.isEmpty ? null : reviewerUid,
+                        accountableUserIds: [
+                          if (myUid != null) myUid,
+                          if (reviewerUid.isNotEmpty) reviewerUid,
+                        ],
+                        taskType: 'regular',
+                      );
+                      if (createdTask != null && mounted) {
+                        setState(() {
+                          _assignedPartnerNames[task.id] = p.partnerName;
+                          _accountabilityStatuses[task.id] = createdTask.status;
+                          _tasksIAssigned.add(task.id);
+                        });
+                      }
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

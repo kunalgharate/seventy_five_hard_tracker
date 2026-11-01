@@ -1168,10 +1168,11 @@ class AccountabilityService {
         assignedAt: DateTime.now(),
         accountableUserIds: accountableUid.isEmpty
             ? const []
-            : (accountableUserIds ?? [
-                accountableUid,
-                if (partnerUid != null && partnerUid.isNotEmpty) partnerUid,
-              ]),
+            : (accountableUserIds ??
+                [
+                  accountableUid,
+                  if (partnerUid != null && partnerUid.isNotEmpty) partnerUid,
+                ]),
         accountableEmail: accountableEmail,
         partnerUid: partnerUid,
         taskType: taskType ?? 'hard',
