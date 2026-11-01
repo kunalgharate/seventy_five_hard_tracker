@@ -1457,6 +1457,9 @@ class AccountabilityService {
       final tasks = snap.docs
           .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
           .where((t) => t.status == AccountabilityTaskStatus.requested)
+          // Creator=doer tasks (assignedByUid == me) are mine, not incoming
+          // requests — same self-exclusion as fetchMyResponsibilities.
+          .where((t) => t.assignedByUid != uid)
           .toList();
       if (email != null && email.isNotEmpty) {
         final emailed = await _db
@@ -1467,6 +1470,7 @@ class AccountabilityService {
           if (tasks.any((t) => t.id == d.id)) continue;
           final t = AccountabilityTask.fromFirestore(d.data(), id: d.id);
           if (t.status == AccountabilityTaskStatus.requested &&
+              t.assignedByUid != uid &&
               (t.accountableUid.isEmpty || t.accountableUid == uid)) {
             tasks.add(t);
           }
