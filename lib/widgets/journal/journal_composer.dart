@@ -20,7 +20,7 @@ class JournalComposer extends StatefulWidget {
 class _JournalComposerState extends State<JournalComposer> {
   final _reflectionCtrl = TextEditingController();
   final _proudCtrl = TextEditingController();
-  bool _composerExpanded = false;
+  bool _composerExpanded = true;
   bool _saving = false;
   String? _selectedMood;
 
@@ -118,7 +118,7 @@ class _JournalComposerState extends State<JournalComposer> {
                     color: FigmaTokens.muted,
                     tooltip: 'Minimize',
                     constraints:
-                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                        const BoxConstraints(minWidth: 48, minHeight: 48),
                     padding: EdgeInsets.zero,
                   ),
                 ],
@@ -129,7 +129,8 @@ class _JournalComposerState extends State<JournalComposer> {
                 children: _moods.map((m) {
                   final selected = _selectedMood == m.$1;
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedMood = m.$1),
+                    onTap: () => setState(() =>
+                        _selectedMood = _selectedMood == m.$1 ? null : m.$1),
                     child: Column(
                       children: [
                         AnimatedContainer(

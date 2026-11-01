@@ -30,9 +30,6 @@ class JournalFieldLabel extends StatelessWidget {
   }
 }
 
-/// One date accordion: header shows the date + entry count, tapping expands
-/// to all of that day's entries with edit/delete on each.
-
 /// Figma-styled soft input field used in the journal entry card.
 class JournalField extends StatelessWidget {
   final TextEditingController controller;

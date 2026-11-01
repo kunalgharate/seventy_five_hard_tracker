@@ -545,8 +545,12 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
           ...JournalEntry.decode(sessionlessNote, fallbackDate: date),
       ];
       final updated = transform(current);
+      // Migration may have already copied the sessionless note into the
+      // session record — dedupe by id so merged entries never encode twice.
+      final seen = <String>{};
+      final deduped = updated.where((e) => seen.add(e.id)).toList();
       await _repository.saveDailyProgress(
-        dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
+        dailyProgress.copyWith(journalNote: JournalEntry.encode(deduped)),
       );
       if (sessionlessNote != null && sessionlessNote.isNotEmpty) {
         await _repository.saveDailyProgress(
