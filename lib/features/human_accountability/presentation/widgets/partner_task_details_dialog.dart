@@ -242,28 +242,32 @@ class _ProofImage extends StatelessWidget {
         builder: (_) => Dialog(
           backgroundColor: Colors.black,
           insetPadding: const EdgeInsets.all(12),
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                child: Image.network(
-                  url,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Icon(Icons.broken_image,
-                        color: Colors.white54, size: 48),
+          // SafeArea: the photo and close button must clear the status bar,
+          // notch and home indicator on every device.
+          child: SafeArea(
+            child: Stack(
+              children: [
+                InteractiveViewer(
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Icon(Icons.broken_image,
+                          color: Colors.white54, size: 48),
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

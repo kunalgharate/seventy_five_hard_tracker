@@ -80,62 +80,67 @@ class _TaskDetailSheetState extends State<TaskDetailSheet> {
     final cardBg = isDark ? Colors.grey[850]! : Colors.white;
     final textColor = isDark ? Colors.white : Colors.grey[900]!;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      maxChildSize: 0.92,
-      minChildSize: 0.4,
-      builder: (_, ctrl) => Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(20),
+    // SafeArea keeps the sheet's actions/proof image clear of the home
+    // indicator on gesture-nav devices.
+    return SafeArea(
+      top: false,
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.92,
+        minChildSize: 0.4,
+        builder: (_, ctrl) => Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            // Handle
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+          child: Column(
+            children: [
+              // Handle
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      controller: ctrl,
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        _buildHeader(textColor),
-                        const SizedBox(height: 16),
-                        if (widget.description != null &&
-                            widget.description!.isNotEmpty)
-                          _buildDescription(textColor),
-                        _buildStatusSection(textColor),
-                        const SizedBox(height: 16),
-                        _buildReviewersSection(textColor, cardBg),
-                        if (_task != null && _task!.proofUrl != null) ...[
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        controller: ctrl,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          _buildHeader(textColor),
                           const SizedBox(height: 16),
-                          _buildProofSection(textColor),
-                        ],
-                        if (_task != null &&
-                            (_task!.approvals.isNotEmpty ||
-                                _task!.rejections.isNotEmpty)) ...[
+                          if (widget.description != null &&
+                              widget.description!.isNotEmpty)
+                            _buildDescription(textColor),
+                          _buildStatusSection(textColor),
                           const SizedBox(height: 16),
-                          _buildCommentThread(textColor, cardBg),
+                          _buildReviewersSection(textColor, cardBg),
+                          if (_task != null && _task!.proofUrl != null) ...[
+                            const SizedBox(height: 16),
+                            _buildProofSection(textColor),
+                          ],
+                          if (_task != null &&
+                              (_task!.approvals.isNotEmpty ||
+                                  _task!.rejections.isNotEmpty)) ...[
+                            const SizedBox(height: 16),
+                            _buildCommentThread(textColor, cardBg),
+                          ],
+                          const SizedBox(height: 20),
+                          _buildActions(),
                         ],
-                        const SizedBox(height: 20),
-                        _buildActions(),
-                      ],
-                    ),
-            ),
-          ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

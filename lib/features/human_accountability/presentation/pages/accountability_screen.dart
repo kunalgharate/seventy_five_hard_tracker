@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/partner_task_details_dialog.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/reviews_tab.dart';
-import 'package:seventy_five_hard_tracker/widgets/create_task_sheet.dart';
 import 'package:intl/intl.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_event.dart';
@@ -195,40 +194,43 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 16,
-            right: 16,
-            top: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Sign In Required',
-                style: Theme.of(ctx).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sign in with Google to invite accountability partners.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  widget.onGoToProfile?.call();
-                },
-                icon: const Icon(Icons.person),
-                label: const Text('Go to Profile to Sign In'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+        builder: (ctx) => SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Sign In Required',
+                  style: Theme.of(ctx).textTheme.titleLarge,
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Sign in with Google to invite accountability partners.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    widget.onGoToProfile?.call();
+                  },
+                  icon: const Icon(Icons.person),
+                  label: const Text('Go to Profile to Sign In'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       );
@@ -249,7 +251,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => BlocProvider.value(
         value: context.read<AccountabilityBloc>(),
-        child: const _InviteByEmailSheet(),
+        child: const SafeArea(top: false, child: _InviteByEmailSheet()),
       ),
     ).then((_) => _loadReviewBadge());
   }
@@ -868,47 +870,25 @@ class _PartnersTab extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        // ── Quick action cards (design: prominent Create + Invite) ──
-        Row(
-          children: [
-            Expanded(
-              child: _QuickActionCard(
-                icon: Icons.add_task,
-                label: 'Create task',
-                gradient: const [Color(0xFFFF7918), Color(0xFFFF5449)],
-                onTap: () async {
-                  final result = await CreateTaskSheet.show(context);
-                  if (result == true && context.mounted) {
-                    context
-                        .read<AccountabilityBloc>()
-                        .add(LoadAccountabilityData());
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickActionCard(
-                icon: Icons.person_add_alt_1,
-                label: 'Invite partner',
-                gradient: const [Color(0xFF7B61FF), Color(0xFF9B8AFF)],
-                onTap: () {
-                  // Trigger the email-based invite from the main screen.
-                  // Uses the proper SendEmailInvite (pending) flow so the
-                  // recipient can accept it on their device.
-                  final screenState = context
-                      .findAncestorStateOfType<_AccountabilityScreenState>();
-                  if (screenState != null) {
-                    if (!CloudSyncService().isSignedIn) {
-                      screenState._showInviteDialog();
-                    } else {
-                      screenState._showEmailInviteSheet();
-                    }
-                  }
-                },
-              ),
-            ),
-          ],
+        // ── Quick action card: Invite partner ──
+        _QuickActionCard(
+          icon: Icons.person_add_alt_1,
+          label: 'Invite partner',
+          gradient: const [Color(0xFF7B61FF), Color(0xFF9B8AFF)],
+          onTap: () {
+            // Trigger the email-based invite from the main screen.
+            // Uses the proper SendEmailInvite (pending) flow so the
+            // recipient can accept it on their device.
+            final screenState =
+                context.findAncestorStateOfType<_AccountabilityScreenState>();
+            if (screenState != null) {
+              if (!CloudSyncService().isSignedIn) {
+                screenState._showInviteDialog();
+              } else {
+                screenState._showEmailInviteSheet();
+              }
+            }
+          },
         ),
         const SizedBox(height: 20),
 
@@ -2282,132 +2262,140 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        return SafeArea(
+          top: false,
+          child: StatefulBuilder(
+            builder: (ctx, setModalState) {
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom,
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Handle
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
-                    ),
-                    Text(
-                      'Add Task for ${partner.partnerName}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: titleCtrl,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        labelText: 'Task title *',
-                        prefixIcon: const Icon(
-                          Icons.task_alt_outlined,
-                          size: 20,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      Text(
+                        'Add Task for ${partner.partnerName}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: descCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Description (optional)',
-                        prefixIcon: const Icon(Icons.notes_outlined, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: submitting
-                            ? null
-                            : () async {
-                                final title = titleCtrl.text.trim();
-                                if (title.isEmpty) return;
-                                setModalState(() => submitting = true);
-                                // Creator = doer, partner = reviewer —
-                                // same model as the collaborator dialog.
-                                final myUid =
-                                    AccountabilityService().currentUid;
-                                await AccountabilityService()
-                                    .createAccountabilityTask(
-                                  accountableUid: myUid!,
-                                  accountableName: AccountabilityService()
-                                      .currentUserDisplayName,
-                                  partnershipId: partner.id,
-                                  title: title,
-                                  description: descCtrl.text.trim().isEmpty
-                                      ? null
-                                      : descCtrl.text.trim(),
-                                  partnerUid: partnerUid,
-                                  accountableUserIds: [myUid, partnerUid],
-                                );
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                // Refresh the task list in the card
-                                setState(() {
-                                  _recentDays = [];
-                                  _accountabilityTasks = [];
-                                });
-                                _loadTasks();
-                              },
-                        icon: submitting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.add, size: 18),
-                        label: Text(submitting ? 'Adding...' : 'Add Task'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: titleCtrl,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: 'Task title *',
+                          prefixIcon: const Icon(
+                            Icons.task_alt_outlined,
+                            size: 20,
+                          ),
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          textStyle: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: descCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Description (optional)',
+                          prefixIcon: const Icon(
+                            Icons.notes_outlined,
+                            size: 20,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: submitting
+                              ? null
+                              : () async {
+                                  final title = titleCtrl.text.trim();
+                                  if (title.isEmpty) return;
+                                  setModalState(() => submitting = true);
+                                  // Creator = doer, partner = reviewer —
+                                  // same model as the collaborator dialog.
+                                  final myUid =
+                                      AccountabilityService().currentUid;
+                                  await AccountabilityService()
+                                      .createAccountabilityTask(
+                                    accountableUid: myUid!,
+                                    accountableName: AccountabilityService()
+                                        .currentUserDisplayName,
+                                    partnershipId: partner.id,
+                                    title: title,
+                                    description: descCtrl.text.trim().isEmpty
+                                        ? null
+                                        : descCtrl.text.trim(),
+                                    partnerUid: partnerUid,
+                                    accountableUserIds: [myUid, partnerUid],
+                                  );
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                  // Refresh the task list in the card
+                                  setState(() {
+                                    _recentDays = [];
+                                    _accountabilityTasks = [];
+                                  });
+                                  _loadTasks();
+                                },
+                          icon: submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.add, size: 18),
+                          label: Text(submitting ? 'Adding...' : 'Add Task'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );
@@ -2442,7 +2430,10 @@ class _AcceptedPartnerCardState extends State<_AcceptedPartnerCard> {
           backgroundColor: Colors.transparent,
           builder: (_) => BlocProvider.value(
             value: context.read<AccountabilityBloc>(),
-            child: _ReviewSheet(partner: widget.partner),
+            child: SafeArea(
+              top: false,
+              child: _ReviewSheet(partner: widget.partner),
+            ),
           ),
         );
         break;
@@ -3342,7 +3333,7 @@ class _DecisionButton extends StatelessWidget {
   }
 }
 
-/// Gradient action card for "Create task" / "Invite partner" on Squad tab.
+/// Gradient action card for "Invite partner" on Squad tab.
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -3967,7 +3958,10 @@ class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
                               backgroundColor: Colors.transparent,
                               builder: (_) => BlocProvider.value(
                                 value: bloc,
-                                child: const _InvitePartnerSheet(),
+                                child: const SafeArea(
+                                  top: false,
+                                  child: _InvitePartnerSheet(),
+                                ),
                               ),
                             );
                           });

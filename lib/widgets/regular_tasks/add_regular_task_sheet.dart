@@ -471,54 +471,57 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Text(
-              'Assign Accountability Partner',
-              style: GoogleFonts.poppins(
-                  fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'They will be held accountable for this task',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            ..._availablePartners.map((p) => ListTile(
-                  leading:
-                      Text(p.role.emoji, style: const TextStyle(fontSize: 22)),
-                  title: Text(p.partnerName,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(p.role.label),
-                  trailing: _selectedPartner?.id == p.id
-                      ? const Icon(Icons.check_circle, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedPartner = p);
-                    Navigator.pop(context);
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
+              Text(
+                'Assign Accountability Partner',
+                style: GoogleFonts.poppins(
+                    fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'They will be held accountable for this task',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 16),
+              ..._availablePartners.map((p) => ListTile(
+                    leading: Text(p.role.emoji,
+                        style: const TextStyle(fontSize: 22)),
+                    title: Text(p.partnerName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(p.role.label),
+                    trailing: _selectedPartner?.id == p.id
+                        ? const Icon(Icons.check_circle, color: Colors.blue)
+                        : null,
+                    onTap: () {
+                      setState(() => _selectedPartner = p);
+                      Navigator.pop(context);
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
