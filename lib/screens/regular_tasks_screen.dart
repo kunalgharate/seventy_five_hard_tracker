@@ -36,12 +36,37 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
   final Set<String> _tasksIAssigned = {};
   final Set<String> _accountabilityChecked = {};
+  final Set<String> _accountabilityPending = {};
   final Map<String, List<Collaborator>> _taskCollaborators = {};
+  StreamSubscription<List<AccountabilityTask>>? _tasksSub;
+  List<RegularTask> _lastTasks = const [];
+  Map<String, bool> _lastCompletions = const {};
 
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
+    // Approval-driven refresh: a review landing after the initial load
+    // must re-mark the task — invalidate the one-time check on stream
+    // updates and re-run the reconciliation.
+    _tasksSub = AccountabilityService().assignedByMeStream().listen((tasks) {
+      var stale = false;
+      for (final t in tasks) {
+        final cid = t.challengeId;
+        if (cid != null && _accountabilityChecked.remove(cid)) {
+          stale = true;
+        }
+      }
+      if (stale && mounted) {
+        _loadAccountabilityData(_lastTasks, _lastCompletions);
+      }
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _tasksSub?.cancel();
+    super.dispose();
   }
 
   /// Loads the accountability connection for every regular task so the proof
@@ -56,6 +81,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     for (final task in tasks) {
       if (_accountabilityChecked.contains(task.id)) continue;
       _accountabilityChecked.add(task.id);
+      _accountabilityPending.add(task.id);
       try {
         final acc = await svc.fetchTaskByChallengeId(task.id);
         if (acc == null) continue;
@@ -76,7 +102,10 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           }
           changed = true;
         }
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        _accountabilityPending.remove(task.id);
+      }
     }
     if (changed && mounted) setState(() {});
   }
@@ -94,6 +123,8 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           todayCompletions = state.todayCompletions;
           recentCompletions = state.recentCompletions;
           // Restore accountability connections (proof button) after reload.
+          _lastTasks = tasks;
+          _lastCompletions = todayCompletions;
           _loadAccountabilityData(tasks, todayCompletions);
         } else {
           tasks = [];
@@ -671,10 +702,25 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   /// through [_submitProof] (PhotoProofSheet) instead of toggling directly.
   /// Everything else toggles normally.
   void _onCheckboxTap(RegularTask task, bool effectiveCompleted) {
+    // Accountability lookup still in flight — a tap now would bypass the
+    // proof gate, so hold it until the relationship resolves.
+    if (_accountabilityPending.contains(task.id)) {
+      _showProofSnack('Checking task status — try again in a moment');
+      return;
+    }
+
     final hasAccountability = _assignedPartnerNames.containsKey(task.id);
     final iAmDoer = _tasksIAssigned.contains(task.id);
 
-    if (!hasAccountability || !iAmDoer || effectiveCompleted) {
+    // Reviewer-side devices must never complete the task — only the doer
+    // submits proof and marks it done.
+    if (hasAccountability && !iAmDoer) {
+      _showProofSnack(
+          'Only ${_assignedPartnerNames[task.id]} can complete this task');
+      return;
+    }
+
+    if (!hasAccountability || effectiveCompleted) {
       _toggleTask(task, !effectiveCompleted);
       return;
     }

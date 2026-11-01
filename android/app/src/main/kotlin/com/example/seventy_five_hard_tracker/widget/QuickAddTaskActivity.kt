@@ -259,7 +259,7 @@ class QuickAddTaskActivity : Activity() {
         if (!reminderSwitch.isChecked) return null
         val h = reminderHour
         val m = reminderMinute ?: 0
-        val hhmm = if (h != null) "%02d:%02d".format(h, m) else null
+        val hhmm = if (h != null) String.format(Locale.US, "%02d:%02d", h, m) else null
         return when (reminderType()) {
             "once" -> hhmm?.let { "once:$it" }
             "hourly" -> hhmm?.let { "hourly:$it" }
@@ -271,12 +271,12 @@ class QuickAddTaskActivity : Activity() {
             "multiple" -> customTimes
                 .takeIf { it.isNotEmpty() }
                 ?.joinToString(",", prefix = "multiple:") {
-                    "%02d:%02d".format(it.first, it.second)
+                    String.format(Locale.US, "%02d:%02d", it.first, it.second)
                 }
             "custom" -> customTimes
                 .takeIf { it.isNotEmpty() }
                 ?.joinToString(",", prefix = "custom:") {
-                    "%02d:%02d".format(it.first, it.second)
+                    String.format(Locale.US, "%02d:%02d", it.first, it.second)
                 }
             else -> null
         }

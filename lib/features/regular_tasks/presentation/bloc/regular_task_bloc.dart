@@ -116,7 +116,21 @@ class RegularTaskBloc extends Bloc<RegularTaskEvent, RegularTaskState> {
     }
   }
 
+  /// Serializes completion writes — auto-sync can dispatch several toggles
+  /// whose read-modify-write handlers would otherwise race and one
+  /// approval could overwrite another in the day's completion map.
+  Future<void> _toggleLock = Future.value();
+
   Future<void> _onToggleCompletion(
+    ToggleRegularTaskCompletion event,
+    Emitter<RegularTaskState> emit,
+  ) {
+    final result = _toggleLock.then((_) => _performToggle(event, emit));
+    _toggleLock = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<void> _performToggle(
     ToggleRegularTaskCompletion event,
     Emitter<RegularTaskState> emit,
   ) async {

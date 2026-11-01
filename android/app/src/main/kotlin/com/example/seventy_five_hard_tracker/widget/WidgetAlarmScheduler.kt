@@ -108,12 +108,19 @@ object WidgetAlarmScheduler {
                     }
             }
             "hourly" -> {
-                val start = task.reminderStartTime()?.first
-                    ?: task.reminderStartHour
-                hourlyNext(start, task.reminderEndHour, now)
+                val start = task.reminderStartTime()
+                hourlyNext(
+                    start?.first ?: task.reminderStartHour,
+                    start?.second ?: 0,
+                    task.reminderEndHour,
+                    now,
+                )
             }
             "interval" -> {
                 val interval = task.intervalMinutes() ?: return null
+                // A non-positive interval never advances the loop — reject
+                // malformed persisted data before it hangs alarm handling.
+                if (interval <= 0) return null
                 val start = task.reminderStartTime() ?: return null
                 intervalNext(start, interval, task.reminderEndHour, now)
             }
@@ -146,16 +153,28 @@ object WidgetAlarmScheduler {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-    /** Next hour boundary between [startHour] and [endHour]; tomorrow at
-     * [startHour] when today's window is over. */
-    private fun hourlyNext(startHour: Int, endHour: Int, now: Calendar): Long {
-        var h = now.get(Calendar.HOUR_OF_DAY)
-        if (now.get(Calendar.MINUTE) > 0 || now.get(Calendar.SECOND) > 0) h += 1
+    /** Next [startHour]:[startMinute] boundary up to [endHour]; tomorrow at
+     * the start slot when today's window is over. */
+    private fun hourlyNext(
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        now: Calendar,
+    ): Long {
+        // This hour's slot has passed when the minute elapsed, or we're past
+        // the exact boundary — ms precision stops a same-slot re-trigger when
+        // Android delivers right at HH:mm.000.
+        val slotPassed = now.get(Calendar.MINUTE) > startMinute ||
+            (now.get(Calendar.MINUTE) == startMinute &&
+                (now.get(Calendar.SECOND) > 0 ||
+                    now.get(Calendar.MILLISECOND) > 0))
+        var h = now.get(Calendar.HOUR_OF_DAY) + if (slotPassed) 1 else 0
         if (h < startHour) h = startHour
         return if (h <= endHour) {
-            todayAt(h, 0, onlyFuture = false) ?: tomorrowAt(startHour, 0)
+            todayAt(h, startMinute, onlyFuture = false)
+                ?: tomorrowAt(startHour, startMinute)
         } else {
-            tomorrowAt(startHour, 0)
+            tomorrowAt(startHour, startMinute)
         }
     }
 

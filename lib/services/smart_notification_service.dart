@@ -344,12 +344,14 @@ class SmartNotificationService {
     final startParts = startTime.split(':');
     final startHour =
         int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
+    final startMinute =
+        startParts.length >= 2 ? (int.tryParse(startParts[1]) ?? 0) : 0;
 
     for (int hour = startHour; hour <= challenge.reminderEndHour; hour++) {
       if (!_isWithinTimeWindow(hour, challenge)) continue;
 
-      final scheduledDate =
-          tz.TZDateTime(tz.local, date.year, date.month, date.day, hour, 0);
+      final scheduledDate = tz.TZDateTime(
+          tz.local, date.year, date.month, date.day, hour, startMinute);
       if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) continue;
       if (!_canScheduleMore()) break;
 

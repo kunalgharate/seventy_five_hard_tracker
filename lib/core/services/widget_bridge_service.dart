@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
@@ -273,7 +275,7 @@ class WidgetBridgeService {
         // Not a regular task — session "daily" challenges live in
         // DailyProgress, not the regular-task box.
         if (await _recordDailyCompletion(
-            dailyRepository, taskId, date, completed)) {
+            dailyRepository, taskId, date, completed, notifications)) {
           any = true;
           continue;
         }
@@ -327,12 +329,28 @@ class WidgetBridgeService {
     String taskId,
     DateTime date,
     bool completed,
+    SmartNotificationService notifications,
   ) async {
     if (repository == null) return false;
     try {
       final session = await repository.getActiveSession();
       if (session == null) return false;
       if (!session.challenges.any((c) => c.id == taskId)) return false;
+
+      // Accountability-linked challenges require proof/reviewer flow — the
+      // widget can't run it, so consume the toggle without writing (the
+      // next sync flips the row back to its real state).
+      if (completed) {
+        try {
+          final linked =
+              await AccountabilityService().fetchTaskByChallengeId(taskId);
+          if (linked != null &&
+              linked.status != AccountabilityTaskStatus.declined &&
+              linked.status != AccountabilityTaskStatus.completed) {
+            return true;
+          }
+        } catch (_) {} // Service offline — treat as unlinked and continue.
+      }
 
       final day = DateTime(date.year, date.month, date.day);
       final existing = repository.getDailyProgress(day, sessionId: session.id);
@@ -356,6 +374,9 @@ class WidgetBridgeService {
                 ))
             .copyWith(challengeCompletions: completions, isCompleted: allDone),
       );
+      if (completed) {
+        await notifications.cancelCompletedTaskReminders(taskId);
+      }
       return true;
     } catch (_) {
       return false;
@@ -425,10 +446,31 @@ class WidgetBridgeService {
   /// no bloc state is handy (e.g. right after a drain). Skipped while the
   /// regular-task boxes are still closed so an unopened repo can't blank out
   /// the widget.
+  /// Serializes snapshot writes — two bloc listeners can race, and an older
+  /// snapshot finishing last would leave the widget stale.
+  Future<void> _syncLock = Future.value();
+
   Future<void> syncWidgetDataFromRepositories({
     required RegularTaskRepository repository,
     DatabaseRepository? dailyRepository,
-  }) async {
+  }) {
+    final previous = _syncLock;
+    final release = Completer<void>();
+    _syncLock = release.future;
+    return () async {
+      await previous;
+      try {
+        await _syncWidgetSnapshot(repository, dailyRepository);
+      } finally {
+        release.complete();
+      }
+    }();
+  }
+
+  Future<void> _syncWidgetSnapshot(
+    RegularTaskRepository repository,
+    DatabaseRepository? dailyRepository,
+  ) async {
     if (!repository.isInitialized) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

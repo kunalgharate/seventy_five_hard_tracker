@@ -12,6 +12,7 @@ import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -96,11 +97,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       final bloc = context.read<RegularTaskBloc>();
       final repo = bloc.repository;
       final dailyRepo = context.read<ChallengeBloc>().repository;
-      await WidgetBridgeService.instance.drainWidgetChanges(
+      final changed = await WidgetBridgeService.instance.drainWidgetChanges(
         repository: repo,
         notifications: bloc.notifications,
         dailyRepository: dailyRepo,
       );
+      // Widget-origin DailyProgress writes bypass the bloc — reload so the
+      // Today screen reflects them.
+      if (changed && mounted) {
+        context.read<ChallengeBloc>().add(LoadChallengeData());
+      }
       await WidgetBridgeService.instance.syncWidgetDataFromRepositories(
         repository: repo,
         dailyRepository: dailyRepo,

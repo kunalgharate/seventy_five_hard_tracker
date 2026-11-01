@@ -248,8 +248,12 @@ class MyApp extends StatelessWidget {
           },
           child: BlocListener<ChallengeBloc, ChallengeState>(
             listener: (context, state) {
-              // Session ("daily") challenges also feed the widget snapshot.
-              if (state is ChallengeLoaded) {
+              // Session ("daily") challenges also feed the widget snapshot;
+              // terminal states remove the session before reloading, so the
+              // widget must drop their tasks too.
+              if (state is ChallengeLoaded ||
+                  state is ChallengeCompleted ||
+                  state is ChallengeReset) {
                 unawaited(_syncWidgetSnapshot(context));
               }
             },
