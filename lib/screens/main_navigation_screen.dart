@@ -11,6 +11,7 @@ import 'package:seventy_five_hard_tracker/core/services/widget_bridge_service.da
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task_sheet.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -94,11 +95,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     try {
       final bloc = context.read<RegularTaskBloc>();
       final repo = bloc.repository;
+      final dailyRepo = context.read<ChallengeBloc>().repository;
       await WidgetBridgeService.instance.drainWidgetChanges(
         repository: repo,
         notifications: bloc.notifications,
+        dailyRepository: dailyRepo,
       );
-      await WidgetBridgeService.instance.syncWidgetDataFromRepository(repo);
+      await WidgetBridgeService.instance.syncWidgetDataFromRepositories(
+        repository: repo,
+        dailyRepository: dailyRepo,
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[MainNav] widget drain failed: $e');

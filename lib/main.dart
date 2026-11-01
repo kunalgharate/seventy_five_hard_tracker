@@ -19,6 +19,7 @@ import 'repositories/database_repository.dart';
 import 'repositories/regular_task_repository.dart';
 import 'features/challenges/presentation/bloc/challenge_bloc.dart';
 import 'features/challenges/presentation/bloc/challenge_event.dart';
+import 'features/challenges/presentation/bloc/challenge_state.dart';
 import 'features/challenges/data/models/challenge.dart';
 import 'features/challenges/data/models/daily_progress.dart';
 import 'features/challenges/data/models/challenge_session.dart';
@@ -176,6 +177,16 @@ Future<bool> _onInternetRestored() async {
   return syncSucceeded && outboxResult.succeeded;
 }
 
+/// Pushes the combined widget snapshot — session ("daily") challenges plus
+/// regular tasks — after any bloc state change that affects the list the
+/// home-screen widget renders.
+Future<void> _syncWidgetSnapshot(BuildContext context) {
+  return WidgetBridgeService.instance.syncWidgetDataFromRepositories(
+    repository: context.read<RegularTaskBloc>().repository,
+    dailyRepository: context.read<ChallengeBloc>().repository,
+  );
+}
+
 class MyApp extends StatelessWidget {
   final SmartNotificationService smartNotifications;
   final ConnectivityService connectivity;
@@ -232,56 +243,61 @@ class MyApp extends StatelessWidget {
             // Keep the home-screen widget snapshot in step with task and
             // completion changes.
             if (state is RegularTaskLoaded) {
-              unawaited(WidgetBridgeService.instance.syncWidgetData(
-                tasks: state.tasks,
-                todayCompletions: state.todayCompletions,
-              ));
+              unawaited(_syncWidgetSnapshot(context));
             }
           },
-          child: BlocListener<AccountabilityBloc, AccountabilityState>(
+          child: BlocListener<ChallengeBloc, ChallengeState>(
             listener: (context, state) {
-              if (state is StreakImpacted) {
-                final outcome = state is StreakReviewOutcome ? state : null;
-                if (state.reason == 'rejected') {
-                  context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                        taskId: outcome?.taskId,
-                        challengeId: outcome?.challengeId,
-                        taskOwnerUid: outcome?.taskOwnerUid,
-                        taskType: outcome?.taskType ?? 'hard',
-                        outcome: 'rejected',
-                        newStreakDay: state.newStreakDay,
-                        reviewedAt: outcome?.reviewedAt,
-                        taskAssignedAt: outcome?.taskAssignedAt,
-                      ));
-                } else if (state.reason == 'approved') {
-                  // Approved needs no session mutation — register the outcome
-                  // so exactly-once ingestion stays symmetric.
-                  context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                        taskId: outcome?.taskId,
-                        challengeId: outcome?.challengeId,
-                        taskOwnerUid: outcome?.taskOwnerUid,
-                        taskType: outcome?.taskType ?? 'hard',
-                        outcome: 'approved',
-                        newStreakDay: state.newStreakDay,
-                        reviewedAt: outcome?.reviewedAt,
-                        taskAssignedAt: outcome?.taskAssignedAt,
-                      ));
-                }
-                // 'expired' is emitted via TasksExpired elsewhere — not consumed.
-              } else if (state is RegularTaskOutcome &&
-                  state.outcome == 'rejected') {
-                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                      taskId: state.taskId,
-                      challengeId: state.challengeId,
-                      taskOwnerUid: state.taskOwnerUid,
-                      reviewedAt: state.reviewedAt,
-                      taskAssignedAt: state.taskAssignedAt,
-                      taskType: 'regular',
-                      outcome: 'rejected',
-                    ));
+              // Session ("daily") challenges also feed the widget snapshot.
+              if (state is ChallengeLoaded) {
+                unawaited(_syncWidgetSnapshot(context));
               }
             },
-            child: child,
+            child: BlocListener<AccountabilityBloc, AccountabilityState>(
+              listener: (context, state) {
+                if (state is StreakImpacted) {
+                  final outcome = state is StreakReviewOutcome ? state : null;
+                  if (state.reason == 'rejected') {
+                    context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                          taskId: outcome?.taskId,
+                          challengeId: outcome?.challengeId,
+                          taskOwnerUid: outcome?.taskOwnerUid,
+                          taskType: outcome?.taskType ?? 'hard',
+                          outcome: 'rejected',
+                          newStreakDay: state.newStreakDay,
+                          reviewedAt: outcome?.reviewedAt,
+                          taskAssignedAt: outcome?.taskAssignedAt,
+                        ));
+                  } else if (state.reason == 'approved') {
+                    // Approved needs no session mutation — register the outcome
+                    // so exactly-once ingestion stays symmetric.
+                    context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                          taskId: outcome?.taskId,
+                          challengeId: outcome?.challengeId,
+                          taskOwnerUid: outcome?.taskOwnerUid,
+                          taskType: outcome?.taskType ?? 'hard',
+                          outcome: 'approved',
+                          newStreakDay: state.newStreakDay,
+                          reviewedAt: outcome?.reviewedAt,
+                          taskAssignedAt: outcome?.taskAssignedAt,
+                        ));
+                  }
+                  // 'expired' is emitted via TasksExpired elsewhere — not consumed.
+                } else if (state is RegularTaskOutcome &&
+                    state.outcome == 'rejected') {
+                  context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                        taskId: state.taskId,
+                        challengeId: state.challengeId,
+                        taskOwnerUid: state.taskOwnerUid,
+                        reviewedAt: state.reviewedAt,
+                        taskAssignedAt: state.taskAssignedAt,
+                        taskType: 'regular',
+                        outcome: 'rejected',
+                      ));
+                }
+              },
+              child: child,
+            ),
           ),
         ),
         home: const InitialScreen(),
