@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
@@ -44,6 +45,15 @@ class PhotoSyncService {
   static CloudinaryUploadSigner? _createEnvironmentSigner() {
     final configuration = CloudinarySignerConfiguration.fromEnvironment();
     if (configuration == null || !configuration.isValid) return null;
+    // No signing endpoint → sign on-device with the shipped API secret.
+    if (configuration.endpoint.host == 'localhost' &&
+        configuration.apiSecret != null) {
+      return LocalCloudinaryUploadSigner(
+        apiSecret: configuration.apiSecret!,
+        apiKey: configuration.apiKey,
+        cloudName: configuration.cloudName,
+      );
+    }
     return HttpCloudinaryUploadSigner(endpoint: configuration.endpoint);
   }
 
@@ -87,7 +97,7 @@ class PhotoSyncService {
     return File(picked.path);
   }
 
-  /// Upload photo to Cloudinary. Returns secure URL or null.
+  /// Upload photo to Cloudinary (or Firebase Storage fallback). Returns secure URL or null.
   Future<String?> uploadPhoto(
       File file, String challengeId, DateTime date) async {
     if (kDebugMode) {
@@ -100,15 +110,6 @@ class PhotoSyncService {
       } catch (_) {}
     }
 
-    if (!hasConfiguredSigner) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PhotoSyncService] uploadPhoto: no signed uploader configured',
-        );
-      }
-      return null;
-    }
-
     try {
       final compressed = await _compressImage(file);
       if (kDebugMode) {
@@ -117,24 +118,33 @@ class PhotoSyncService {
             '[PhotoSyncService] uploadPhoto: compressed size=${s.size} bytes');
       }
 
-      final result = await _uploadToCloudinary(
+      if (hasConfiguredSigner) {
+        final result = await _uploadToCloudinary(
+          compressed,
+          challengeId: challengeId,
+          date: date,
+        );
+        if (result != null) {
+          final url = result['secure_url'] as String?;
+          if (url != null && url.isNotEmpty) {
+            if (kDebugMode) {
+              debugPrint('[PhotoSyncService] uploadPhoto: Cloudinary URL=$url');
+            }
+            return url;
+          }
+        }
+      }
+
+      // Fallback to Firebase Storage
+      if (kDebugMode) {
+        debugPrint(
+            '[PhotoSyncService] uploadPhoto: using Firebase Storage fallback');
+      }
+      return await _uploadToFirebaseStorage(
         compressed,
         challengeId: challengeId,
         date: date,
       );
-      if (result == null) {
-        if (kDebugMode) {
-          debugPrint(
-              '[PhotoSyncService] uploadPhoto: Cloudinary upload returned null');
-        }
-        return null;
-      }
-
-      final url = result['secure_url'] as String?;
-      if (kDebugMode) {
-        debugPrint('[PhotoSyncService] uploadPhoto: Cloudinary URL=$url');
-      }
-      return url;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PhotoSyncService] uploadPhoto: FAILED — $e');
@@ -288,7 +298,7 @@ class PhotoSyncService {
     }
   }
 
-  /// Upload profile avatar to Cloudinary. Returns secure URL or null.
+  /// Upload profile avatar to Cloudinary (or Firebase Storage fallback). Returns secure URL or null.
   ///
   /// Uses a dedicated 'profile_avatars' folder and the user's UID as public_id
   /// so each user has exactly one avatar that gets replaced on re-upload.
@@ -302,15 +312,6 @@ class PhotoSyncService {
       } catch (_) {}
     }
 
-    if (!hasConfiguredSigner) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PhotoSyncService] uploadAvatar: no signed uploader configured',
-        );
-      }
-      return null;
-    }
-
     try {
       final compressed = await _compressImage(file);
       if (kDebugMode) {
@@ -319,25 +320,89 @@ class PhotoSyncService {
             '[PhotoSyncService] uploadAvatar: compressed size=${s.size} bytes');
       }
 
-      final result = await _uploadToCloudinaryAvatar(compressed, uid: uid);
-      if (result == null) {
-        if (kDebugMode) {
-          debugPrint(
-              '[PhotoSyncService] uploadAvatar: Cloudinary upload returned null');
+      if (hasConfiguredSigner) {
+        final result = await _uploadToCloudinaryAvatar(compressed, uid: uid);
+        if (result != null) {
+          final url = result['secure_url'] as String?;
+          if (url != null && url.isNotEmpty) {
+            if (kDebugMode) {
+              debugPrint(
+                  '[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
+            }
+            return url;
+          }
         }
-        return null;
       }
 
-      final url = result['secure_url'] as String?;
+      // Fallback to Firebase Storage
       if (kDebugMode) {
-        debugPrint('[PhotoSyncService] uploadAvatar: Cloudinary URL=$url');
+        debugPrint(
+            '[PhotoSyncService] uploadAvatar: using Firebase Storage fallback');
       }
-      return url;
+      return await _uploadAvatarToFirebaseStorage(compressed, uid: uid);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PhotoSyncService] uploadAvatar: FAILED — $e');
         debugPrint(
             '[PhotoSyncService] uploadAvatar: error type=${e.runtimeType}');
+      }
+      return null;
+    }
+  }
+
+  /// Upload photo to Firebase Storage fallback.
+  Future<String?> _uploadToFirebaseStorage(
+    File imageFile, {
+    required String challengeId,
+    required DateTime date,
+  }) async {
+    try {
+      final proofDate = date.toIso8601String().split('T').first;
+      final fileName = '${challengeId}_$proofDate.jpg';
+      final ref =
+          FirebaseStorage.instance.ref().child('task_proofs').child(fileName);
+
+      final uploadTask = await ref.putFile(
+        imageFile,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      final url = await uploadTask.ref.getDownloadURL();
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] Firebase Storage upload URL=$url');
+      }
+      return url;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] Firebase Storage upload failed: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Upload avatar to Firebase Storage fallback.
+  Future<String?> _uploadAvatarToFirebaseStorage(
+    File imageFile, {
+    required String uid,
+  }) async {
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_avatars')
+          .child('$uid.jpg');
+
+      final uploadTask = await ref.putFile(
+        imageFile,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      final url = await uploadTask.ref.getDownloadURL();
+      if (kDebugMode) {
+        debugPrint('[PhotoSyncService] Firebase Storage avatar URL=$url');
+      }
+      return url;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '[PhotoSyncService] Firebase Storage avatar upload failed: $e');
       }
       return null;
     }

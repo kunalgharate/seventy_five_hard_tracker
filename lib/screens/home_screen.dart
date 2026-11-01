@@ -228,8 +228,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final cid = task.challengeId;
       if (cid == null || !challengeIds.contains(cid)) continue;
       final reviewOnly = myUid != null &&
-          task.accountableUid == myUid &&
-          task.assignedByUid != myUid;
+          task.partnerUid == myUid &&
+          task.accountableUid != myUid;
       if (_accountabilityStatuses[cid] != task.status ||
           _proofStatuses[cid] != task.proofStatus ||
           _reviewOnlyChallenges[cid] != reviewOnly) {
@@ -460,26 +460,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      floatingActionButton: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          final hasSession = (state is ChallengeLoaded &&
-                  state.hasActiveSession) ||
-              (_lastLoadedState != null && _lastLoadedState!.hasActiveSession);
-          if (!hasSession) return const SizedBox.shrink();
-          return FloatingActionButton.extended(
-            heroTag: 'addChallengeTask',
-            onPressed: () => _showTaskSheet(context, null),
-            backgroundColor: Colors.orange[600],
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Add Task',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            tooltip: 'Add Task',
-          );
-        },
-      ),
       body: BlocListener<DisciplineScoreBloc, DisciplineScoreState>(
         listenWhen: (previous, current) =>
             previous is! DisciplineScoreInitial &&
@@ -693,6 +673,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             reviewerName: n['reviewer'] ?? '',
             taskName: n['task'] ?? '',
             action: n['action'] ?? 'approved',
+            notificationId: n['id'] ?? '',
             comment: n['comment'],
             onDismiss: () => _dismissNotification(n),
           )),
@@ -776,18 +757,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       const SizedBox(height: 120),
     ];
 
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const ClampingScrollPhysics(),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        try {
-          return items[index];
-        } catch (e) {
-          debugPrint('HomeScreen item $index error: $e');
-          return const SizedBox.shrink();
-        }
-      },
+    return SafeArea(
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const ClampingScrollPhysics(),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          try {
+            return items[index];
+          } catch (e) {
+            debugPrint('HomeScreen item $index error: $e');
+            return const SizedBox.shrink();
+          }
+        },
+      ),
     );
   }
 
@@ -1048,10 +1031,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final challenge = challenges[i];
         final task = tasks[i];
         if (task != null) {
-          // A partner assigned this to me for review — I don't complete it.
-          final reviewOnly = myUid != null &&
-              task.accountableUid == myUid &&
-              task.assignedByUid != myUid;
+          // Review-only: I'm the assigned reviewer (partnerUid) for this
+          // task, so I don't complete it or upload proof — I review it.
+          // The creator (= doer, accountableUid) uploads the proof.
+          final reviewOnly = myUid != null && task.partnerUid == myUid;
 
           // Partner approved my proof → the task is complete; mirror it onto
           // my local challenge so the Today card shows the checkmark.
@@ -1114,9 +1097,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Extra guard: only the owner (assigner) may submit proof.
+    // Extra guard: only the doer (accountableUid) may submit proof.
     final myUid = svc.currentUid;
-    if (task != null && myUid != null && task.assignedByUid != myUid) {
+    if (task != null && myUid != null && task.accountableUid != myUid) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1205,12 +1188,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final task = await svc.fetchTaskByChallengeId(challenge.id);
     if (task == null) return;
     // Reviewer-only: the owner cannot approve their own proof.
+    // Under creator=doer model:
+    //  - Assigned reviewer: partnerUid == me
+    //  - Self-review: no partnerUid assigned, AND I'm the doer (accountableUid == me)
     final myUid = svc.currentUid;
+    final partner = task.partnerUid;
+    final hasPartner = partner != null && partner.isNotEmpty;
     final iAmReviewer = myUid != null &&
-        task.assignedByUid != myUid &&
-        (task.accountableUid == myUid ||
-            task.accountableUserIds.contains(myUid) ||
-            task.partnerUid == myUid);
+        (task.partnerUid == myUid ||
+            (!hasPartner && task.accountableUid == myUid));
     if (!iAmReviewer) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

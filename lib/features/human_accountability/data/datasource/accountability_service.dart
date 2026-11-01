@@ -554,6 +554,10 @@ class AccountabilityService {
         debugPrint(
             '[AccountabilityService] fetchMyPartnerships: found ${resolved.length}');
       }
+      // Keep public_progress/{uid}.allowedReaders fresh — a partnership
+      // accepted after the last progress publish would otherwise leave the
+      // partner locked out with permission-denied on public_progress reads.
+      unawaited(_refreshAllowedReaders(resolved, uid));
       return resolved;
     } catch (e) {
       if (kDebugMode) {
@@ -610,6 +614,38 @@ class AccountabilityService {
 
   /// Forces the next [_syncAllowedReaders] call to re-fetch from Firestore.
   void invalidateAllowedReaders() => _cachedAllowedReaders = null;
+
+  /// Publishes the current accepted-partner uid set to
+  /// `public_progress/{uid}.allowedReaders` when it has drifted — called
+  /// from [fetchMyPartnerships] so acceptance on the *other* device can't
+  /// leave a stale reader list.
+  Future<void> _refreshAllowedReaders(
+      List<AccountabilityPartner> partners, String uid) async {
+    try {
+      final uids = <String>{};
+      for (final p in partners) {
+        if (p.status != PartnershipStatus.accepted) continue;
+        final other = p.ownerUid == uid ? p.partnerUid : p.ownerUid;
+        if (other != null && other.isNotEmpty) uids.add(other);
+      }
+      final fresh = uids.toList();
+      final cached = _cachedAllowedReaders;
+      if (cached != null &&
+          cached.length == fresh.length &&
+          fresh.every(cached.contains)) {
+        return;
+      }
+      _cachedAllowedReaders = fresh;
+      await _db.collection('public_progress').doc(uid).set(
+        {'allowedReaders': fresh},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AccountabilityService] _refreshAllowedReaders error: $e');
+      }
+    }
+  }
 
   Future<void> _syncAllowedReaders() async {
     final uid = currentUid;
@@ -1132,7 +1168,10 @@ class AccountabilityService {
         assignedAt: DateTime.now(),
         accountableUserIds: accountableUid.isEmpty
             ? const []
-            : (accountableUserIds ?? [accountableUid]),
+            : (accountableUserIds ?? [
+                accountableUid,
+                if (partnerUid != null && partnerUid.isNotEmpty) partnerUid,
+              ]),
         accountableEmail: accountableEmail,
         partnerUid: partnerUid,
         taskType: taskType ?? 'hard',
@@ -1448,7 +1487,10 @@ class AccountabilityService {
   }
 
   /// Accept a task request — sets status to pending.
-  /// Only the accountable user can accept.
+  /// Doers (accountableUid == me) accept a task request they received. Under
+  /// creator=doer model, the doer is the one creating the task, so this path
+  /// is used for email-claimed tasks or tasks assigned to self. Reviewers
+  /// use acceptReviewRequest instead.
   Future<bool> acceptTaskRequest(String taskId) async {
     if (!_isReady) return false;
     try {
@@ -1461,22 +1503,27 @@ class AccountabilityService {
         return false;
       }
       final email = _auth.currentUser?.email?.toLowerCase();
-      final isMine = data['accountableUid'] == uid ||
-          ((email != null && email.isNotEmpty) &&
-              (data['accountableEmail'] as String?)?.toLowerCase() == email);
+
+      // Under creator=doer model: the doer (accountableUid) is the one who accepts.
+      // Reviewers use acceptReviewRequest. Email claim is the only other path.
+      final isMyDoer = data['accountableUid'] == uid;
+      final isEmailClaim = ((email != null && email.isNotEmpty) &&
+          (data['accountableEmail'] as String?)?.toLowerCase() == email);
+      final isMine = isMyDoer || isEmailClaim;
       if (!isMine) return false;
-      // Accepting also claims the task if it was addressed by email only.
+
       final ids =
           (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
       if (!ids.contains(uid)) ids.add(uid);
+
       final update = <String, dynamic>{
         'status': AccountabilityTaskStatus.pending.name,
-        'accountableUid': uid,
         'accountableUserIds': ids,
       };
-      // Email-claimed tasks have no reviewer yet. The creator reviews the
-      // acceptor's work — backfilling here makes submitForReview notifications
-      // and the review queues (partnerUid == uid) reach them.
+
+      // Email-claimed tasks have no reviewer yet — backfill partnerUid to the
+      // creator (who is also the doer) for self-review capability.
+      // Only for self-review tasks: the doer accepts and reviews their own proof.
       final partnerUid = data['partnerUid'] as String?;
       if (partnerUid == null || partnerUid.isEmpty) {
         final creatorUid = data['assignedByUid'] as String?;
@@ -1657,6 +1704,13 @@ class AccountabilityService {
           .where('partnershipId', isEqualTo: partnershipId)
           .where('accountableUid', isEqualTo: myUid)
           .get());
+      // Tasks I REVIEW inside this partnership — under the creator-does-it
+      // model I'm neither assigner nor accountable, only partnerUid.
+      futures.add(_db
+          .collection('accountability_tasks')
+          .where('partnershipId', isEqualTo: partnershipId)
+          .where('partnerUid', isEqualTo: myUid)
+          .get());
 
       if (otherUid != null) {
         // Q2: tasks I assigned to the other person (catches partnershipId mismatch)
@@ -1671,6 +1725,14 @@ class AccountabilityService {
             .collection('accountability_tasks')
             .where('assignedByUid', isEqualTo: otherUid)
             .where('accountableUid', isEqualTo: myUid)
+            .get());
+
+        // Q4: tasks the other person owns where I'm the reviewer —
+        // catches docs whose partnershipId is missing/mismatched.
+        futures.add(_db
+            .collection('accountability_tasks')
+            .where('assignedByUid', isEqualTo: otherUid)
+            .where('partnerUid', isEqualTo: myUid)
             .get());
       }
 
@@ -2533,7 +2595,7 @@ class AccountabilityService {
   // ── Photo Proof ─────────────────────────────────────────────────────────
 
   /// Submit photo proof for a task. Sets proofStatus → submitted.
-  /// Only the OWNER (assignedByUid) can submit — reviewers cannot.
+  /// Only the ASSIGNEE (accountableUid/accountableUserIds) can submit — reviewers cannot.
   Future<bool> submitTaskProof({
     required String taskId,
     required String proofUrl,
@@ -2554,11 +2616,15 @@ class AccountabilityService {
           await _db.collection('accountability_tasks').doc(taskId).get();
       if (!doc.exists) return false;
       final data = doc.data()!;
-      // Owner-only: the task owner (assigner) submits proof, never the reviewer.
-      if (data['assignedByUid'] != currentUid) {
+      // Only the DOER (accountableUid) submits proof. The reviewer
+      // (partnerUid) only reviews — they must never upload.
+      // Under the creator=doer model: accountableUid == assignedByUid
+      // (the creator), and partnerUid is the reviewer.
+      final isDoer = data['accountableUid'] == currentUid;
+      if (!isDoer) {
         if (kDebugMode) {
           debugPrint(
-              '[AccountabilityService] submitTaskProof: denied — only the owner can submit proof');
+              '[AccountabilityService] submitTaskProof: denied — only the doer (accountableUid) can submit proof');
         }
         return false;
       }
@@ -2682,20 +2748,45 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
-      // Scope the query to the current user (as creator) so it satisfies the
+      // Scope each query to the current user so it satisfies the
       // accountability_tasks read rule — an unscoped challengeId-only query is
-      // rejected with permission-denied.
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('challengeId', isEqualTo: challengeId)
-          .where('assignedByUid', isEqualTo: uid)
-          .limit(1)
-          .get();
-      if (snap.docs.isEmpty) return null;
-      return AccountabilityTask.fromFirestore(
-        snap.docs.first.data(),
-        id: snap.docs.first.id,
-      );
+      // rejected with permission-denied. The same challengeId can appear in a
+      // task I created (assignedByUid == me), one where I'm the reviewer
+      // (partnerUid == me), or one where I'm the doer (accountableUid == me).
+      final snaps = await Future.wait([
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('assignedByUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('partnerUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('accountableUid', isEqualTo: uid)
+            .get(),
+      ]);
+      final candidates = <AccountabilityTask>[];
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          candidates.add(
+            AccountabilityTask.fromFirestore(d.data(), id: d.id),
+          );
+        }
+      }
+      if (candidates.isEmpty) return null;
+      // Prefer a doc where I'm the doer (accountableUid) — stale flipped docs
+      // (legacy docs keyed by challengeId) would poison the owner/reviewer
+      // role checks downstream. When I'm only the reviewer (partnerUid), any
+      // matching doc is fine.
+      final doerDocs =
+          candidates.where((t) => t.accountableUid == uid).toList();
+      if (doerDocs.isNotEmpty) return doerDocs.first;
+      return candidates.first;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchTaskByChallengeId error: $e');
@@ -2709,17 +2800,34 @@ class AccountabilityService {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
-      // Scope the query to the current user (as creator) so it satisfies the
+      // Scope each query to the current user so it satisfies the
       // accountability_tasks read rule — an unscoped challengeId-only query is
-      // rejected with permission-denied (same as fetchTaskByChallengeId).
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('challengeId', isEqualTo: challengeId)
-          .where('assignedByUid', isEqualTo: uid)
-          .limit(1)
-          .get();
-      if (snap.docs.isEmpty) return null;
-      return snap.docs.first.id;
+      // rejected with permission-denied. Match tasks I created, review, or do.
+      final snaps = await Future.wait([
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('assignedByUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('partnerUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('challengeId', isEqualTo: challengeId)
+            .where('accountableUid', isEqualTo: uid)
+            .get(),
+      ]);
+      final ids = <String>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          ids.add(d.id);
+        }
+      }
+      if (ids.isEmpty) return null;
+      return ids.first;
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -2762,7 +2870,7 @@ class AccountabilityService {
   // ── One-time cleanup ────────────────────────────────────────────────────
 
   /// One-time cleanup: deletes accountability tasks where accountableUid == assignedByUid
-  /// (tasks accidentally assigned to self due to a previous bug).
+  /// AND there is no partnerUid or reviewer assigned (accidental self-assignment without reviewer).
   /// Safe to call on every app start — it's a no-op if no bad data exists.
   Future<void> cleanupSelfAssignedTasks() async {
     if (!_isReady) return;
@@ -2777,15 +2885,38 @@ class AccountabilityService {
 
       if (snap.docs.isEmpty) return;
 
+      int deletedCount = 0;
       final batch = _db.batch();
       for (final doc in snap.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
+        final data = doc.data();
+        final partnerUid = data['partnerUid'] as String?;
+        final userIds =
+            (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ??
+                [];
+        final reviewerEmails =
+            (data['reviewerEmails'] as List<dynamic>?)?.cast<String>() ?? [];
+        final accountableEmail = data['accountableEmail'] as String?;
 
-      if (kDebugMode) {
-        debugPrint(
-            '[AccountabilityService] cleanupSelfAssignedTasks: deleted ${snap.docs.length} bad tasks');
+        // Keep valid tasks that have a reviewer assigned or invited
+        final hasReviewer = (partnerUid != null &&
+                partnerUid.isNotEmpty &&
+                partnerUid != uid) ||
+            userIds.any((u) => u != uid) ||
+            reviewerEmails.isNotEmpty ||
+            (accountableEmail != null && accountableEmail.isNotEmpty);
+
+        if (!hasReviewer) {
+          batch.delete(doc.reference);
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        await batch.commit();
+        if (kDebugMode) {
+          debugPrint(
+              '[AccountabilityService] cleanupSelfAssignedTasks: deleted $deletedCount unreviewed self-tasks');
+        }
       }
     } catch (e) {
       if (kDebugMode) {
@@ -2974,17 +3105,60 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('partnerUid', isEqualTo: uid)
-          .where('status', isEqualTo: 'pendingReview')
-          .get();
-
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .toList()
+      final tasks = _db.collection('accountability_tasks');
+      // Two types of pending reviews:
+      // 1. Assigned reviewer: partnerUid == me
+      // 2. Self-review: no partnerUid (null/empty) AND accountableUid == me
+      final snaps = await Future.wait([
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: '')
+            .where('accountableUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: null)
+            .where('accountableUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'pendingReview')
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      // Already-voted tasks can't be voted on again.
+      final tasksList = map.values
+          .where((t) =>
+              !t.approvalUids.contains(uid) && !t.rejectionUids.contains(uid))
+          .toList();
+      // Dedupe by title+doer — stale duplicate docs leave a phantom card.
+      final deduped = <String, AccountabilityTask>{};
+      for (final t in tasksList) {
+        final key = '${t.title.toLowerCase().trim()}|${t.accountableUid}';
+        if (!deduped.containsKey(key) ||
+            t.assignedAt.isAfter(deduped[key]!.assignedAt)) {
+          deduped[key] = t;
+        }
+      }
+      final list = deduped.values.toList()
         ..sort((a, b) => (a.expiresAt ?? DateTime.now())
             .compareTo(b.expiresAt ?? DateTime.now()));
+      if (kDebugMode) {
+        for (final t in list) {
+          debugPrint(
+              '[PendingReviews] id=${t.id} "${t.title}" status=${t.status.name} '
+              'proof=${t.proofStatus.name} assignedBy=${t.assignedByUid} '
+              'accountable=${t.accountableUid} partner=${t.partnerUid} '
+              'userIds=${t.accountableUserIds} approvals=${t.approvalUids} '
+              'rejections=${t.rejectionUids} myUid=$uid');
+        }
+      }
+      return list;
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -2999,16 +3173,28 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('partnerUid', isEqualTo: uid)
-          .orderBy('assignedAt', descending: true)
-          .limit(50)
-          .get();
-
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .toList();
+      final tasks = _db.collection('accountability_tasks');
+      // Review duties (partnerUid == me) plus tasks assigned TO me to do
+      // (accountableUid == me) — both are "my responsibilities".
+      final snaps = await Future.wait([
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .orderBy('assignedAt', descending: true)
+            .limit(50)
+            .get(),
+        tasks
+            .where('accountableUid', isEqualTo: uid)
+            .where('assignedByUid', isNotEqualTo: uid)
+            .limit(50)
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      return map.values.toList();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchMyResponsibilities error: $e');
@@ -3025,15 +3211,24 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('status', isEqualTo: 'requested')
-          .get();
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
-          .where((t) => t.assignedByUid != uid) // exclude own tasks
-          .toList();
+      final tasks = _db.collection('accountability_tasks');
+      final snaps = await Future.wait([
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('status', isEqualTo: 'requested')
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('status', isEqualTo: 'requested')
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      return map.values.where((t) => t.assignedByUid != uid).toList();
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -3049,15 +3244,33 @@ class AccountabilityService {
     if (!_isReady) return [];
     try {
       final uid = currentUid!;
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('accountableUserIds', arrayContains: uid)
-          .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
-          .get();
-      return snap.docs
-          .map((d) => AccountabilityTask.fromFirestore(d.data(), id: d.id))
+      final tasks = _db.collection('accountability_tasks');
+      final snaps = await Future.wait([
+        tasks
+            .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
+            .where('proofStatus', isEqualTo: ProofStatus.submitted.toWire)
+            .get(),
+      ]);
+      final map = <String, AccountabilityTask>{};
+      for (final snap in snaps) {
+        for (final d in snap.docs) {
+          map[d.id] = AccountabilityTask.fromFirestore(d.data(), id: d.id);
+        }
+      }
+      return map.values
           .where((t) => t.assignedByUid != uid) // exclude own tasks
           .where((t) => !t.hasApprovedBy(uid)) // not already reviewed by me
+          // Half-decided docs (status approved/rejected but stale
+          // proofStatus=submitted) can never be voted on again — showing
+          // them only produces a dead-end approve/reject error.
+          .where((t) =>
+              t.status != AccountabilityTaskStatus.approved &&
+              t.status != AccountabilityTaskStatus.rejected &&
+              t.status != AccountabilityTaskStatus.completed)
           .toList();
     } catch (e) {
       if (kDebugMode) {
@@ -3110,12 +3323,18 @@ class AccountabilityService {
             whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks.where('accountableUserIds', arrayContains: uid).where('status',
             whereIn: ['approved', 'rejected', 'expired']).get(),
+        tasks.where('partnerUid', isEqualTo: uid).where('status',
+            whereIn: ['approved', 'rejected', 'expired']).get(),
         tasks
             .where('assignedByUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)
             .get(),
         tasks
             .where('accountableUserIds', arrayContains: uid)
+            .where('proofStatus', whereIn: decidedProof)
+            .get(),
+        tasks
+            .where('partnerUid', isEqualTo: uid)
             .where('proofStatus', whereIn: decidedProof)
             .get(),
       ]);
@@ -3176,21 +3395,27 @@ class AccountabilityService {
   }
 
   /// True when [uid] is a designated reviewer of the task described by
-  /// raw Firestore [data] — i.e. listed in accountableUserIds/accountableUid
-  /// or as partnerUid, and NOT the owner. The owner can never review
-  /// their own proof.
+  /// raw Firestore [data].
+  /// Mirrors `isProofReviewer()` in firestore.rules:
+  ///  - Assigned reviewer: partnerUid set → only them can review (never
+  ///    the assigner/doer).
+  ///  - Self-review: no partnerUid assigned → the doer (accountableUid)
+  ///    can review their own proof.
   bool _isReviewerOf(Map<String, dynamic> data, String uid) {
-    if (data['assignedByUid'] == uid) return false;
-    if (data['partnerUid'] == uid) return true;
-    if (data['accountableUid'] == uid) return true;
-    final ids =
-        (data['accountableUserIds'] as List<dynamic>?)?.cast<String>() ?? [];
-    return ids.contains(uid);
+    final partner = data['partnerUid'] as String?;
+    final hasPartner = partner != null && partner.isNotEmpty;
+    if (hasPartner) {
+      return partner == uid && data['assignedByUid'] != uid;
+    }
+    return data['accountableUid'] == uid;
   }
 
-  /// True when [uid] is the task owner (the assigner who must submit proof).
+  /// True when [uid] is the task **doer** (accountableUid) — the only role
+  /// that submits proof. `accountableUserIds` is the participants list
+  /// (doer + reviewers) and must NOT count as ownership, otherwise a
+  /// reviewer would be allowed to upload proof.
   bool _isOwnerOf(Map<String, dynamic> data, String uid) =>
-      data['assignedByUid'] == uid;
+      data['accountableUid'] == uid;
 
   /// Submit proof and move task to pendingReview status.
   /// Called when the owner toggles a task that has reviewers.
@@ -3250,6 +3475,15 @@ class AccountabilityService {
       final ref = _db.collection('accountability_tasks').doc(taskId);
       final preDoc = await ref.get();
       if (!preDoc.exists) return null;
+      if (kDebugMode) {
+        final d = preDoc.data()!;
+        debugPrint(
+            '[approveProof] taskId=$taskId assignedBy=${d['assignedByUid']} '
+            'accountable=${d['accountableUid']} partner=${d['partnerUid']} '
+            'userIds=${d['accountableUserIds']} status=${d['status']} '
+            'proofStatus=${d['proofStatus']} approvals=${d['approvalUids']} '
+            'rejections=${d['rejectionUids']} myUid=$uid');
+      }
       if (!_isReviewerOf(preDoc.data()!, uid)) {
         if (kDebugMode) {
           debugPrint(
@@ -3348,6 +3582,15 @@ class AccountabilityService {
       final preDoc =
           await _db.collection('accountability_tasks').doc(taskId).get();
       if (!preDoc.exists) return null;
+      if (kDebugMode) {
+        final d = preDoc.data()!;
+        debugPrint(
+            '[rejectProof] taskId=$taskId assignedBy=${d['assignedByUid']} '
+            'accountable=${d['accountableUid']} partner=${d['partnerUid']} '
+            'userIds=${d['accountableUserIds']} status=${d['status']} '
+            'proofStatus=${d['proofStatus']} approvals=${d['approvalUids']} '
+            'rejections=${d['rejectionUids']} myUid=$uid');
+      }
       if (!_isReviewerOf(preDoc.data()!, uid)) {
         if (kDebugMode) {
           debugPrint(

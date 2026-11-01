@@ -15,6 +15,23 @@
     <!-- Notifications -->
     <string name="notification_channel_name">75 Hard Reminders</string>
     <string name="notification_channel_description">Daily reminders and motivational quotes for your 75 Hard Challenge</string>
+
+    <!-- Home Screen Widget -->
+    <string name="widget_description">Today\'s daily tasks — tap a task to complete it, or + to add one.</string>
+    <string name="widget_no_tasks">No tasks today</string>
+    <string name="widget_remaining">%1$d remaining</string>
+    <string name="widget_empty_hint">No tasks yet.\nTap + to add a daily task.</string>
+    <string name="widget_add_task">Add task</string>
+    <string name="widget_toggle_task">Toggle task</string>
+    <string name="widget_new_task_title">New daily task</string>
+    <string name="widget_task_hint">e.g., "Drink 3L water daily"</string>
+    <string name="widget_reminder_label">Set reminder</string>
+    <string name="widget_pick_time">Pick time</string>
+    <string name="widget_title_required">Enter a task name</string>
+    <string name="widget_task_saved">Task added</string>
+    <string name="widget_reminder_body">Time to complete your task! Tap to open.</string>
+    <string name="widget_cancel">Cancel</string>
+    <string name="widget_save">Save</string>
     
     <!-- SEO Keywords for Play Store -->
     <string name="keywords">75 hard challenge, habit tracker, mental toughness, daily habits, discipline builder, goal tracker, accountability app, fitness challenge, self improvement, personal development, daily routine, habit formation, consistency tracker, challenge app, wellness tracker</string>

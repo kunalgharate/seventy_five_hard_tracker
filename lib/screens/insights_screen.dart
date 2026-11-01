@@ -23,16 +23,18 @@ class InsightsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: bg,
       appBar: const CustomAppBar(title: 'Your insights', centerTitle: false),
-      body: BlocBuilder<ChallengeBloc, ChallengeState>(
-        builder: (context, state) {
-          if (state is! ChallengeLoaded || !state.hasActiveSession) {
-            return Center(
-              child: Text('Start a challenge to see insights.',
-                  style: FigmaTokens.body(13, color: FigmaTokens.muted)),
-            );
-          }
-          return _InsightsBody(state: state);
-        },
+      body: SafeArea(
+        child: BlocBuilder<ChallengeBloc, ChallengeState>(
+          builder: (context, state) {
+            if (state is! ChallengeLoaded || !state.hasActiveSession) {
+              return Center(
+                child: Text('Start a challenge to see insights.',
+                    style: FigmaTokens.body(13, color: FigmaTokens.muted)),
+              );
+            }
+            return _InsightsBody(state: state);
+          },
+        ),
       ),
     );
   }

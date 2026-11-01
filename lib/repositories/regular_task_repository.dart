@@ -11,6 +11,11 @@ class RegularTaskRepository {
 
   bool get _isInitialized => _tasksBox != null && _completionsBox != null;
 
+  /// Whether the underlying boxes are open. Read paths are null-safe so
+  /// callers that must not clobber state with an empty view (e.g. the
+  /// widget bridge) can check this first.
+  bool get isInitialized => _isInitialized;
+
   Future<void> init() async {
     if (_isInitialized) return;
 

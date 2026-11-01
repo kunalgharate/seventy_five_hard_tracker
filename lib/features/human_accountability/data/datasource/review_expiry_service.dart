@@ -33,18 +33,33 @@ class ReviewExpiryService {
       final now = DateTime.now();
       final uid = _uid!;
 
-      // Find tasks where I'm the accountable user that are overdue
-      final snap = await _db
-          .collection('accountability_tasks')
-          .where('status', isEqualTo: 'pendingReview')
-          .where('expiresAt', isLessThan: Timestamp.fromDate(now))
-          .where('accountableUid', isEqualTo: uid)
-          .get();
+      // Find overdue tasks where I'm the owner or assignee
+      final snaps = await Future.wait([
+        _db
+            .collection('accountability_tasks')
+            .where('status', isEqualTo: 'pendingReview')
+            .where('expiresAt', isLessThan: Timestamp.fromDate(now))
+            .where('accountableUid', isEqualTo: uid)
+            .get(),
+        _db
+            .collection('accountability_tasks')
+            .where('status', isEqualTo: 'pendingReview')
+            .where('expiresAt', isLessThan: Timestamp.fromDate(now))
+            .where('assignedByUid', isEqualTo: uid)
+            .get(),
+      ]);
 
-      if (snap.docs.isEmpty) return [];
+      final docMap = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final snap in snaps) {
+        for (final doc in snap.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
+
+      if (docMap.isEmpty) return [];
 
       final writes = <Future<void>>[];
-      for (final doc in snap.docs) {
+      for (final doc in docMap.values) {
         writes.add(doc.reference.update({
           'status': 'expired',
           'reviewedAt': FieldValue.serverTimestamp(),
@@ -52,7 +67,7 @@ class ReviewExpiryService {
         }));
       }
       await Future.wait(writes);
-      final expiredIds = snap.docs.map((doc) => doc.id).toList();
+      final expiredIds = docMap.keys.toList();
 
       if (kDebugMode && expiredIds.isNotEmpty) {
         debugPrint('[ReviewExpiry] Expired ${expiredIds.length} overdue tasks');

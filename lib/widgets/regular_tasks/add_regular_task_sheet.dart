@@ -566,18 +566,22 @@ class _AddRegularTaskSheetState extends State<AddRegularTaskSheet>
     );
     widget.bloc.add(AddRegularTask(regularTask));
 
-    // If an accountability partner was selected, create the accountability task
+    // If an accountability partner was selected, create the accountability task.
+    // The task creator is the doer (uploads proof); the partner reviews it.
     if (_selectedPartner != null && _selectedPartner!.partnerUid != null) {
       final currentUid = AccountabilityService().currentUid;
-      final doerUid = _selectedPartner!.uidOf(currentUid);
-      if (doerUid != null && currentUid != null) {
+      final reviewerUid = _selectedPartner!.uidOf(currentUid);
+      if (reviewerUid != null && currentUid != null) {
         AccountabilityService().createAccountabilityTask(
-          accountableUid: doerUid,
-          accountableName: _selectedPartner!.partnerName,
+          accountableUid: currentUid,
+          accountableName: AccountabilityService().currentUserDisplayName,
           partnershipId: _selectedPartner!.id,
           title: sanitizedTitle,
           challengeId: taskId,
-          partnerUid: currentUid,
+          partnerUid: reviewerUid,
+          // The reviewer must be a listed participant to accept the
+          // review request (firestore rules r-accept).
+          accountableUserIds: [currentUid, reviewerUid],
           taskType: 'regular',
         );
       }

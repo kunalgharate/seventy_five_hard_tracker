@@ -202,15 +202,17 @@ class _AccountabilityChatScreenState extends State<AccountabilityChatScreen> {
       appBar: CustomAppBar(
         title: widget.partner.partnerName,
       ),
-      body: Column(
-        children: [
-          // Type selector
-          _buildTypeSelector(),
-          // Messages
-          Expanded(child: _buildMessageList()),
-          // Input
-          SafeArea(top: false, child: _buildInput()),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Type selector
+            _buildTypeSelector(),
+            // Messages
+            Expanded(child: _buildMessageList()),
+            // Input
+            _buildInput(),
+          ],
+        ),
       ),
     );
   }

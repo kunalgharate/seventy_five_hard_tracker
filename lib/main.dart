@@ -26,6 +26,7 @@ import 'features/regular_tasks/data/models/regular_task.dart';
 import 'features/regular_tasks/data/models/regular_task_completion.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'features/regular_tasks/presentation/bloc/regular_task_event.dart';
+import 'features/regular_tasks/presentation/bloc/regular_task_state.dart';
 import 'features/human_accountability/presentation/bloc/accountability_bloc.dart';
 import 'features/human_accountability/presentation/bloc/accountability_state.dart';
 import 'features/discipline_score/discipline_score.dart';
@@ -33,6 +34,7 @@ import 'core/services/cloud_sync_service.dart';
 import 'core/services/offline_task_outbox.dart';
 import 'core/services/data_ownership.dart';
 import 'core/services/fcm_service.dart';
+import 'core/services/widget_bridge_service.dart';
 import 'core/theme/figma_tokens.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -128,6 +130,15 @@ void main() async {
   connectivity.onInternetRestoredWithResult = _onInternetRestored;
   connectivity.startListening(); // retries when internet comes back
 
+  // Home-screen widget bridge: registers the background toggle callback and
+  // subscribes to widget taps. The drain itself runs from
+  // MainNavigationScreen where a bloc context exists.
+  try {
+    await WidgetBridgeService.instance.initialize();
+  } catch (e) {
+    if (kDebugMode) print('Widget bridge init failed: $e');
+  }
+
   // ── Start review expiry timer if user is signed in ──
   // Checks for overdue partner reviews every 5 minutes and on app start.
   if (FirebaseAuth.instance.currentUser != null) {
@@ -216,50 +227,62 @@ class MyApp extends StatelessWidget {
         // RegularTaskOutcome (regular tasks) un-completes the task for today.
         // Exactly-once consumption is enforced in ChallengeBloc itself.
         builder: (context, child) =>
-            BlocListener<AccountabilityBloc, AccountabilityState>(
+            BlocListener<RegularTaskBloc, RegularTaskState>(
           listener: (context, state) {
-            if (state is StreakImpacted) {
-              final outcome = state is StreakReviewOutcome ? state : null;
-              if (state.reason == 'rejected') {
-                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                      taskId: outcome?.taskId,
-                      challengeId: outcome?.challengeId,
-                      taskOwnerUid: outcome?.taskOwnerUid,
-                      taskType: outcome?.taskType ?? 'hard',
-                      outcome: 'rejected',
-                      newStreakDay: state.newStreakDay,
-                      reviewedAt: outcome?.reviewedAt,
-                      taskAssignedAt: outcome?.taskAssignedAt,
-                    ));
-              } else if (state.reason == 'approved') {
-                // Approved needs no session mutation — register the outcome
-                // so exactly-once ingestion stays symmetric.
-                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                      taskId: outcome?.taskId,
-                      challengeId: outcome?.challengeId,
-                      taskOwnerUid: outcome?.taskOwnerUid,
-                      taskType: outcome?.taskType ?? 'hard',
-                      outcome: 'approved',
-                      newStreakDay: state.newStreakDay,
-                      reviewedAt: outcome?.reviewedAt,
-                      taskAssignedAt: outcome?.taskAssignedAt,
-                    ));
-              }
-              // 'expired' is emitted via TasksExpired elsewhere — not consumed.
-            } else if (state is RegularTaskOutcome &&
-                state.outcome == 'rejected') {
-              context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
-                    taskId: state.taskId,
-                    challengeId: state.challengeId,
-                    taskOwnerUid: state.taskOwnerUid,
-                    reviewedAt: state.reviewedAt,
-                    taskAssignedAt: state.taskAssignedAt,
-                    taskType: 'regular',
-                    outcome: 'rejected',
-                  ));
+            // Keep the home-screen widget snapshot in step with task and
+            // completion changes.
+            if (state is RegularTaskLoaded) {
+              unawaited(WidgetBridgeService.instance.syncWidgetData(
+                tasks: state.tasks,
+                todayCompletions: state.todayCompletions,
+              ));
             }
           },
-          child: child,
+          child: BlocListener<AccountabilityBloc, AccountabilityState>(
+            listener: (context, state) {
+              if (state is StreakImpacted) {
+                final outcome = state is StreakReviewOutcome ? state : null;
+                if (state.reason == 'rejected') {
+                  context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                        taskId: outcome?.taskId,
+                        challengeId: outcome?.challengeId,
+                        taskOwnerUid: outcome?.taskOwnerUid,
+                        taskType: outcome?.taskType ?? 'hard',
+                        outcome: 'rejected',
+                        newStreakDay: state.newStreakDay,
+                        reviewedAt: outcome?.reviewedAt,
+                        taskAssignedAt: outcome?.taskAssignedAt,
+                      ));
+                } else if (state.reason == 'approved') {
+                  // Approved needs no session mutation — register the outcome
+                  // so exactly-once ingestion stays symmetric.
+                  context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                        taskId: outcome?.taskId,
+                        challengeId: outcome?.challengeId,
+                        taskOwnerUid: outcome?.taskOwnerUid,
+                        taskType: outcome?.taskType ?? 'hard',
+                        outcome: 'approved',
+                        newStreakDay: state.newStreakDay,
+                        reviewedAt: outcome?.reviewedAt,
+                        taskAssignedAt: outcome?.taskAssignedAt,
+                      ));
+                }
+                // 'expired' is emitted via TasksExpired elsewhere — not consumed.
+              } else if (state is RegularTaskOutcome &&
+                  state.outcome == 'rejected') {
+                context.read<ChallengeBloc>().add(ReviewOutcomeObserved(
+                      taskId: state.taskId,
+                      challengeId: state.challengeId,
+                      taskOwnerUid: state.taskOwnerUid,
+                      reviewedAt: state.reviewedAt,
+                      taskAssignedAt: state.taskAssignedAt,
+                      taskType: 'regular',
+                      outcome: 'rejected',
+                    ));
+              }
+            },
+            child: child,
+          ),
         ),
         home: const InitialScreen(),
         navigatorObservers: connectivity.isFirebaseReady

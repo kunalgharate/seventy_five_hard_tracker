@@ -225,6 +225,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
       String? partnershipId;
       String accountableUid = _svc.currentUid ?? '';
       String accountableName = _svc.currentUserDisplayName;
+      String? reviewerUid;
       String? accountableEmail;
       var queuedOffline = false;
 
@@ -247,8 +248,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           }
           _assertSenderUnchanged(senderUid);
         }
-        accountableUid = _selectedReviewer!.uid;
-        accountableName = _selectedReviewer!.displayName;
+        reviewerUid = _selectedReviewer!.uid;
       } else if (_emailInviteOnly) {
         // ── Direct assignment by email (teacher / manager / coach) ──
         // Invite them and address the task to that email in one step. They
@@ -354,7 +354,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
           'title': title,
           'description': _descCtrl.text.trim(),
           'challengeId': challengeId,
-          'partnerUid': senderUid,
+          'partnerUid': reviewerUid,
           'taskType': _taskType == 'regular' ? 'regular' : 'hard',
         });
       }
@@ -374,8 +374,7 @@ class _CreateTaskSheetState extends State<CreateTaskSheet>
             title: title,
             description: _descCtrl.text.trim(),
             challengeId: challengeId,
-            // The doer is the other partnership member, so I review their work.
-            partnerUid: _svc.currentUid,
+            partnerUid: reviewerUid,
             // taskType is persisted as 'hard' unless this is a routine task
             taskType: _taskType == 'regular' ? 'regular' : null,
           );

@@ -16,6 +16,11 @@ class RegularTaskBloc extends Bloc<RegularTaskEvent, RegularTaskState> {
   /// Exposes the repository so services like CloudSyncService can read data.
   RegularTaskRepository get repository => _repository;
 
+  /// Exposes the shared, already-initialized notification service so
+  /// integrations (e.g. the home-screen widget drain) reuse it instead of
+  /// creating a second FlutterLocalNotificationsPlugin instance.
+  SmartNotificationService get notifications => _notifications;
+
   RegularTaskBloc({
     required RegularTaskRepository repository,
     required SmartNotificationService notifications,
