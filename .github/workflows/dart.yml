@@ -1,8 +1,10 @@
 name: Flutter CI/CD
 
 on:
+  # Direct pushes only build on main/release. Feature & fix branches build
+  # via the pull_request trigger below so each change runs the pipeline once.
   push:
-    branches: [ "main", "feature/**", "fix/**", "release/**" ]
+    branches: [ "main", "release/**" ]
   pull_request:
     branches: [ "main" ]
 
