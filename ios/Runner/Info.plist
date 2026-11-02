@@ -53,17 +53,18 @@
 	<string>DailyMettle uses the camera so you can take photos as proof of completing your daily tasks.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DailyMettle uses the microphone so you can dictate your journal entries instead of typing.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>DailyMettle uses speech recognition to convert your dictated journal entries into text.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>DailyMettle saves task proof photos to your photo library when you choose to keep a copy.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>DailyMettle needs access to your photo library so you can attach existing photos as proof of your daily tasks or as custom task icons.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>DailyMettle uses speech recognition to convert your dictated journal entries into text.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
