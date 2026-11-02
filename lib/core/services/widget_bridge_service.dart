@@ -140,7 +140,34 @@ class WidgetBridgeService {
   /// Applies changes the widgets made while the app was not running:
   /// materializes pending quick-added tasks into Hive and replays completion
   /// toggles. Returns true when anything changed.
+  /// Serialized — startup, resume, and the periodic timer can all call
+  /// this; concurrent drains would double-process queued journal entries
+  /// (and double-notify).
+  Future<bool>? _drainInFlight;
+
   Future<bool> drainWidgetChanges({
+    required RegularTaskRepository repository,
+    required SmartNotificationService notifications,
+    DatabaseRepository? dailyRepository,
+  }) {
+    final active = _drainInFlight;
+    if (active != null) return active;
+
+    late final Future<bool> drain;
+    drain = _drainWidgetChanges(
+      repository: repository,
+      notifications: notifications,
+      dailyRepository: dailyRepository,
+    ).whenComplete(() {
+      if (identical(_drainInFlight, drain)) {
+        _drainInFlight = null;
+      }
+    });
+    _drainInFlight = drain;
+    return drain;
+  }
+
+  Future<bool> _drainWidgetChanges({
     required RegularTaskRepository repository,
     required SmartNotificationService notifications,
     DatabaseRepository? dailyRepository,
@@ -293,18 +320,26 @@ class WidgetBridgeService {
 
       // Accountability-linked tasks require the proof/reviewer flow — the
       // widget can't run it, so consume the toggle without writing (the
-      // next sync flips the row back to its real state).
-      if (completed && await _isAccountabilityLinked(taskId)) {
-        final title = repository.getTaskById(taskId)?.title ?? 'Task';
-        try {
-          await notifications.showTaskUpdateNotification(
-            title: 'Action needed: $title',
-            body:
-                'This task needs proof or a reviewer — open Daily Mettle to complete it.',
-          );
-        } catch (_) {}
-        any = true;
-        continue;
+      // next sync flips the row back to its real state). A lookup that
+      // can't run (null) retains the event — never fail open on proof.
+      if (completed) {
+        final linked = await _isAccountabilityLinked(taskId);
+        if (linked == null) {
+          remaining.add(event);
+          continue;
+        }
+        if (linked) {
+          final title = repository.getTaskById(taskId)?.title ?? 'Task';
+          try {
+            await notifications.showTaskUpdateNotification(
+              title: 'Action needed: $title',
+              body:
+                  'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+            );
+          } catch (_) {}
+          any = true;
+          continue;
+        }
       }
 
       try {
@@ -333,16 +368,19 @@ class WidgetBridgeService {
 
   /// True when [taskId] is linked to a live accountability task — those
   /// completions must go through the in-app proof/reviewer flow.
-  Future<bool> _isAccountabilityLinked(String taskId) async {
+  /// Returns null when the lookup can't run (offline, no auth) — callers
+  /// must retain the toggle for a later drain rather than fail open.
+  Future<bool?> _isAccountabilityLinked(String taskId) async {
     try {
+      final service = AccountabilityService();
+      if (!service.isReady) return null;
       final linked =
-          await AccountabilityService().fetchTaskByChallengeId(taskId);
+          await service.fetchTaskByChallengeId(taskId, throwOnError: true);
       return linked != null &&
           linked.status != AccountabilityTaskStatus.declined &&
           linked.status != AccountabilityTaskStatus.completed;
     } catch (_) {
-      // Service offline — treat as unlinked and continue.
-      return false;
+      return null;
     }
   }
 
@@ -382,19 +420,25 @@ class WidgetBridgeService {
       // Accountability-linked challenges require proof/reviewer flow — the
       // widget can't run it, so consume the toggle without writing (the
       // next sync flips the row back to its real state) and tell the user.
-      if (completed && await _isAccountabilityLinked(taskId)) {
-        final title = session.challenges
-            .where((c) => c.id == taskId)
-            .map((c) => c.title)
-            .firstOrNull;
-        try {
-          await notifications.showTaskUpdateNotification(
-            title: 'Action needed: ${title ?? 'Task'}',
-            body:
-                'This task needs proof or a reviewer — open Daily Mettle to complete it.',
-          );
-        } catch (_) {}
-        return true;
+      // A lookup that can't run (null) returns false so the caller retains
+      // the event — never fail open on proof.
+      if (completed) {
+        final linked = await _isAccountabilityLinked(taskId);
+        if (linked == null) return false;
+        if (linked) {
+          final title = session.challenges
+              .where((c) => c.id == taskId)
+              .map((c) => c.title)
+              .firstOrNull;
+          try {
+            await notifications.showTaskUpdateNotification(
+              title: 'Action needed: ${title ?? 'Task'}',
+              body:
+                  'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+            );
+          } catch (_) {}
+          return true;
+        }
       }
 
       final day = DateTime(date.year, date.month, date.day);

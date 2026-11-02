@@ -513,7 +513,7 @@ class SmartNotificationService {
     required String body,
   }) async {
     await _notifications.show(
-      1100 + DateTime.now().millisecondsSinceEpoch % 1000,
+      _taskUpdateIdBase + (_taskUpdateCounter++ % 100000),
       title,
       body,
       const NotificationDetails(
@@ -758,12 +758,19 @@ class SmartNotificationService {
     return scheduled;
   }
 
+  /// First ID of the band reserved for instant task-update notifications.
+  /// Reminder IDs from [_getNotificationId] max out below it, so an update
+  /// can never replace or be cancelled alongside a scheduled reminder.
+  static const _taskUpdateIdBase = 0x7F100000;
+  static int _taskUpdateCounter = 0;
+
   int _getNotificationId(String challengeId, int hour, int minute) {
     // Use a wider hash space to reduce collisions between challenge IDs.
     // Android notification IDs are 32-bit signed ints (max ~2.1 billion).
     // time component: hour * 60 + minute = 0..1439
-    // hash component: up to ~1,490,000 unique slots
-    final hash = challengeId.hashCode.abs() % 1490000;
+    // hash component: up to ~1,480,000 unique slots — capped so the
+    // _taskUpdateIdBase band above stays collision-free.
+    final hash = challengeId.hashCode.abs() % 1480000;
     return hash * 1440 + (hour * 60 + minute);
   }
 

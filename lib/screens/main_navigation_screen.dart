@@ -94,7 +94,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   /// and notification service so test doubles are honored. The repository is
   /// deliberately not opened eagerly — the drain only touches Hive when the
   /// widget actually queued work, so this is a no-op in test environments.
-  Future<void> _drainWidgetChanges() async {
+  /// [forceSync] re-publishes the widget snapshot even when the drain
+  /// applied nothing — wanted on startup/resume (the widget may be stale),
+  /// skipped by the periodic poll to avoid needless redraws.
+  Future<void> _drainWidgetChanges({bool forceSync = true}) async {
     try {
       final bloc = context.read<RegularTaskBloc>();
       final repo = bloc.repository;
@@ -109,10 +112,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       if (changed && mounted) {
         context.read<ChallengeBloc>().add(LoadChallengeData());
       }
-      await WidgetBridgeService.instance.syncWidgetDataFromRepositories(
-        repository: repo,
-        dailyRepository: dailyRepo,
-      );
+      if (changed || forceSync) {
+        await WidgetBridgeService.instance.syncWidgetDataFromRepositories(
+          repository: repo,
+          dailyRepository: dailyRepo,
+        );
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[MainNav] widget drain failed: $e');
@@ -171,7 +176,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _widgetDrainTimer?.cancel();
     _widgetDrainTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
-      unawaited(_drainWidgetChanges().catchError((Object e) {
+      unawaited(_drainWidgetChanges(forceSync: false).catchError((Object e) {
         if (kDebugMode) {
           debugPrint('[MainNav] widget drain failed: $e');
         }

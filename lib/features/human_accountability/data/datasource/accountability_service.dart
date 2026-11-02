@@ -2766,7 +2766,11 @@ class AccountabilityService {
 
   /// Fetch an accountability task by a challengeId.
   /// Returns the first matching task, or null if none found.
-  Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId) async {
+  /// With [throwOnError] query failures rethrow instead of returning null —
+  /// callers that must not fail open (e.g. the widget-completion gate) use
+  /// it to distinguish "no link" from "lookup unavailable".
+  Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId,
+      {bool throwOnError = false}) async {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
@@ -2813,6 +2817,7 @@ class AccountabilityService {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchTaskByChallengeId error: $e');
       }
+      if (throwOnError) rethrow;
       return null;
     }
   }
