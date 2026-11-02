@@ -215,6 +215,12 @@ class WidgetBridgeService {
         remaining.add(item);
         continue;
       }
+      try {
+        await notifications.showTaskUpdateNotification(
+          title: 'Task added 📌',
+          body: '"$title" was added from the widget.',
+        );
+      } catch (_) {}
 
       if (reminderTime != null) {
         try {
@@ -285,6 +291,22 @@ class WidgetBridgeService {
         continue;
       }
 
+      // Accountability-linked tasks require the proof/reviewer flow — the
+      // widget can't run it, so consume the toggle without writing (the
+      // next sync flips the row back to its real state).
+      if (completed && await _isAccountabilityLinked(taskId)) {
+        final title = repository.getTaskById(taskId)?.title ?? 'Task';
+        try {
+          await notifications.showTaskUpdateNotification(
+            title: 'Action needed: $title',
+            body:
+                'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+          );
+        } catch (_) {}
+        any = true;
+        continue;
+      }
+
       try {
         await _recordCompletion(repository, taskId, date, completed);
       } catch (_) {
@@ -294,6 +316,11 @@ class WidgetBridgeService {
       if (completed) {
         try {
           await notifications.cancelCompletedTaskReminders(taskId);
+          final title = repository.getTaskById(taskId)?.title ?? 'Task';
+          await notifications.showTaskUpdateNotification(
+            title: 'Task completed ✅',
+            body: '"$title" marked done from the widget.',
+          );
         } catch (_) {}
       }
       any = true;
@@ -302,6 +329,21 @@ class WidgetBridgeService {
     await HomeWidget.saveWidgetData(
         WidgetKeys.toggleEvents, jsonEncode(remaining));
     return any;
+  }
+
+  /// True when [taskId] is linked to a live accountability task — those
+  /// completions must go through the in-app proof/reviewer flow.
+  Future<bool> _isAccountabilityLinked(String taskId) async {
+    try {
+      final linked =
+          await AccountabilityService().fetchTaskByChallengeId(taskId);
+      return linked != null &&
+          linked.status != AccountabilityTaskStatus.declined &&
+          linked.status != AccountabilityTaskStatus.completed;
+    } catch (_) {
+      // Service offline — treat as unlinked and continue.
+      return false;
+    }
   }
 
   Future<void> _recordCompletion(
@@ -339,17 +381,20 @@ class WidgetBridgeService {
 
       // Accountability-linked challenges require proof/reviewer flow — the
       // widget can't run it, so consume the toggle without writing (the
-      // next sync flips the row back to its real state).
-      if (completed) {
+      // next sync flips the row back to its real state) and tell the user.
+      if (completed && await _isAccountabilityLinked(taskId)) {
+        final title = session.challenges
+            .where((c) => c.id == taskId)
+            .map((c) => c.title)
+            .firstOrNull;
         try {
-          final linked =
-              await AccountabilityService().fetchTaskByChallengeId(taskId);
-          if (linked != null &&
-              linked.status != AccountabilityTaskStatus.declined &&
-              linked.status != AccountabilityTaskStatus.completed) {
-            return true;
-          }
-        } catch (_) {} // Service offline — treat as unlinked and continue.
+          await notifications.showTaskUpdateNotification(
+            title: 'Action needed: ${title ?? 'Task'}',
+            body:
+                'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+          );
+        } catch (_) {}
+        return true;
       }
 
       final day = DateTime(date.year, date.month, date.day);
@@ -376,6 +421,16 @@ class WidgetBridgeService {
       );
       if (completed) {
         await notifications.cancelCompletedTaskReminders(taskId);
+        final title = session.challenges
+            .where((c) => c.id == taskId)
+            .map((c) => c.title)
+            .firstOrNull;
+        try {
+          await notifications.showTaskUpdateNotification(
+            title: 'Task completed ✅',
+            body: '"${title ?? 'Task'}" marked done from the widget.',
+          );
+        } catch (_) {}
       }
       return true;
     } catch (_) {

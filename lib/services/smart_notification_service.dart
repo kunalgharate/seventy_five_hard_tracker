@@ -166,6 +166,14 @@ class SmartNotificationService {
         enableVibration: true,
       ),
       AndroidNotificationChannel(
+        'task_updates',
+        'Task Updates',
+        description: 'Task completions and widget activity',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+      AndroidNotificationChannel(
         _followUpChannelId,
         'Follow-up Reminders',
         description: 'Reminder 1 hour after your task was due',
@@ -493,6 +501,27 @@ class SmartNotificationService {
           'Challenge Events',
           importance: Importance.max,
           priority: Priority.max,
+        ),
+      ),
+    );
+  }
+
+  /// Instant notification for task-originated events — widget completions,
+  /// widget quick-adds, and blocked toggles that need in-app action.
+  Future<void> showTaskUpdateNotification({
+    required String title,
+    required String body,
+  }) async {
+    await _notifications.show(
+      1100 + DateTime.now().millisecondsSinceEpoch % 1000,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'task_updates',
+          'Task Updates',
+          importance: Importance.high,
+          priority: Priority.high,
         ),
       ),
     );

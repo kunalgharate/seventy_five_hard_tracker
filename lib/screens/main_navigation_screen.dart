@@ -77,10 +77,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         debugPrint('[MainNav] widget drain failed: $e');
       }
     }));
+    _startWidgetDrainTimer();
   }
 
   @override
   void dispose() {
+    _stopWidgetDrainTimer();
     WidgetsBinding.instance.removeObserver(this);
     WidgetBridgeService.instance.unregisterNavigationHandlers();
     _widgetChangesSub?.cancel();
@@ -138,17 +140,48 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
+    if (state != AppLifecycleState.resumed) {
+      _stopWidgetDrainTimer();
+      return;
+    }
     if (FirebaseAuth.instance.currentUser != null) {
       context.read<AccountabilityBloc>().add(CheckExpiredTasks());
     }
     // Pick up anything the widget queued while the app was away.
-    unawaited(_drainWidgetChanges().catchError((Object e) {
-      if (kDebugMode) {
-        debugPrint('[MainNav] widget drain failed: $e');
+    unawaited(Future(() async {
+      try {
+        // Drain before the local sync — the cloud pull can otherwise
+        // overwrite completions the widget just applied.
+        await _drainWidgetChanges();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[MainNav] widget drain failed: $e');
+        }
       }
+      await _syncLocalChanges();
     }));
-    unawaited(_syncLocalChanges());
+    _startWidgetDrainTimer();
+  }
+
+  /// Polls the widget journals while the app is foregrounded so a toggle or
+  /// quick-add lands without waiting for the next lifecycle resume.
+  Timer? _widgetDrainTimer;
+
+  void _startWidgetDrainTimer() {
+    _widgetDrainTimer?.cancel();
+    _widgetDrainTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      unawaited(_drainWidgetChanges().catchError((Object e) {
+        if (kDebugMode) {
+          debugPrint('[MainNav] widget drain failed: $e');
+        }
+      }));
+    });
+  }
+
+  void _stopWidgetDrainTimer() {
+    _widgetDrainTimer?.cancel();
+    _widgetDrainTimer = null;
   }
 
   Future<void> _syncLocalChanges() {
