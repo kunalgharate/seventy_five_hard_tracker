@@ -128,8 +128,29 @@ class DatabaseRepository {
           entry.value.copyWith(sessionId: session.id),
         );
       }
-      await _progressBox!.delete(entry.key);
+      // Keep session-less records that carry a journal note — the session
+      // record may not contain it, and the journal read path still merges
+      // these (a later journal write consolidates them into the session).
+      if (entry.value.journalNote == null || entry.value.journalNote!.isEmpty) {
+        await _progressBox!.delete(entry.key);
+      }
     }
+  }
+
+  /// Progress records stored under a date-only key (no session) — e.g.
+  /// journal entries written while no challenge session was active.
+  /// These are the same records adoptLegacyProgressForSession migrates into
+  /// a new session; until that happens they need their own read path.
+  List<DailyProgress> getSessionlessProgress() {
+    final box = _progressBox;
+    if (box == null) return [];
+    final dateKey = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+    return box
+        .toMap()
+        .entries
+        .where((e) => e.key is String && dateKey.hasMatch(e.key as String))
+        .map((e) => e.value)
+        .toList();
   }
 
   /// Reads progress for a specific session. Callers without a session ID may

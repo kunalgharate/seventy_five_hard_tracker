@@ -36,18 +36,44 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
   final Map<String, AccountabilityTaskStatus> _accountabilityStatuses = {};
   final Set<String> _tasksIAssigned = {};
   final Set<String> _accountabilityChecked = {};
+  final Set<String> _accountabilityPending = {};
   final Map<String, List<Collaborator>> _taskCollaborators = {};
+  StreamSubscription<List<AccountabilityTask>>? _tasksSub;
+  List<RegularTask> _lastTasks = const [];
+  Map<String, bool> _lastCompletions = const {};
 
   @override
   void initState() {
     super.initState();
     context.read<RegularTaskBloc>().add(LoadRegularTasks());
+    // Approval-driven refresh: a review landing after the initial load
+    // must re-mark the task — invalidate the one-time check on stream
+    // updates and re-run the reconciliation.
+    _tasksSub = AccountabilityService().assignedByMeStream().listen((tasks) {
+      var stale = false;
+      for (final t in tasks) {
+        final cid = t.challengeId;
+        if (cid != null && _accountabilityChecked.remove(cid)) {
+          stale = true;
+        }
+      }
+      if (stale && mounted) {
+        _loadAccountabilityData(_lastTasks, _lastCompletions);
+      }
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _tasksSub?.cancel();
+    super.dispose();
   }
 
   /// Loads the accountability connection for every regular task so the proof
   /// button renders correctly after a reload (the in-session assign action
   /// alone cannot survive an app restart / tab switch).
-  Future<void> _loadAccountabilityData(List<RegularTask> tasks) async {
+  Future<void> _loadAccountabilityData(
+      List<RegularTask> tasks, Map<String, bool> todayCompletions) async {
     final svc = AccountabilityService();
     final myUid = svc.currentUid;
     if (myUid == null) return;
@@ -55,9 +81,11 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
     for (final task in tasks) {
       if (_accountabilityChecked.contains(task.id)) continue;
       _accountabilityChecked.add(task.id);
+      _accountabilityPending.add(task.id);
       try {
         final acc = await svc.fetchTaskByChallengeId(task.id);
         if (acc == null) continue;
+        if (!mounted) return;
         final isDoer = acc.accountableUid == myUid;
         final isReviewer = acc.partnerUid == myUid;
         if (isDoer || isReviewer) {
@@ -65,10 +93,19 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           _assignedPartnerNames[task.id] = acc.accountableName;
           _accountabilityStatuses[task.id] = acc.status;
           _proofStatuses[task.id] = acc.proofStatus;
-          if (isDoer) _tasksIAssigned.add(task.id);
+          if (isDoer) {
+            _tasksIAssigned.add(task.id);
+            // Same as the 75 Hard card: today's approval completes the task.
+            if (acc.isDoneToday && !(todayCompletions[task.id] ?? false)) {
+              _toggleTask(task, true);
+            }
+          }
           changed = true;
         }
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        _accountabilityPending.remove(task.id);
+      }
     }
     if (changed && mounted) setState(() {});
   }
@@ -86,7 +123,9 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
           todayCompletions = state.todayCompletions;
           recentCompletions = state.recentCompletions;
           // Restore accountability connections (proof button) after reload.
-          _loadAccountabilityData(tasks);
+          _lastTasks = tasks;
+          _lastCompletions = todayCompletions;
+          _loadAccountabilityData(tasks, todayCompletions);
         } else {
           tasks = [];
           todayCompletions = {};
@@ -630,15 +669,7 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
 
     return GestureDetector(
       onTap: isInteractive
-          ? () {
-              context.read<RegularTaskBloc>().add(
-                    ToggleRegularTaskCompletion(
-                      taskId: task.id,
-                      date: DateTime.now(),
-                      isCompleted: !effectiveCompleted,
-                    ),
-                  );
-            }
+          ? () => _onCheckboxTap(task, effectiveCompleted)
           : null, // Disabled when proof already approved (auto-complete)
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -662,6 +693,71 @@ class _RegularTasksScreenState extends State<RegularTasksScreen> {
                 ? null
                 : const Icon(Icons.rate_review_outlined,
                     color: Colors.orange, size: 16)), // Proof needed icon
+      ),
+    );
+  }
+
+  /// Same flow as the 75 Hard challenge card: completing an
+  /// accountability-linked task requires photo proof, so the tap is routed
+  /// through [_submitProof] (PhotoProofSheet) instead of toggling directly.
+  /// Everything else toggles normally.
+  void _onCheckboxTap(RegularTask task, bool effectiveCompleted) {
+    // Accountability lookup still in flight — a tap now would bypass the
+    // proof gate, so hold it until the relationship resolves.
+    if (_accountabilityPending.contains(task.id)) {
+      _showProofSnack('Checking task status — try again in a moment');
+      return;
+    }
+
+    final hasAccountability = _assignedPartnerNames.containsKey(task.id);
+    final iAmDoer = _tasksIAssigned.contains(task.id);
+
+    // Reviewer-side devices must never complete the task — only the doer
+    // submits proof and marks it done.
+    if (hasAccountability && !iAmDoer) {
+      _showProofSnack(
+          'Only ${_assignedPartnerNames[task.id]} can complete this task');
+      return;
+    }
+
+    if (!hasAccountability || effectiveCompleted) {
+      _toggleTask(task, !effectiveCompleted);
+      return;
+    }
+
+    final accStatus = _accountabilityStatuses[task.id];
+    final proofStatus = _proofStatuses[task.id] ?? ProofStatus.notRequired;
+
+    if (accStatus == AccountabilityTaskStatus.requested) {
+      _showProofSnack(
+          'Waiting for ${_assignedPartnerNames[task.id]} to accept this task first');
+      return;
+    }
+    if (proofStatus == ProofStatus.submitted ||
+        accStatus == AccountabilityTaskStatus.pendingReview) {
+      _showProofSnack('Proof submitted — waiting for your partner to review');
+      return;
+    }
+    // notRequired or rejected → upload (or resubmit) proof.
+    _submitProof(task);
+  }
+
+  void _toggleTask(RegularTask task, bool isCompleted) {
+    context.read<RegularTaskBloc>().add(
+          ToggleRegularTaskCompletion(
+            taskId: task.id,
+            date: DateTime.now(),
+            isCompleted: isCompleted,
+          ),
+        );
+  }
+
+  void _showProofSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.orange,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }

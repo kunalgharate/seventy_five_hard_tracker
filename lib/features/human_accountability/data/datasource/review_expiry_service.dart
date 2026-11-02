@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'accountability_notification_service.dart';
+
 /// Client-side service that detects and expires overdue partner reviews.
 ///
 /// Since Cloud Functions are unavailable, expiry runs on the client:
@@ -68,6 +70,21 @@ class ReviewExpiryService {
       }
       await Future.wait(writes);
       final expiredIds = docMap.keys.toList();
+
+      // Tell each task's doer the review window closed (non-blocking).
+      for (final doc in docMap.values) {
+        final data = doc.data();
+        final accountableUid = data?['accountableUid'] as String?;
+        final title = data?['title'] as String?;
+        if (accountableUid == null || accountableUid.isEmpty) continue;
+        try {
+          await AccountabilityNotificationService().notifyReviewExpired(
+            recipientUid: accountableUid,
+            taskName: title ?? 'Task',
+            taskId: doc.id,
+          );
+        } catch (_) {}
+      }
 
       if (kDebugMode && expiredIds.isNotEmpty) {
         debugPrint('[ReviewExpiry] Expired ${expiredIds.length} overdue tasks');

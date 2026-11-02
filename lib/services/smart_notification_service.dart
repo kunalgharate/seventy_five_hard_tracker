@@ -166,6 +166,14 @@ class SmartNotificationService {
         enableVibration: true,
       ),
       AndroidNotificationChannel(
+        'task_updates',
+        'Task Updates',
+        description: 'Task completions and widget activity',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+      AndroidNotificationChannel(
         _followUpChannelId,
         'Follow-up Reminders',
         description: 'Reminder 1 hour after your task was due',
@@ -344,12 +352,14 @@ class SmartNotificationService {
     final startParts = startTime.split(':');
     final startHour =
         int.tryParse(startParts[0]) ?? challenge.reminderStartHour;
+    final startMinute =
+        startParts.length >= 2 ? (int.tryParse(startParts[1]) ?? 0) : 0;
 
     for (int hour = startHour; hour <= challenge.reminderEndHour; hour++) {
       if (!_isWithinTimeWindow(hour, challenge)) continue;
 
-      final scheduledDate =
-          tz.TZDateTime(tz.local, date.year, date.month, date.day, hour, 0);
+      final scheduledDate = tz.TZDateTime(
+          tz.local, date.year, date.month, date.day, hour, startMinute);
       if (scheduledDate.isBefore(tz.TZDateTime.now(tz.local))) continue;
       if (!_canScheduleMore()) break;
 
@@ -491,6 +501,27 @@ class SmartNotificationService {
           'Challenge Events',
           importance: Importance.max,
           priority: Priority.max,
+        ),
+      ),
+    );
+  }
+
+  /// Instant notification for task-originated events — widget completions,
+  /// widget quick-adds, and blocked toggles that need in-app action.
+  Future<void> showTaskUpdateNotification({
+    required String title,
+    required String body,
+  }) async {
+    await _notifications.show(
+      _taskUpdateIdBase + (_taskUpdateCounter++ % 100000),
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'task_updates',
+          'Task Updates',
+          importance: Importance.high,
+          priority: Priority.high,
         ),
       ),
     );
@@ -727,12 +758,19 @@ class SmartNotificationService {
     return scheduled;
   }
 
+  /// First ID of the band reserved for instant task-update notifications.
+  /// Reminder IDs from [_getNotificationId] max out below it, so an update
+  /// can never replace or be cancelled alongside a scheduled reminder.
+  static const _taskUpdateIdBase = 0x7F100000;
+  static int _taskUpdateCounter = 0;
+
   int _getNotificationId(String challengeId, int hour, int minute) {
     // Use a wider hash space to reduce collisions between challenge IDs.
     // Android notification IDs are 32-bit signed ints (max ~2.1 billion).
     // time component: hour * 60 + minute = 0..1439
-    // hash component: up to ~1,490,000 unique slots
-    final hash = challengeId.hashCode.abs() % 1490000;
+    // hash component: up to ~1,480,000 unique slots — capped so the
+    // _taskUpdateIdBase band above stays collision-free.
+    final hash = challengeId.hashCode.abs() % 1480000;
     return hash * 1440 + (hour * 60 + minute);
   }
 

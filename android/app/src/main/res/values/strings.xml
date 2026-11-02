@@ -26,6 +26,15 @@
     <string name="widget_new_task_title">New daily task</string>
     <string name="widget_task_hint">e.g., "Drink 3L water daily"</string>
     <string name="widget_reminder_label">Set reminder</string>
+    <string name="widget_reminder_type">Reminder type</string>
+    <string name="widget_reminder_time">Reminder time</string>
+    <string name="widget_reminder_times">Reminder times</string>
+    <string name="widget_start_time">Starts at</string>
+    <string name="widget_interval_label">Interval</string>
+    <string name="widget_add_time">+ Add time</string>
+    <string name="widget_remove">Remove</string>
+    <string name="widget_times_required">Add at least one reminder time</string>
+    <string name="widget_two_times_required">Multiple Times needs at least 2 reminder times</string>
     <string name="widget_pick_time">Pick time</string>
     <string name="widget_title_required">Enter a task name</string>
     <string name="widget_task_saved">Task added</string>

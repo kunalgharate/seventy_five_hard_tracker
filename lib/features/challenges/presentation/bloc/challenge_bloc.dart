@@ -489,7 +489,9 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     }).toList();
   }
 
-  /// Load (creating if needed) the DailyProgress for [date].
+  /// Load (creating if needed) the DailyProgress for [date]. Journal entries
+  /// must not die with no active challenge — without a session they live in
+  /// the session-less (date-keyed) record.
   Future<DailyProgress?> _progressForDate(DateTime date) async {
     final activeSession = await _repository.getActiveSession();
     var dailyProgress = activeSession == null
@@ -508,6 +510,14 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
         sessionId: activeSession.id,
       );
     }
+    if (dailyProgress == null && activeSession == null) {
+      dailyProgress = _repository.getDailyProgress(date) ??
+          DailyProgress(
+            date: date,
+            challengeCompletions: const {},
+            isCompleted: false,
+          );
+    }
     return dailyProgress;
   }
 
@@ -519,14 +529,34 @@ class ChallengeBloc extends Bloc<ChallengeEvent, ChallengeState> {
     return _serializeJournal(() async {
       final dailyProgress = await _progressForDate(date);
       if (dailyProgress == null) return;
-      final current = JournalEntry.decode(
-        dailyProgress.journalNote,
-        fallbackDate: dailyProgress.date,
-      );
+      // Entries written while no session was active live in the date-keyed
+      // record. Merge them into the transform so they stay editable, then
+      // consolidate them into the primary record on save.
+      final sessionless = dailyProgress.sessionId == null
+          ? null
+          : _repository.getDailyProgress(date);
+      final sessionlessNote = sessionless?.journalNote;
+      final current = [
+        ...JournalEntry.decode(
+          dailyProgress.journalNote,
+          fallbackDate: dailyProgress.date,
+        ),
+        if (sessionlessNote != null && sessionlessNote.isNotEmpty)
+          ...JournalEntry.decode(sessionlessNote, fallbackDate: date),
+      ];
       final updated = transform(current);
+      // Migration may have already copied the sessionless note into the
+      // session record — dedupe by id so merged entries never encode twice.
+      final seen = <String>{};
+      final deduped = updated.where((e) => seen.add(e.id)).toList();
       await _repository.saveDailyProgress(
-        dailyProgress.copyWith(journalNote: JournalEntry.encode(updated)),
+        dailyProgress.copyWith(journalNote: JournalEntry.encode(deduped)),
       );
+      if (sessionlessNote != null && sessionlessNote.isNotEmpty) {
+        await _repository.saveDailyProgress(
+          sessionless!.copyWith(journalNote: ''),
+        );
+      }
       add(LoadChallengeData());
     });
   }

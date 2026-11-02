@@ -11,6 +11,8 @@ import 'package:seventy_five_hard_tracker/core/services/widget_bridge_service.da
 import 'package:seventy_five_hard_tracker/widgets/regular_tasks/add_regular_task_sheet.dart';
 import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_bloc.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/presentation/bloc/challenge_event.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_bloc.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/presentation/bloc/regular_task_event.dart';
 import 'home_screen.dart';
@@ -75,10 +77,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         debugPrint('[MainNav] widget drain failed: $e');
       }
     }));
+    _startWidgetDrainTimer();
   }
 
   @override
   void dispose() {
+    _stopWidgetDrainTimer();
     WidgetsBinding.instance.removeObserver(this);
     WidgetBridgeService.instance.unregisterNavigationHandlers();
     _widgetChangesSub?.cancel();
@@ -90,15 +94,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   /// and notification service so test doubles are honored. The repository is
   /// deliberately not opened eagerly — the drain only touches Hive when the
   /// widget actually queued work, so this is a no-op in test environments.
-  Future<void> _drainWidgetChanges() async {
+  /// [forceSync] re-publishes the widget snapshot even when the drain
+  /// applied nothing — wanted on startup/resume (the widget may be stale),
+  /// skipped by the periodic poll to avoid needless redraws.
+  Future<void> _drainWidgetChanges({bool forceSync = true}) async {
     try {
       final bloc = context.read<RegularTaskBloc>();
       final repo = bloc.repository;
-      await WidgetBridgeService.instance.drainWidgetChanges(
+      final dailyRepo = context.read<ChallengeBloc>().repository;
+      final changed = await WidgetBridgeService.instance.drainWidgetChanges(
         repository: repo,
         notifications: bloc.notifications,
+        dailyRepository: dailyRepo,
       );
-      await WidgetBridgeService.instance.syncWidgetDataFromRepository(repo);
+      // Widget-origin DailyProgress writes bypass the bloc — reload so the
+      // Today screen reflects them.
+      if (changed && mounted) {
+        context.read<ChallengeBloc>().add(LoadChallengeData());
+      }
+      if (changed || forceSync) {
+        await WidgetBridgeService.instance.syncWidgetDataFromRepositories(
+          repository: repo,
+          dailyRepository: dailyRepo,
+        );
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[MainNav] widget drain failed: $e');
@@ -126,17 +145,48 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
+    if (state != AppLifecycleState.resumed) {
+      _stopWidgetDrainTimer();
+      return;
+    }
     if (FirebaseAuth.instance.currentUser != null) {
       context.read<AccountabilityBloc>().add(CheckExpiredTasks());
     }
     // Pick up anything the widget queued while the app was away.
-    unawaited(_drainWidgetChanges().catchError((Object e) {
-      if (kDebugMode) {
-        debugPrint('[MainNav] widget drain failed: $e');
+    unawaited(Future(() async {
+      try {
+        // Drain before the local sync — the cloud pull can otherwise
+        // overwrite completions the widget just applied.
+        await _drainWidgetChanges();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[MainNav] widget drain failed: $e');
+        }
       }
+      await _syncLocalChanges();
     }));
-    unawaited(_syncLocalChanges());
+    _startWidgetDrainTimer();
+  }
+
+  /// Polls the widget journals while the app is foregrounded so a toggle or
+  /// quick-add lands without waiting for the next lifecycle resume.
+  Timer? _widgetDrainTimer;
+
+  void _startWidgetDrainTimer() {
+    _widgetDrainTimer?.cancel();
+    _widgetDrainTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      unawaited(_drainWidgetChanges(forceSync: false).catchError((Object e) {
+        if (kDebugMode) {
+          debugPrint('[MainNav] widget drain failed: $e');
+        }
+      }));
+    });
+  }
+
+  void _stopWidgetDrainTimer() {
+    _widgetDrainTimer?.cancel();
+    _widgetDrainTimer = null;
   }
 
   Future<void> _syncLocalChanges() {

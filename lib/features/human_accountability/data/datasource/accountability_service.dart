@@ -430,10 +430,23 @@ class AccountabilityService {
   Future<bool> rejectInvite(String partnershipId) async {
     if (!_isReady) return false;
     try {
-      await _db.collection('partnerships').doc(partnershipId).update({
+      final partnershipRef = _db.collection('partnerships').doc(partnershipId);
+      final partnershipDoc = await partnershipRef.get();
+      final ownerUid = partnershipDoc.data()?['ownerUid'] as String?;
+
+      await partnershipRef.update({
         'status': 'declined',
         'partnerUid': currentUid,
       });
+      if (ownerUid != null && ownerUid.isNotEmpty) {
+        try {
+          await AccountabilityNotificationService().notifyInvitationDeclined(
+            recipientUid: ownerUid,
+            partnerName: currentUserDisplayName,
+            partnershipId: partnershipId,
+          );
+        } catch (_) {}
+      }
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] rejectInvite: $partnershipId declined');
@@ -2366,6 +2379,14 @@ class AccountabilityService {
 
       await batch.commit();
 
+      try {
+        await AccountabilityNotificationService().notifyInvitationDeclined(
+          recipientUid: invitation.fromUid,
+          partnerName: currentUserDisplayName,
+          partnershipId: invitation.partnershipId,
+        );
+      } catch (_) {}
+
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] rejectEmailInvite: $invitationId rejected');
@@ -2749,7 +2770,11 @@ class AccountabilityService {
 
   /// Fetch an accountability task by a challengeId.
   /// Returns the first matching task, or null if none found.
-  Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId) async {
+  /// With [throwOnError] query failures rethrow instead of returning null —
+  /// callers that must not fail open (e.g. the widget-completion gate) use
+  /// it to distinguish "no link" from "lookup unavailable".
+  Future<AccountabilityTask?> fetchTaskByChallengeId(String challengeId,
+      {bool throwOnError = false}) async {
     if (!_isReady) return null;
     try {
       final uid = currentUid!;
@@ -2796,6 +2821,7 @@ class AccountabilityService {
       if (kDebugMode) {
         debugPrint('[AccountabilityService] fetchTaskByChallengeId error: $e');
       }
+      if (throwOnError) rethrow;
       return null;
     }
   }

@@ -30,18 +30,72 @@ object WidgetStore {
         val pending: Boolean,
     )
 
+    /**
+     * Encoded reminder format shared with the app's reminder_bottom_sheet:
+     * "once:HH:mm", "multiple:HH:mm,HH:mm,...", "hourly:HH:mm",
+     * "interval:MINUTES:HH:mm", "custom:HH:mm,...", or legacy "HH:mm".
+     */
     data class PendingTask(
         val id: String,
         val title: String,
-        val reminderTime: String?, // "once:HH:mm" or null
+        val reminderTime: String?,
         val completed: Boolean,
         val createdAt: String,
         val alarmRequestCode: Int,
+        val reminderStartHour: Int = 8,
+        val reminderEndHour: Int = 22,
+        val allowNightReminders: Boolean = true,
     ) {
+        fun reminderType(): String = when {
+            reminderTime == null -> "none"
+            reminderTime.startsWith("multiple:") -> "multiple"
+            reminderTime.startsWith("hourly:") -> "hourly"
+            reminderTime.startsWith("interval:") -> "interval"
+            reminderTime.startsWith("custom:") -> "custom"
+            else -> "once" // "once:HH:mm" or legacy "HH:mm"
+        }
+
         fun reminderHourMinute(): Pair<Int, Int>? {
             val raw = reminderTime ?: return null
             val time = if (raw.startsWith("once:")) raw.substring(5) else raw
-            val parts = time.split(":")
+            return parseHHmm(time)
+        }
+
+        /** All explicit times for multiple:/custom: schedules (single-time
+         * schedules return a one-element list). */
+        fun reminderTimes(): List<Pair<Int, Int>> {
+            val raw = reminderTime ?: return emptyList()
+            val timesRaw = when {
+                raw.startsWith("multiple:") -> raw.substring(9)
+                raw.startsWith("custom:") -> raw.substring(7)
+                else -> return reminderHourMinute()?.let { listOf(it) }
+                    ?: emptyList()
+            }
+            return timesRaw.split(",").mapNotNull(::parseHHmm)
+        }
+
+        /** hourly:HH:mm / interval:MINUTES:HH:mm → the schedule start time. */
+        fun reminderStartTime(): Pair<Int, Int>? {
+            val raw = reminderTime ?: return null
+            return when {
+                raw.startsWith("hourly:") -> parseHHmm(raw.substring(7))
+                raw.startsWith("interval:") -> {
+                    val parts = raw.substring(9).split(":")
+                    if (parts.size >= 3) parseHHmm("${parts[1]}:${parts[2]}")
+                    else null
+                }
+                else -> null
+            }
+        }
+
+        fun intervalMinutes(): Int? {
+            val raw = reminderTime ?: return null
+            if (!raw.startsWith("interval:")) return null
+            return raw.substring(9).split(":").firstOrNull()?.toIntOrNull()
+        }
+
+        private fun parseHHmm(raw: String): Pair<Int, Int>? {
+            val parts = raw.split(":")
             if (parts.size < 2) return null
             val h = parts[0].toIntOrNull() ?: return null
             val m = parts[1].toIntOrNull() ?: return null
@@ -105,6 +159,10 @@ object WidgetStore {
                         completed = item.optBoolean("completed"),
                         createdAt = item.optString("createdAt"),
                         alarmRequestCode = item.optInt("alarmRequestCode"),
+                        reminderStartHour = item.optInt("reminderStartHour", 8),
+                        reminderEndHour = item.optInt("reminderEndHour", 22),
+                        allowNightReminders =
+                            item.optBoolean("allowNightReminders", true),
                     )
                 )
             }
@@ -123,6 +181,9 @@ object WidgetStore {
                     .put("completed", task.completed)
                     .put("createdAt", task.createdAt)
                     .put("alarmRequestCode", task.alarmRequestCode)
+                    .put("reminderStartHour", task.reminderStartHour)
+                    .put("reminderEndHour", task.reminderEndHour)
+                    .put("allowNightReminders", task.allowNightReminders)
             )
         }
         prefs(context).edit()

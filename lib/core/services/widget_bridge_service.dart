@@ -4,8 +4,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/challenge.dart';
+import 'package:seventy_five_hard_tracker/features/challenges/data/models/daily_progress.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/datasource/accountability_service.dart';
+import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task.dart';
 import 'package:seventy_five_hard_tracker/features/regular_tasks/data/models/regular_task_completion.dart';
+import 'package:seventy_five_hard_tracker/repositories/database_repository.dart';
 import 'package:seventy_five_hard_tracker/repositories/regular_task_repository.dart';
 import 'package:seventy_five_hard_tracker/services/smart_notification_service.dart';
 
@@ -135,15 +140,45 @@ class WidgetBridgeService {
   /// Applies changes the widgets made while the app was not running:
   /// materializes pending quick-added tasks into Hive and replays completion
   /// toggles. Returns true when anything changed.
+  /// Serialized — startup, resume, and the periodic timer can all call
+  /// this; concurrent drains would double-process queued journal entries
+  /// (and double-notify).
+  Future<bool>? _drainInFlight;
+
   Future<bool> drainWidgetChanges({
     required RegularTaskRepository repository,
     required SmartNotificationService notifications,
+    DatabaseRepository? dailyRepository,
+  }) {
+    final active = _drainInFlight;
+    if (active != null) return active;
+
+    late final Future<bool> drain;
+    drain = _drainWidgetChanges(
+      repository: repository,
+      notifications: notifications,
+      dailyRepository: dailyRepository,
+    ).whenComplete(() {
+      if (identical(_drainInFlight, drain)) {
+        _drainInFlight = null;
+      }
+    });
+    _drainInFlight = drain;
+    return drain;
+  }
+
+  Future<bool> _drainWidgetChanges({
+    required RegularTaskRepository repository,
+    required SmartNotificationService notifications,
+    DatabaseRepository? dailyRepository,
   }) async {
     var changed = false;
 
     try {
       changed = await _drainPendingTasks(repository, notifications) || changed;
-      changed = await _drainToggleEvents(repository, notifications) || changed;
+      changed = await _drainToggleEvents(
+              repository, notifications, dailyRepository) ||
+          changed;
     } catch (e) {
       debugPrint('[WidgetBridge] drain failed: $e');
     }
@@ -194,6 +229,11 @@ class WidgetBridgeService {
         title: title,
         reminderTime: reminderTime,
         isReminderEnabled: reminderTime != null,
+        reminderType: _reminderTypeOf(reminderTime),
+        reminderIntervalMinutes: _intervalMinutesOf(reminderTime),
+        reminderStartHour: (item['reminderStartHour'] as num?)?.toInt() ?? 8,
+        reminderEndHour: (item['reminderEndHour'] as num?)?.toInt() ?? 22,
+        allowNightReminders: item['allowNightReminders'] as bool? ?? true,
         createdAt: createdAt,
       );
       try {
@@ -202,6 +242,12 @@ class WidgetBridgeService {
         remaining.add(item);
         continue;
       }
+      try {
+        await notifications.showTaskUpdateNotification(
+          title: 'Task added 📌',
+          body: '"$title" was added from the widget.',
+        );
+      } catch (_) {}
 
       if (reminderTime != null) {
         try {
@@ -229,6 +275,7 @@ class WidgetBridgeService {
   Future<bool> _drainToggleEvents(
     RegularTaskRepository repository,
     SmartNotificationService notifications,
+    DatabaseRepository? dailyRepository,
   ) async {
     final raw = await HomeWidget.getWidgetData<String>(WidgetKeys.toggleEvents);
     if (raw == null || raw.isEmpty) return false;
@@ -258,10 +305,41 @@ class WidgetBridgeService {
           DateTime.tryParse(event['date'] as String? ?? '') ?? DateTime.now();
       if (taskId == null || completed == null) continue;
       if (repository.getTaskById(taskId) == null) {
+        // Not a regular task — session "daily" challenges live in
+        // DailyProgress, not the regular-task box.
+        if (await _recordDailyCompletion(
+            dailyRepository, taskId, date, completed, notifications)) {
+          any = true;
+          continue;
+        }
         // Task unknown (e.g. deleted, or a pending add that didn't drain).
         // Keep the event — a later drain may succeed.
         remaining.add(event);
         continue;
+      }
+
+      // Accountability-linked tasks require the proof/reviewer flow — the
+      // widget can't run it, so consume the toggle without writing (the
+      // next sync flips the row back to its real state). A lookup that
+      // can't run (null) retains the event — never fail open on proof.
+      if (completed) {
+        final linked = await _isAccountabilityLinked(taskId);
+        if (linked == null) {
+          remaining.add(event);
+          continue;
+        }
+        if (linked) {
+          final title = repository.getTaskById(taskId)?.title ?? 'Task';
+          try {
+            await notifications.showTaskUpdateNotification(
+              title: 'Action needed: $title',
+              body:
+                  'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+            );
+          } catch (_) {}
+          any = true;
+          continue;
+        }
       }
 
       try {
@@ -273,6 +351,11 @@ class WidgetBridgeService {
       if (completed) {
         try {
           await notifications.cancelCompletedTaskReminders(taskId);
+          final title = repository.getTaskById(taskId)?.title ?? 'Task';
+          await notifications.showTaskUpdateNotification(
+            title: 'Task completed ✅',
+            body: '"$title" marked done from the widget.',
+          );
         } catch (_) {}
       }
       any = true;
@@ -281,6 +364,24 @@ class WidgetBridgeService {
     await HomeWidget.saveWidgetData(
         WidgetKeys.toggleEvents, jsonEncode(remaining));
     return any;
+  }
+
+  /// True when [taskId] is linked to a live accountability task — those
+  /// completions must go through the in-app proof/reviewer flow.
+  /// Returns null when the lookup can't run (offline, no auth) — callers
+  /// must retain the toggle for a later drain rather than fail open.
+  Future<bool?> _isAccountabilityLinked(String taskId) async {
+    try {
+      final service = AccountabilityService();
+      if (!service.isReady) return null;
+      final linked =
+          await service.fetchTaskByChallengeId(taskId, throwOnError: true);
+      return linked != null &&
+          linked.status != AccountabilityTaskStatus.declined &&
+          linked.status != AccountabilityTaskStatus.completed;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _recordCompletion(
@@ -298,6 +399,89 @@ class WidgetBridgeService {
     );
   }
 
+  /// Writes a widget toggle for a session ("daily") challenge into
+  /// [DailyProgress], mirroring the completion logic the ChallengeBloc
+  /// UpdateDailyProgress handler uses. Returns false when [taskId] is not a
+  /// challenge in the active session so the caller can keep the event for a
+  /// later drain.
+  Future<bool> _recordDailyCompletion(
+    DatabaseRepository? repository,
+    String taskId,
+    DateTime date,
+    bool completed,
+    SmartNotificationService notifications,
+  ) async {
+    if (repository == null) return false;
+    try {
+      final session = await repository.getActiveSession();
+      if (session == null) return false;
+      if (!session.challenges.any((c) => c.id == taskId)) return false;
+
+      // Accountability-linked challenges require proof/reviewer flow — the
+      // widget can't run it, so consume the toggle without writing (the
+      // next sync flips the row back to its real state) and tell the user.
+      // A lookup that can't run (null) returns false so the caller retains
+      // the event — never fail open on proof.
+      if (completed) {
+        final linked = await _isAccountabilityLinked(taskId);
+        if (linked == null) return false;
+        if (linked) {
+          final title = session.challenges
+              .where((c) => c.id == taskId)
+              .map((c) => c.title)
+              .firstOrNull;
+          try {
+            await notifications.showTaskUpdateNotification(
+              title: 'Action needed: ${title ?? 'Task'}',
+              body:
+                  'This task needs proof or a reviewer — open Daily Mettle to complete it.',
+            );
+          } catch (_) {}
+          return true;
+        }
+      }
+
+      final day = DateTime(date.year, date.month, date.day);
+      final existing = repository.getDailyProgress(day, sessionId: session.id);
+      final completions = <String, bool>{
+        for (final c in session.challenges) c.id: false,
+        ...?existing?.challengeCompletions,
+      };
+      completions[taskId] = completed;
+      // Same rule as _isDayComplete: the day completes when every hard
+      // challenge is done.
+      final allDone = session.challenges
+          .where((c) => c.type == TaskType.hard)
+          .every((c) => completions[c.id] == true);
+      await repository.saveDailyProgress(
+        (existing ??
+                DailyProgress(
+                  date: day,
+                  challengeCompletions: const {},
+                  isCompleted: false,
+                  sessionId: session.id,
+                ))
+            .copyWith(challengeCompletions: completions, isCompleted: allDone),
+      );
+      if (completed) {
+        await notifications.cancelCompletedTaskReminders(taskId);
+        final title = session.challenges
+            .where((c) => c.id == taskId)
+            .map((c) => c.title)
+            .firstOrNull;
+        try {
+          await notifications.showTaskUpdateNotification(
+            title: 'Task completed ✅',
+            body: '"${title ?? 'Task'}" marked done from the widget.',
+          );
+        } catch (_) {}
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── App → Widget: publish today's task snapshot ────────────────────
 
   /// Writes the task list the widgets display and asks the OS to redraw.
@@ -306,9 +490,20 @@ class WidgetBridgeService {
   Future<void> syncWidgetData({
     required List<RegularTask> tasks,
     required Map<String, bool> todayCompletions,
+    List<Challenge> dailyTasks = const [],
+    Map<String, bool> dailyCompletions = const {},
   }) async {
     try {
       final items = <Map<String, dynamic>>[
+        // Session ("daily") challenges first — they are the day's list.
+        for (final task in dailyTasks)
+          {
+            'id': task.id,
+            'title': task.title,
+            'completed': dailyCompletions[task.id] ?? false,
+            'pending': false,
+            'daily': true,
+          },
         for (final task in tasks)
           {
             'id': task.id,
@@ -328,6 +523,7 @@ class WidgetBridgeService {
             final title = item['title'] as String?;
             if (id == null || title == null) continue;
             if (tasks.any((t) => t.id == id)) continue;
+            if (dailyTasks.any((t) => t.id == id)) continue;
             items.add({
               'id': id,
               'title': title,
@@ -345,20 +541,60 @@ class WidgetBridgeService {
     }
   }
 
-  /// Rebuilds the widget snapshot straight from the repository — used when no
-  /// bloc state is handy (e.g. right after a drain). Skipped while the boxes
-  /// are still closed so an unopened repo can't blank out the widget.
-  Future<void> syncWidgetDataFromRepository(
+  /// Rebuilds the widget snapshot straight from the repositories — used when
+  /// no bloc state is handy (e.g. right after a drain). Skipped while the
+  /// regular-task boxes are still closed so an unopened repo can't blank out
+  /// the widget.
+  /// Serializes snapshot writes — two bloc listeners can race, and an older
+  /// snapshot finishing last would leave the widget stale.
+  Future<void> _syncLock = Future.value();
+
+  Future<void> syncWidgetDataFromRepositories({
+    required RegularTaskRepository repository,
+    DatabaseRepository? dailyRepository,
+  }) {
+    final previous = _syncLock;
+    final release = Completer<void>();
+    _syncLock = release.future;
+    return () async {
+      await previous;
+      try {
+        await _syncWidgetSnapshot(repository, dailyRepository);
+      } finally {
+        release.complete();
+      }
+    }();
+  }
+
+  Future<void> _syncWidgetSnapshot(
     RegularTaskRepository repository,
+    DatabaseRepository? dailyRepository,
   ) async {
     if (!repository.isInitialized) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final completions =
         repository.getCompletion(today)?.taskCompletions ?? const {};
+
+    var dailyTasks = const <Challenge>[];
+    var dailyCompletions = const <String, bool>{};
+    final session = await dailyRepository?.getActiveSession();
+    if (session != null) {
+      // Regular-type session challenges belong to the RegularTask pipeline —
+      // listing them here too would double-list those tasks.
+      dailyTasks =
+          session.challenges.where((c) => c.taskType != 'regular').toList();
+      dailyCompletions = dailyRepository!
+              .getDailyProgress(today, sessionId: session.id)
+              ?.challengeCompletions ??
+          const {};
+    }
+
     await syncWidgetData(
       tasks: repository.getActiveTasks(),
       todayCompletions: completions,
+      dailyTasks: dailyTasks,
+      dailyCompletions: dailyCompletions,
     );
   }
 
@@ -373,6 +609,23 @@ class WidgetBridgeService {
     _clickSub?.cancel();
     _changesController.close();
   }
+}
+
+/// The type prefix of an encoded reminderTime value
+/// ("once:HH:mm" → 'once', "interval:MIN:HH:mm" → 'interval', legacy
+/// "HH:mm" → 'once').
+String _reminderTypeOf(String? data) {
+  if (data == null) return 'once';
+  for (final t in const ['multiple', 'hourly', 'interval', 'custom']) {
+    if (data.startsWith('$t:')) return t;
+  }
+  return 'once';
+}
+
+/// interval:MINUTES:HH:mm → MINUTES; every other type has no interval.
+int? _intervalMinutesOf(String? data) {
+  if (data == null || !data.startsWith('interval:')) return null;
+  return int.tryParse(data.substring(9).split(':').first);
 }
 
 /// Runs in a background isolate when the user taps a task row in the
