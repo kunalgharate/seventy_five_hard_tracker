@@ -59,7 +59,11 @@ workflows:
         script: |
           flutter build appbundle --release \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$BUILD_NUMBER
+            --build-number=$BUILD_NUMBER \
+            --dart-define=NVIDIA_API_KEY=$NVIDIA_API_KEY \
+            --dart-define=CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME \
+            --dart-define=CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY \
+            --dart-define=CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET
     
     artifacts:
       - build/**/outputs/**/*.aab
@@ -113,7 +117,11 @@ workflows:
         script: |
           flutter build ipa --release \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$BUILD_NUMBER
+            --build-number=$BUILD_NUMBER \
+            --dart-define=NVIDIA_API_KEY=$NVIDIA_API_KEY \
+            --dart-define=CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME \
+            --dart-define=CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY \
+            --dart-define=CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET
 
     artifacts:
       - build/ios/ipa/*.ipa
