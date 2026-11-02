@@ -9,8 +9,11 @@ on:
     branches: [ "main" ]
 
 # Cancel any in-progress run for the same branch/PR when a new one starts.
+# Group by branch name (head_ref on PRs, ref_name on pushes) — github.ref
+# differs between pull_request and push events for the same branch, which
+# would leave two runs alive instead of cancelling the stale one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
