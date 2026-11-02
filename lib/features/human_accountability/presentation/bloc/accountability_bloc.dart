@@ -267,6 +267,17 @@ class AccountabilityBloc
       if (isClosed) return;
       if (partner != null) {
         unawaited(_analytics.logPartnerInvitationAccepted(channel: 'code'));
+        try {
+          await _notificationService.notifyInvitationAccepted(
+            recipientUid: partner.ownerUid,
+            partnerName: partner.partnerName,
+            partnershipId: partner.id,
+          );
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
+        }
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {
@@ -296,6 +307,17 @@ class AccountabilityBloc
         unawaited(_analytics.logPartnerInvitationAccepted(
           channel: event.partner.inviteType == 'email' ? 'email' : 'code',
         ));
+        try {
+          await _notificationService.notifyInvitationAccepted(
+            recipientUid: partner.ownerUid,
+            partnerName: partner.partnerName,
+            partnershipId: partner.id,
+          );
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
+        }
         emit(InviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {
@@ -315,6 +337,17 @@ class AccountabilityBloc
   ) async {
     try {
       await _service.rejectPartnerRequest(event.partner);
+      try {
+        await _notificationService.notifyInvitationDeclined(
+          recipientUid: event.partner.ownerUid,
+          partnerName: event.partner.partnerName,
+          partnershipId: event.partner.id,
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AccountabilityBloc] Notification failed: $e');
+        }
+      }
       emit(const InviteRejected());
       add(LoadAccountabilityData());
     } catch (e) {
@@ -443,6 +476,17 @@ class AccountabilityBloc
       if (isClosed) return;
       if (partner != null) {
         unawaited(_analytics.logPartnerInvitationAccepted(channel: 'email'));
+        try {
+          await _notificationService.notifyInvitationAccepted(
+            recipientUid: partner.ownerUid,
+            partnerName: partner.partnerName,
+            partnershipId: partner.id,
+          );
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
+        }
         emit(EmailInviteAccepted(partner));
         add(LoadAccountabilityData());
       } else {
@@ -486,6 +530,22 @@ class AccountabilityBloc
             '[AccountabilityBloc]   task="${task?.title}" challengeId=$challengeId status=${task?.status.name}');
         if (task != null) _subscribeTaskChannels([task.id]);
 
+        // Let the task owner know their request was accepted.
+        if (task != null) {
+          try {
+            await _notificationService.notifyRequestAccepted(
+              recipientUid: task.assignedByUid,
+              reviewerName: task.accountableName,
+              taskName: task.title,
+              taskId: task.id,
+            );
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('[AccountabilityBloc] Notification failed: $e');
+            }
+          }
+        }
+
         if (isClosed) return;
         emit(TaskRequestAccepted(event.taskId, challengeId: challengeId));
         add(LoadAccountabilityData());
@@ -505,6 +565,23 @@ class AccountabilityBloc
     try {
       final ok = await _service.declineTaskRequest(event.taskId);
       if (ok) {
+        // Let the task owner know their request was declined.
+        try {
+          final task = await _service.fetchTaskById(event.taskId);
+          if (task != null) {
+            await _notificationService.notifyRequestDeclined(
+              recipientUid: task.assignedByUid,
+              reviewerName: task.accountableName,
+              taskName: task.title,
+              taskId: task.id,
+            );
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[AccountabilityBloc] Notification failed: $e');
+          }
+        }
+
         emit(TaskRequestDeclined(event.taskId));
         add(LoadAccountabilityData());
       } else {

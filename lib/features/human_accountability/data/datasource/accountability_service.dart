@@ -430,10 +430,23 @@ class AccountabilityService {
   Future<bool> rejectInvite(String partnershipId) async {
     if (!_isReady) return false;
     try {
-      await _db.collection('partnerships').doc(partnershipId).update({
+      final partnershipRef = _db.collection('partnerships').doc(partnershipId);
+      final partnershipDoc = await partnershipRef.get();
+      final ownerUid = partnershipDoc.data()?['ownerUid'] as String?;
+
+      await partnershipRef.update({
         'status': 'declined',
         'partnerUid': currentUid,
       });
+      if (ownerUid != null && ownerUid.isNotEmpty) {
+        try {
+          await AccountabilityNotificationService().notifyInvitationDeclined(
+            recipientUid: ownerUid,
+            partnerName: currentUserDisplayName,
+            partnershipId: partnershipId,
+          );
+        } catch (_) {}
+      }
       if (kDebugMode) {
         debugPrint(
             '[AccountabilityService] rejectInvite: $partnershipId declined');
@@ -2361,6 +2374,14 @@ class AccountabilityService {
       );
 
       await batch.commit();
+
+      try {
+        await AccountabilityNotificationService().notifyInvitationDeclined(
+          recipientUid: invitation.fromUid,
+          partnerName: currentUserDisplayName,
+          partnershipId: invitation.partnershipId,
+        );
+      } catch (_) {}
 
       if (kDebugMode) {
         debugPrint(
