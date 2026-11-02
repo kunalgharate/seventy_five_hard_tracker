@@ -67,6 +67,9 @@ jobs:
         run: >-
           flutter build apk --release
           --dart-define=NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
+          --dart-define=CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          --dart-define=CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+          --dart-define=CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
 
       # ── Upload Artifact ────────────────────────────────────────────
       - name: Sanitize branch name for artifact
