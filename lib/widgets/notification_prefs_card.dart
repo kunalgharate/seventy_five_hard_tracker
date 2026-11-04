@@ -4,9 +4,9 @@ import 'package:seventy_five_hard_tracker/core/services/notification_dispatch_li
 import 'package:seventy_five_hard_tracker/core/services/notification_preferences.dart';
 
 /// "Notifications" settings card: per-category toggles for accountability
-/// pushes (reviews, assigned tasks, invitations, messages). Honors the
-/// same prefs client-side (dispatch listener) and server-side (push
-/// sender). Inserted into both Settings builders (active + general).
+/// pushes (reviews, assigned tasks, messages). Honors the same prefs
+/// client-side (dispatch listener) and server-side (push sender). Inserted
+/// into both Settings builders (active + general).
 class NotificationPrefsCard extends StatefulWidget {
   const NotificationPrefsCard({super.key});
 
@@ -27,12 +27,6 @@ class _NotificationPrefsCardState extends State<NotificationPrefsCard> {
       icon: Icons.assignment_outlined,
       title: 'Tasks assigned to me',
       subtitle: 'New accountability tasks from partners',
-    ),
-    (
-      key: NotificationPreferences.keyInvitations,
-      icon: Icons.mail_outline,
-      title: 'Partner invitations',
-      subtitle: 'Invites sent, accepted or declined',
     ),
     (
       key: NotificationPreferences.keyMessages,

@@ -14,13 +14,11 @@ class NotificationPreferences {
 
   static const String keyReviews = 'reviews';
   static const String keyTasks = 'tasks';
-  static const String keyInvitations = 'invitations';
   static const String keyMessages = 'messages';
 
   static const List<String> allKeys = [
     keyReviews,
     keyTasks,
-    keyInvitations,
     keyMessages,
   ];
 
@@ -33,13 +31,11 @@ class NotificationPreferences {
       case 'reviewRejected':
       case 'reviewReminder20h':
       case 'reviewExpired':
+      case 'reviewRequestAccepted':
+      case 'reviewRequestDeclined':
         return keyReviews;
       case 'taskAssigned':
         return keyTasks;
-      case 'invitationReceived':
-      case 'invitationAccepted':
-      case 'invitationDeclined':
-        return keyInvitations;
       case 'partnerMessage':
         return keyMessages;
       default:

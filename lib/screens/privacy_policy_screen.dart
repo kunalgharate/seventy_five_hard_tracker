@@ -53,7 +53,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               _buildSection(
                 context,
                 'Accountability Partners (Optional)',
-                'If you invite or accept a partner, limited information is shared to make the feature work: your display name, aggregate progress counts, the task names you choose to share, and any photo proof you submit for review. Partners can approve or reject the tasks you assign to each other. Do not share sensitive personal information in task names, notes, or photos.',
+                'If you use accountability partners, limited information is shared to make the feature work: your display name, aggregate progress counts, the task names you choose to share, and any photo proof you submit for review. Partners can approve or reject the tasks you assign to each other. Do not share sensitive personal information in task names, notes, or photos.',
               ),
               _buildSection(
                 context,

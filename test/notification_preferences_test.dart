@@ -11,6 +11,8 @@ void main() {
         'reviewRejected',
         'reviewReminder20h',
         'reviewExpired',
+        'reviewRequestAccepted',
+        'reviewRequestDeclined',
       ]) {
         expect(NotificationPreferences.categoryForType(t),
             NotificationPreferences.keyReviews);
@@ -48,12 +50,6 @@ void main() {
     test('other known types map to their categories', () {
       expect(NotificationPreferences.categoryForType('taskAssigned'),
           NotificationPreferences.keyTasks);
-      expect(NotificationPreferences.categoryForType('invitationReceived'),
-          NotificationPreferences.keyInvitations);
-      expect(NotificationPreferences.categoryForType('invitationAccepted'),
-          NotificationPreferences.keyInvitations);
-      expect(NotificationPreferences.categoryForType('invitationDeclined'),
-          NotificationPreferences.keyInvitations);
       expect(NotificationPreferences.categoryForType('partnerMessage'),
           NotificationPreferences.keyMessages);
     });

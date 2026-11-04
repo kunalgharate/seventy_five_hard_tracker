@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/partner_review.dart';
 
 abstract class AccountabilityEvent extends Equatable {
@@ -12,47 +11,11 @@ abstract class AccountabilityEvent extends Equatable {
 /// Load all partnerships and recent reviews for the current user.
 class LoadAccountabilityData extends AccountabilityEvent {}
 
-/// Invite a new accountability partner.
-class InvitePartner extends AccountabilityEvent {
-  final String partnerName;
-  final String? partnerEmail;
-  final PartnerRole role;
-
-  const InvitePartner({
-    required this.partnerName,
-    this.partnerEmail,
-    required this.role,
-  });
-
-  @override
-  List<Object?> get props => [partnerName, partnerEmail, role];
-}
-
-/// Accept an invite using a 6-character code.
-class AcceptInvite extends AccountabilityEvent {
-  final String code;
-
-  const AcceptInvite(this.code);
-
-  @override
-  List<Object> get props => [code];
-}
-
 /// Remove a partnership.
 class RemovePartner extends AccountabilityEvent {
   final String partnershipId;
 
   const RemovePartner(this.partnershipId);
-
-  @override
-  List<Object> get props => [partnershipId];
-}
-
-/// Reject an incoming invite.
-class RejectInvite extends AccountabilityEvent {
-  final String partnershipId;
-
-  const RejectInvite(this.partnershipId);
 
   @override
   List<Object> get props => [partnershipId];
@@ -98,65 +61,6 @@ class PublishProgress extends AccountabilityEvent {
   @override
   List<Object> get props =>
       [dateKey, completedTasks, totalTasks, dayCompleted, currentDay];
-}
-
-// ── Phase 3: Email-based invitation events ────────────────────────────────────
-
-/// Look up a user by email to show a preview before sending the invite.
-class LookupUserByEmail extends AccountabilityEvent {
-  final String email;
-  const LookupUserByEmail(this.email);
-
-  @override
-  List<Object> get props => [email];
-}
-
-/// Send an email-based collaborator invitation.
-class SendEmailInvite extends AccountabilityEvent {
-  final String toEmail;
-  final PartnerRole role;
-
-  const SendEmailInvite({required this.toEmail, required this.role});
-
-  @override
-  List<Object> get props => [toEmail, role];
-}
-
-/// Accept an email-based invitation by its Firestore document ID.
-class AcceptEmailInvite extends AccountabilityEvent {
-  final String invitationId;
-  const AcceptEmailInvite(this.invitationId);
-
-  @override
-  List<Object> get props => [invitationId];
-}
-
-/// Accept an incoming partner request — works for both code-based invites
-/// and email invitations (the latter have no invite code).
-class AcceptIncomingRequest extends AccountabilityEvent {
-  final AccountabilityPartner partner;
-  const AcceptIncomingRequest(this.partner);
-
-  @override
-  List<Object> get props => [partner];
-}
-
-/// Reject an incoming partner request (code or email based).
-class RejectIncomingRequest extends AccountabilityEvent {
-  final AccountabilityPartner partner;
-  const RejectIncomingRequest(this.partner);
-
-  @override
-  List<Object> get props => [partner];
-}
-
-/// Reject an email-based invitation by its Firestore document ID.
-class RejectEmailInvite extends AccountabilityEvent {
-  final String invitationId;
-  const RejectEmailInvite(this.invitationId);
-
-  @override
-  List<Object> get props => [invitationId];
 }
 
 // ── Task request events ───────────────────────────────────────────────────────

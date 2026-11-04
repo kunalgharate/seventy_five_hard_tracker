@@ -68,7 +68,7 @@ void main() {
       expect(events['app_open']!.values, isNot(contains(7)));
     });
 
-    test('exposes onboarding and partner lifecycle event names', () async {
+    test('exposes onboarding event names', () async {
       final names = <String>[];
       final analytics = AnalyticsService.forTesting((name, _) async {
         names.add(name);
@@ -79,15 +79,8 @@ void main() {
         challengeCount: 2,
         setupMode: 'hard',
       );
-      await analytics.logPartnerInvitationSent(channel: 'email');
-      await analytics.logPartnerInvitationAccepted(channel: 'email');
 
-      expect(names, [
-        'onboarding_started',
-        'onboarding_completed',
-        'partner_invitation_sent',
-        'partner_invitation_accepted',
-      ]);
+      expect(names, ['onboarding_started', 'onboarding_completed']);
     });
 
     test('premium events use allow-listed catalog values', () async {

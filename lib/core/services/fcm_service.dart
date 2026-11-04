@@ -339,7 +339,6 @@ class FcmService {
       type.startsWith('task') ||
       type.startsWith('proof') ||
       type.startsWith('review') ||
-      type.startsWith('invitation') ||
       type.startsWith('request');
 
   /// Pushes the Reviews screen exactly as the Squad top-right button does.

@@ -322,11 +322,18 @@ Reviewer taps Approve
 8. Enhance `partner_progress_screen.dart` — calendar heatmap, daily breakdown, proof gallery
 9. Both-way progress viewing (A sees B, B sees A)
 
-### Phase 3: Simplify Invite + Cleanup
-10. Remove invite code system (codes, code entry UI, `invite_codes` collection)
+### Phase 3: Invite Removal + Cleanup (DONE ✅)
+10. ~~Remove invite code system~~ — completed with the invite removal: the
+    Squad-tab invite surface (dialogs, sheets, quick action, pending-sent invites,
+    incoming/email invite cards) and the invite bloc/service/notification wiring
+    are gone; collaboration now starts from task assignment requests
 11. Make CollaboratorDialog the sole entry point for adding reviewers
-12. Add native share sheet for inviting non-users
-13. Remove dead invite-related code and Firestore rules
+12. ~~Add native share sheet for inviting non-users~~ — superseded: with invites
+    removed there is no invitee side; task requests replace invites
+13. Remove dead invite-related code and Firestore rules — client-side invite
+    methods (`invitePartner`, `acceptInvite`, email invite CRUD, notify methods)
+    deleted; `invite_codes` / `invitations` collections are no longer written by
+    the client
 
 ### Phase 4: Polish
 14. Review history section with comments
@@ -387,13 +394,13 @@ Both users must be connected as partners to see each other's progress.
 
 ---
 
-## 14. Simplified Invite Process (No Invite Codes)
+## 14. Task Requests (No Invite Codes — Invites Removed)
 
 ### Current (Remove)
 - Generate invite code → share code → recipient enters code → partnership created
 - Email-based invite flow with invitation collection
 
-### New (Simple Email Add with Consent)
+### New (Task Assignment Requests)
 ```
 Collaborator Dialog → Enter email → Tap "Add"
   → IF email has an account:
@@ -411,6 +418,11 @@ Collaborator Dialog → Enter email → Tap "Add"
        Download: [app store link]"
     → Do NOT create a phantom collaborator — they must sign up first
 ```
+
+> **Update:** the invite-based halves of this flow (code generation, code entry,
+> email invitation collection, Squad-tab invite UI) were removed after the
+> invite could no longer work (no join counterpart). The task-request flow above
+> is now the only collaboration path.
 
 ### Task Status Flow
 ```

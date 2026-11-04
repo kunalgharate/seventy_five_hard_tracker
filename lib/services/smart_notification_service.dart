@@ -18,9 +18,12 @@ class SmartNotificationService {
   static const String _followUpChannelId = 'followup_reminders_v1';
   static const String _penaltyChannelId = 'penalty_warnings_v1';
 
-  /// Tracks scheduled count to stay under Samsung's 500-alarm limit.
+  /// Tracks scheduled count to stay under Samsung's 500-alarm limit on
+  /// Android. iOS silently discards scheduled notifications past 64
+  /// pending, so the cap is much lower there.
   int _scheduledCount = 0;
-  static const int _maxNotifications = 400;
+  static int get _maxNotifications =>
+      defaultTargetPlatform == TargetPlatform.iOS ? 60 : 400;
 
   static bool _tzReady = false;
 
@@ -106,7 +109,18 @@ class SmartNotificationService {
       // Opens the "Alarms & reminders" settings on Android 12+; the user
       // must toggle it there, so scheduling still falls back when denied.
       await androidPlugin.requestExactAlarmsPermission();
+      return;
     }
+    // iOS: the only other prompt is the init-time one inside initialize(),
+    // which runs in main() before runApp — if iOS drops that early prompt
+    // the app can never ask again and every zonedSchedule silently fails.
+    final iosPlugin = _notifications.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   /// Exact alarms throw on Android 12+ without the "Alarms & reminders"
@@ -206,6 +220,13 @@ class SmartNotificationService {
     DailyProgress? progress,
   ) async {
     await _ensureTimeZoneInitialized();
+    // Sync the counter with the OS queue — callers schedule without a
+    // preceding cancelAll, so a session-accumulated count would otherwise
+    // drift and eventually block every future reminder.
+    try {
+      _scheduledCount =
+          (await _notifications.pendingNotificationRequests()).length;
+    } catch (_) {}
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDate = DateTime(date.year, date.month, date.day);

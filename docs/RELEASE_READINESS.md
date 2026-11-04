@@ -8,7 +8,7 @@ that requires store, backend, legal, or physical-device access.
 - Firestore security-rule smoke tests under `rules-tests/`.
 - Account-scoped entitlement read rules for `entitlements/{uid}`.
 - Privacy-safe analytics for onboarding, app-open retention buckets, partner
-  invitations, and premium paywall/purchase/restore events.
+  task-assignment events, and premium paywall/purchase/restore events.
 - Platform secure-storage key foundation for new cloud backups.
 - Signed Cloudinary upload client contract; unsigned uploads fail closed.
 - Android cleartext traffic disabled.

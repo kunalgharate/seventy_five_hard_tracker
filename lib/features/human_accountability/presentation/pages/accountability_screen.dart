@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/widgets/partner_task_details_dialog.dart';
@@ -11,9 +10,7 @@ import 'package:seventy_five_hard_tracker/features/human_accountability/presenta
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/bloc/accountability_state.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_partner.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/partner_review.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_invitation.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/accountability_task.dart';
-import 'package:seventy_five_hard_tracker/features/human_accountability/data/models/app_user.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/partner_progress_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/accountability_chat_screen.dart';
 import 'package:seventy_five_hard_tracker/features/human_accountability/presentation/pages/weekly_summary_screen.dart';
@@ -36,7 +33,7 @@ class AccountabilityScreen extends StatefulWidget {
   const AccountabilityScreen({super.key, this.onGoToProfile});
 
   /// Switches the bottom navigation to the Profile tab when the user needs
-  /// to sign in before inviting a partner.
+  /// to sign in to view their squad.
   final VoidCallback? onGoToProfile;
 
   @override
@@ -53,9 +50,9 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   bool _isRefreshing = false;
 
   /// Last successfully loaded payload. The bloc emits transient action
-  /// states (EmailInviteSent, TaskRequestAccepted, Loading, …) between
-  /// reloads — without this cache the Squad body would rebuild empty and
-  /// make the partner list appear to vanish / blink.
+  /// states (TaskRequestAccepted, Loading, …) between reloads — without
+  /// this cache the Squad body would rebuild empty and make the partner
+  /// list appear to vanish / blink.
   AccountabilityLoaded? _lastLoaded;
 
   /// Whether the live Firestore task streams are attached. They can only be
@@ -161,7 +158,7 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
             }
 
             // Remember the freshest data so transient states (Loading,
-            // EmailInviteSent, TaskRequestAccepted, …) never blank the screen.
+            // TaskRequestAccepted, …) never blank the screen.
             if (state is AccountabilityLoaded) {
               _lastLoaded = state;
             }
@@ -177,83 +174,12 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
 
             return _PartnersTab(
               partners: loaded.partners,
-              incomingRequests: loaded.incomingRequests,
-              emailInvitations: loaded.emailInvitations,
               taskRequests: loaded.taskRequests,
             );
           },
         ),
       ),
     );
-  }
-
-  void _showInviteDialog() {
-    final syncService = CloudSyncService();
-    if (!syncService.isSignedIn) {
-      // Not signed in — prompt to sign in
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: 16,
-              right: 16,
-              top: 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Sign In Required',
-                  style: Theme.of(ctx).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Sign in with Google to invite accountability partners.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    widget.onGoToProfile?.call();
-                  },
-                  icon: const Icon(Icons.person),
-                  label: const Text('Go to Profile to Sign In'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-        ),
-      );
-    } else {
-      _showEmailInviteSheet();
-    }
-  }
-
-  /// Opens the proper email-invite sheet which sends a PENDING invitation
-  /// (via SendEmailInvite) so the recipient can accept it on their device.
-  /// This replaces the old auto-accept path (_showAddPartnerByEmail →
-  /// ensurePartnership) which created an already-accepted partnership and
-  /// left the recipient with nothing to accept.
-  void _showEmailInviteSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BlocProvider.value(
-        value: context.read<AccountabilityBloc>(),
-        child: const SafeArea(top: false, child: _InviteByEmailSheet()),
-      ),
-    ).then((_) => _loadReviewBadge());
   }
 
   Widget _buildSignInPrompt() {
@@ -272,8 +198,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Your partners, invites and shared tasks appear here once you '
-              'are signed in.',
+              'Your partners and shared tasks appear here once you are '
+              'signed in.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
@@ -376,33 +302,8 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       // events from inside build()).
       context.read<AccountabilityBloc>().add(LoadMyResponsibilities());
     }
-    if (state is PartnerInvited) {
-      _showInviteCodeDialog(context, state.partner);
-    } else if (state is InviteAccepted) {
-      // Close the join sheet if it's still open, then show success
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      _showSnack(
-        'You are now connected with ${state.partner.partnerName}!',
-        isSuccess: true,
-      );
-    } else if (state is ReviewSubmitted) {
+    if (state is ReviewSubmitted) {
       _showSnack('Review submitted!', isSuccess: true);
-    } else if (state is InviteRejected) {
-      _showSnack('Request declined.', isSuccess: true);
-    } else if (state is EmailInviteSent) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      _showSnack(
-        'Invite sent to ${state.invitation.toEmail}! They will see it when they open the app.',
-        isSuccess: true,
-      );
-    } else if (state is EmailInviteAccepted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      _showSnack(
-        'You are now connected with ${state.partner.partnerName}!',
-        isSuccess: true,
-      );
-    } else if (state is EmailInviteRejected) {
-      _showSnack('Invitation declined.', isSuccess: true);
     } else if (state is TaskRequestAccepted) {
       _showSnack(
         'Task accepted! It will appear in your partner card.',
@@ -442,81 +343,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
         content: Text(msg),
         backgroundColor: isSuccess ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _showInviteCodeDialog(
-    BuildContext context,
-    AccountabilityPartner partner,
-  ) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Invite Created!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Share this code with ${partner.partnerName}:'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    partner.inviteCode,
-                    style: GoogleFonts.poppins(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 6,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.copy, color: AppColors.primary),
-                    onPressed: () async {
-                      try {
-                        await Clipboard.setData(
-                          ClipboardData(text: partner.inviteCode),
-                        );
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Code copied!')),
-                        );
-                      } catch (_) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Couldn\'t copy the code'),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'They enter this code in the "Join with code" button.',
-              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
       ),
     );
   }
@@ -839,15 +665,11 @@ class _SummaryCard extends StatelessWidget {
 
 class _PartnersTab extends StatelessWidget {
   final List<AccountabilityPartner> partners;
-  final List<AccountabilityPartner> incomingRequests;
-  final List<AccountabilityInvitation> emailInvitations;
   final List<AccountabilityTask> taskRequests;
 
   const _PartnersTab({
     required this.partners,
-    required this.incomingRequests,
-    this.emailInvitations = const [],
-    this.taskRequests = const [],
+    required this.taskRequests,
   });
 
   @override
@@ -855,42 +677,15 @@ class _PartnersTab extends StatelessWidget {
     final accepted =
         partners.where((p) => p.status == PartnershipStatus.accepted).toList();
 
-    final hasEmailInvites = emailInvitations.isNotEmpty;
-    final hasCodeRequests = incomingRequests.isNotEmpty;
-    final hasTaskRequests = taskRequests.isNotEmpty;
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
         // ── Figma squad stats banner ──
         _SquadBanner(
           partners: accepted.length,
-          incoming: incomingRequests.length + emailInvitations.length,
           taskRequests: taskRequests.length,
         ),
         const SizedBox(height: 14),
-
-        // ── Quick action card: Invite partner ──
-        _QuickActionCard(
-          icon: Icons.person_add_alt_1,
-          label: 'Invite partner',
-          gradient: const [Color(0xFF7B61FF), Color(0xFF9B8AFF)],
-          onTap: () {
-            // Trigger the email-based invite from the main screen.
-            // Uses the proper SendEmailInvite (pending) flow so the
-            // recipient can accept it on their device.
-            final screenState =
-                context.findAncestorStateOfType<_AccountabilityScreenState>();
-            if (screenState != null) {
-              if (!CloudSyncService().isSignedIn) {
-                screenState._showInviteDialog();
-              } else {
-                screenState._showEmailInviteSheet();
-              }
-            }
-          },
-        ),
-        const SizedBox(height: 20),
 
         // ── My Responsibilities (tasks I need to review) ─────────
         BlocBuilder<AccountabilityBloc, AccountabilityState>(
@@ -926,69 +721,28 @@ class _PartnersTab extends StatelessWidget {
         ...accepted.map((p) => _AcceptedPartnerCard(partner: p)),
         if (accepted.isNotEmpty) const SizedBox(height: 20),
 
-        // ── Pending invites I sent ───────────────────────────────
-        ...() {
-          final myUid = AccountabilityService().currentUid;
-          final pending = partners
-              .where(
-                (p) =>
-                    p.status == PartnershipStatus.pending &&
-                    p.ownerUid == myUid,
-              )
-              .toList();
-          if (pending.isEmpty) return const <Widget>[];
-          return [
-            _SectionLabel(
-              title: 'Pending Invites',
-              icon: Icons.hourglass_empty,
-              color: Colors.orange,
-              count: pending.length,
-            ),
-            const SizedBox(height: 10),
-            ...pending.map((p) => _PendingInviteCard(partner: p)),
-            const SizedBox(height: 20),
-          ];
-        }(),
-
         // ── Empty state ──────────────────────────────────────────
-        if (accepted.isEmpty &&
-            !hasCodeRequests &&
-            !hasTaskRequests &&
-            !hasEmailInvites &&
-            partners
-                .where(
-                  (p) =>
-                      p.status == PartnershipStatus.pending &&
-                      p.ownerUid == AccountabilityService().currentUid,
-                )
-                .isEmpty)
+        if (accepted.isEmpty && taskRequests.isEmpty)
           const _EmptyState(
             icon: Icons.people_outline,
             title: 'No Partners Yet',
             subtitle:
-                'Tap the invite button to add an accountability partner.\n'
-                'Once they accept, you\'ll see them here.',
+                'Assign an accountability task from the Today tab and your '
+                'partners will appear here for review.\n'
+                'Shared tasks show up here for you to review.',
           ),
 
         // ── Requests for You ──────────────────────────────────────
-        if (hasEmailInvites || hasTaskRequests || hasCodeRequests) ...[
+        if (taskRequests.isNotEmpty) ...[
           _SectionLabel(
             title: 'Requests for You',
             icon: Icons.mark_email_unread_outlined,
             color: Colors.blue,
-            count: incomingRequests.length +
-                emailInvitations.length +
-                taskRequests.length,
+            count: taskRequests.length,
           ),
           const SizedBox(height: 10),
-          // Code-based incoming partnership requests
-          ...incomingRequests.map((p) => _IncomingRequestCard(partner: p)),
           // Task assignment requests
           ...taskRequests.map((t) => _TaskRequestCard(task: t)),
-          // Email-based partner invitations
-          ...emailInvitations.map(
-            (inv) => _EmailInvitationCard(invitation: inv),
-          ),
         ],
 
         // ── Figma leaderboard (squad streaks) ──
@@ -1001,14 +755,12 @@ class _PartnersTab extends StatelessWidget {
   }
 }
 
-/// Figma squad stats banner: Partners / Shared / Approved / Pending counts.
+/// Figma squad stats banner: Partners / Shared counts.
 class _SquadBanner extends StatelessWidget {
   final int partners;
-  final int incoming;
   final int taskRequests;
   const _SquadBanner({
     required this.partners,
-    required this.incoming,
     required this.taskRequests,
   });
 
@@ -1016,9 +768,8 @@ class _SquadBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
-      ('$partners', 'Partners', false),
-      ('$taskRequests', 'Shared', false),
-      ('$incoming', 'Requests', true),
+      ('$partners', 'Partners'),
+      ('$taskRequests', 'Shared'),
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
@@ -1041,9 +792,7 @@ class _SquadBanner extends StatelessWidget {
                 children: [
                   Text(items[i].$1,
                       style: FigmaTokens.heading(16,
-                          color: items[i].$3
-                              ? FigmaTokens.orange
-                              : (isDark ? Colors.white : FigmaTokens.ink))),
+                          color: isDark ? Colors.white : FigmaTokens.ink)),
                   const SizedBox(height: 2),
                   Text(items[i].$2,
                       style: FigmaTokens.body(9, color: FigmaTokens.muted)),
@@ -2514,437 +2263,7 @@ class _MiniProgressRing extends StatelessWidget {
   }
 }
 
-// ── Pending invite card (sent by me, not yet accepted) ────────────────────────
-
-class _PendingInviteCard extends StatelessWidget {
-  final AccountabilityPartner partner;
-  const _PendingInviteCard({required this.partner});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            _RoleAvatar(role: partner.role, size: 42),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    partner.partnerName,
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    partner.role.label,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 6),
-                  // Invite code with copy (code invites only — email invites
-                  // carry no code, so show the recipient instead of an empty
-                  // box whose "copy" would silently copy nothing).
-                  if (partner.inviteCode.isNotEmpty)
-                    GestureDetector(
-                      onTap: () async {
-                        try {
-                          await Clipboard.setData(
-                            ClipboardData(text: partner.inviteCode),
-                          );
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Invite code copied!')),
-                          );
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Couldn\'t copy — long-press the code to copy it manually.',
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Colors.orange.withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.key_outlined,
-                              size: 13,
-                              color: Colors.orange,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              partner.inviteCode,
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 3,
-                                color: Colors.orange[800],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Icon(
-                              Icons.copy,
-                              size: 12,
-                              color: Colors.orange,
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.email_outlined,
-                          size: 13,
-                          color: Colors.orange,
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            partner.partnerEmail ?? 'Invite sent',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange[800],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Pending',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Incoming request card (someone invited me) ────────────────────────────────
-
-class _IncomingRequestCard extends StatefulWidget {
-  final AccountabilityPartner partner;
-  const _IncomingRequestCard({required this.partner});
-
-  @override
-  State<_IncomingRequestCard> createState() => _IncomingRequestCardState();
-}
-
-class _IncomingRequestCardState extends State<_IncomingRequestCard> {
-  bool _acting = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // Re-enable the buttons once the bloc settles — a failed accept/decline
-    // otherwise leaves this card permanently disabled.
-    return BlocListener<AccountabilityBloc, AccountabilityState>(
-      listener: (_, state) {
-        if (_acting &&
-            (state is AccountabilityLoaded || state is AccountabilityError)) {
-          if (mounted) setState(() => _acting = false);
-        }
-      },
-      child: Card(
-        elevation: 2,
-        margin: const EdgeInsets.only(bottom: 10),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: Colors.blue.withValues(alpha: 0.3), width: 1),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _RoleAvatar(role: widget.partner.role, size: 42),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.partner.partnerName,
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Text(
-                          '${widget.partner.role.emoji} ${widget.partner.role.label}',
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Wants you as their accountability partner',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue[700],
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _acting ? null : _reject,
-                      icon:
-                          const Icon(Icons.close, size: 16, color: Colors.red),
-                      label: const Text(
-                        'Decline',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _acting ? null : _accept,
-                      icon: _acting
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check, size: 16),
-                      label: const Text('Accept'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _accept() {
-    setState(() => _acting = true);
-    // Handles both code-based invites and email invitations — email invites
-    // have no invite code, so they cannot go through AcceptInvite.
-    context
-        .read<AccountabilityBloc>()
-        .add(AcceptIncomingRequest(widget.partner));
-  }
-
-  void _reject() {
-    setState(() => _acting = true);
-    context
-        .read<AccountabilityBloc>()
-        .add(RejectIncomingRequest(widget.partner));
-  }
-}
-
 // ── Reviews Tab ──────────────────────────────────────────────────────────────
-
-// ── Invite Partner Bottom Sheet ──────────────────────────────────────────────
-
-class _InvitePartnerSheet extends StatefulWidget {
-  const _InvitePartnerSheet();
-
-  @override
-  State<_InvitePartnerSheet> createState() => _InvitePartnerSheetState();
-}
-
-class _InvitePartnerSheetState extends State<_InvitePartnerSheet> {
-  final _nameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-  PartnerRole _role = PartnerRole.friend;
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _emailCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      maxChildSize: 0.92,
-      minChildSize: 0.5,
-      builder: (_, ctrl) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            _SheetHandle(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-              child: Text(
-                'Invite Accountability Partner',
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                controller: ctrl,
-                padding: const EdgeInsets.all(20),
-                children: [
-                  TextField(
-                    controller: _nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Partner Name *',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email (optional)',
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Role',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: PartnerRole.values.map((r) {
-                      final selected = _role == r;
-                      return ChoiceChip(
-                        label: Text('${r.emoji} ${r.label}'),
-                        selected: selected,
-                        selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                        onSelected: (_) => setState(() => _role = r),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Create Invite',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _submit() {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a partner name')),
-      );
-      return;
-    }
-    setState(() => _loading = true);
-    context.read<AccountabilityBloc>().add(
-          InvitePartner(
-            partnerName: name,
-            partnerEmail:
-                _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-            role: _role,
-          ),
-        );
-    Navigator.pop(context);
-  }
-}
 
 // ── Review Sheet ─────────────────────────────────────────────────────────────
 
@@ -3138,8 +2457,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   void _submit() {
     if (_selectedDateKey == null) return;
     // subjectUid = the person whose progress is being reviewed.
-    // The owner invited the partner to watch their progress,
-    // so the subject is always the ownerUid.
+    // The task owner is the subject, so the subject is always the ownerUid.
     final subjectUid = widget.partner.ownerUid;
     final reviewerUid = AccountabilityService().currentUid;
     if (reviewerUid == null) return;
@@ -3333,62 +2651,6 @@ class _DecisionButton extends StatelessWidget {
   }
 }
 
-/// Gradient action card for "Invite partner" on Squad tab.
-class _QuickActionCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final List<Color> gradient;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
-    required this.icon,
-    required this.label,
-    required this.gradient,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.first.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _SheetHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -3439,552 +2701,6 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(color: Colors.grey[500], fontSize: 14),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Email Invitation Card ─────────────────────────────────────────────────────
-
-/// Shows an incoming email-based invitation with Accept / Reject actions.
-class _EmailInvitationCard extends StatefulWidget {
-  final AccountabilityInvitation invitation;
-  const _EmailInvitationCard({required this.invitation});
-
-  @override
-  State<_EmailInvitationCard> createState() => _EmailInvitationCardState();
-}
-
-class _EmailInvitationCardState extends State<_EmailInvitationCard> {
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final inv = widget.invitation;
-    // Reset the local spinner when the bloc settles (success or failure) —
-    // otherwise a failed accept/decline leaves this card spinning forever.
-    return BlocListener<AccountabilityBloc, AccountabilityState>(
-      listener: (_, state) {
-        if (_loading &&
-            (state is AccountabilityLoaded || state is AccountabilityError)) {
-          if (mounted) setState(() => _loading = false);
-        }
-      },
-      child: Card(
-        elevation: 2,
-        margin: const EdgeInsets.only(bottom: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.email_outlined,
-                        color: Colors.blue,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          inv.fromName,
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Text(
-                          inv.fromEmail,
-                          style:
-                              TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              inv.role.emoji,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              inv.role.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'Invite',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.blue,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (_loading)
-                const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() => _loading = true);
-                          context.read<AccountabilityBloc>().add(
-                                RejectEmailInvite(inv.id),
-                              );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey[700],
-                          side: BorderSide(color: Colors.grey[300]!),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text('Decline'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() => _loading = true);
-                          context.read<AccountabilityBloc>().add(
-                                AcceptEmailInvite(inv.id),
-                              );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text('Accept'),
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Invite By Email Sheet ─────────────────────────────────────────────────────
-
-/// Google Keep-style email collaborator invite sheet.
-/// Lets the user type an email address, shows a live lookup result,
-/// then sends the invite via [SendEmailInvite].
-/// Falls back to the code-based flow via a text button.
-class _InviteByEmailSheet extends StatefulWidget {
-  const _InviteByEmailSheet();
-
-  @override
-  State<_InviteByEmailSheet> createState() => _InviteByEmailSheetState();
-}
-
-class _InviteByEmailSheetState extends State<_InviteByEmailSheet> {
-  final _emailCtrl = TextEditingController();
-  PartnerRole _role = PartnerRole.friend;
-  bool _sending = false;
-  AppUser? _foundUser;
-  bool _lookupDone = false;
-  bool _looking = false;
-  String _lookupEmail = '';
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    super.dispose();
-  }
-
-  void _onLookup() {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !email.contains('@')) return;
-    setState(() {
-      _looking = true;
-      _lookupDone = false;
-      _foundUser = null;
-      _lookupEmail = email;
-    });
-    context.read<AccountabilityBloc>().add(LookupUserByEmail(email));
-  }
-
-  void _sendInvite() {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid email address')),
-      );
-      return;
-    }
-    setState(() => _sending = true);
-    context.read<AccountabilityBloc>().add(
-          SendEmailInvite(toEmail: email, role: _role),
-        );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocListener<AccountabilityBloc, AccountabilityState>(
-      listener: (context, state) {
-        if (state is EmailLookupFound) {
-          setState(() {
-            _foundUser = state.user;
-            _lookupDone = true;
-            _looking = false;
-          });
-        } else if (state is EmailLookupNotFound) {
-          setState(() {
-            _foundUser = null;
-            _lookupDone = true;
-            _looking = false;
-          });
-        } else if (state is EmailInviteSent || state is AccountabilityError) {
-          setState(() => _sending = false);
-        }
-      },
-      child: DraggableScrollableSheet(
-        initialChildSize: 0.8,
-        maxChildSize: 0.95,
-        minChildSize: 0.5,
-        builder: (_, ctrl) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              _SheetHandle(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Add Collaborator',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView(
-                  controller: ctrl,
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    // ── Email field + lookup ───────────────────────
-                    Text(
-                      'Email address',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _emailCtrl,
-                            keyboardType: TextInputType.emailAddress,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) => _onLookup(),
-                            decoration: InputDecoration(
-                              hintText: 'collaborator@example.com',
-                              prefixIcon: const Icon(
-                                Icons.email_outlined,
-                                size: 20,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                            ),
-                            onChanged: (v) {
-                              // Reset lookup state when user types
-                              if (_lookupDone) {
-                                setState(() {
-                                  _lookupDone = false;
-                                  _foundUser = null;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _looking ? null : _onLookup,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                              ),
-                            ),
-                            child: _looking
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.search, size: 20),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // ── Lookup result ─────────────────────────────
-                    if (_lookupDone) ...[
-                      const SizedBox(height: 12),
-                      if (_foundUser != null)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.06),
-                            border: Border.all(
-                              color: Colors.green.withValues(alpha: 0.3),
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _foundUser!.displayName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    Text(
-                                      _foundUser!.email,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.06),
-                            border: Border.all(
-                              color: Colors.orange.withValues(alpha: 0.3),
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.info_outline,
-                                color: Colors.orange,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'No account found for $_lookupEmail. '
-                                  'They\'ll see the invite when they sign up.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-
-                    const SizedBox(height: 20),
-
-                    // ── Role selector ─────────────────────────────
-                    Text(
-                      'Relationship',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: PartnerRole.values.map((r) {
-                        final selected = _role == r;
-                        return ChoiceChip(
-                          label: Text('${r.emoji} ${r.label}'),
-                          selected: selected,
-                          selectedColor: AppColors.primary.withValues(
-                            alpha: 0.2,
-                          ),
-                          onSelected: (_) => setState(() => _role = r),
-                        );
-                      }).toList(),
-                    ),
-
-                    const SizedBox(height: 28),
-
-                    // ── Send invite button ────────────────────────
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _sending ? null : _sendInvite,
-                        icon: _sending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.send_outlined, size: 18),
-                        label: Text(_sending ? 'Sending...' : 'Send Invite'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // ── Fallback: use code instead ────────────────
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: () {
-                          // Capture the bloc and a still-mounted ancestor
-                          // context BEFORE popping: the sheet's own context
-                          // is deactivated by the pop, and reusing it for the
-                          // next sheet (or for context.read inside its
-                          // builder) throws and leaves a blank sheet.
-                          final bloc = context.read<AccountabilityBloc>();
-                          final parentContext = Navigator.of(context).context;
-                          Navigator.pop(context);
-                          Future.microtask(() {
-                            if (!parentContext.mounted) return;
-                            showModalBottomSheet(
-                              context: parentContext,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (_) => BlocProvider.value(
-                                value: bloc,
-                                child: const SafeArea(
-                                  top: false,
-                                  child: _InvitePartnerSheet(),
-                                ),
-                              ),
-                            );
-                          });
-                        },
-                        icon: Icon(
-                          Icons.tag,
-                          size: 16,
-                          color: Colors.grey[600],
-                        ),
-                        label: Text(
-                          'Use invite code instead',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

@@ -343,24 +343,6 @@ class AnalyticsService {
     );
   }
 
-  Future<void> logPartnerInvitationSent({String? channel}) async {
-    await _logEvent(
-      'partner_invitation_sent',
-      {
-        'channel': _category(channel, {'code', 'email'}),
-      },
-    );
-  }
-
-  Future<void> logPartnerInvitationAccepted({String? channel}) async {
-    await _logEvent(
-      'partner_invitation_accepted',
-      {
-        'channel': _category(channel, {'code', 'email'}),
-      },
-    );
-  }
-
   Map<String, Object?> _premiumParameters({
     PremiumFeature? feature,
     String? productId,
