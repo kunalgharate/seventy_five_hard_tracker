@@ -109,7 +109,18 @@ class SmartNotificationService {
       // Opens the "Alarms & reminders" settings on Android 12+; the user
       // must toggle it there, so scheduling still falls back when denied.
       await androidPlugin.requestExactAlarmsPermission();
+      return;
     }
+    // iOS: the only other prompt is the init-time one inside initialize(),
+    // which runs in main() before runApp — if iOS drops that early prompt
+    // the app can never ask again and every zonedSchedule silently fails.
+    final iosPlugin = _notifications.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   /// Exact alarms throw on Android 12+ without the "Alarms & reminders"
