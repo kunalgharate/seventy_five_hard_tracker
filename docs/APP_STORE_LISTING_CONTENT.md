@@ -51,7 +51,7 @@ WHY DAILYMETTLE?
 
 • Clear Progress Tracking — Visualize your journey with clean stats and streaks. See how far you've come.
 
-• Accountability Partners — Invite a partner to review your progress and keep each other on track.
+• Accountability Partners — Add a partner to review your progress and keep each other on track.
 
 • Encrypted Cloud Backup — Optional AES-256 encrypted sync for keeping a backup on your signed-in devices. Export a recovery key before relying on restore after reinstall.
 

@@ -85,7 +85,7 @@ The new design is a modern, clean, mobile-first interface with:
 | Reviewers row | ✅ Partner cards (expandable) | ✅ Horizontal scrollable avatars + "Add" | **REDESIGN** |
 | Leaderboard | ❌ None | ✅ Ranked by streak | **NEW** |
 | Create task card | ❌ Via collaborator dialog | ✅ Prominent "Create task" card | **NEW** |
-| Invite partner | ✅ Email sheet | ✅ "Invite partner" card | **KEEP** (already simplified) |
+| Invite partner | ❌ Removed | — | **REMOVED** — invite had no join counterpart, so the Squad-tab invite surface (quick action, dialogs, pending-sent invites, incoming invites) and its bloc/service/notification wiring were deleted; collaboration now starts from task assignment requests |
 | Task review list | ✅ Reviews tab | ✅ Cards with approve/reject | **KEEP** |
 | Task detail sheet | ❌ Basic | ✅ Full detail with comment thread | **ENHANCE** |
 

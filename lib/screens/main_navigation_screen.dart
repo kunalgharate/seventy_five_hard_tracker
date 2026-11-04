@@ -248,8 +248,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             context.read<RegularTaskBloc>().add(LoadRegularTasks());
           }
           if (index == 4) {
-            // Squad tab: refresh so a just-signed-in user (e.g. an invited
-            // partner) sees fresh data instead of the last cached payload.
+            // Squad tab: refresh so a just-signed-in user sees fresh data
+            // instead of the last cached payload.
             context.read<AccountabilityBloc>().add(LoadAccountabilityData());
           }
           _selectTab(index);

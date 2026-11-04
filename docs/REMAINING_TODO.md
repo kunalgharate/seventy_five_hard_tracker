@@ -40,8 +40,11 @@
 ## Cleanup (Priority: Low) — DONE ✅
 - [x] Remove dead _JoinWithCodeSheet code (class + dead _showJoinSheet caller)
 - [x] Remove dead _showInviteSheet caller (unused)
-- [~] _InvitePartnerSheet KEPT — still reachable via the live "Use invite code
-      instead" fallback button in _InviteByEmailSheet (not dead)
+- [x] Remove the Squad-tab invite flow end to end — invite dialogs/sheets, quick
+      action, pending-sent invites, incoming/email invite cards and all invite
+      bloc/service/notification wiring. There was no "join" counterpart for the
+      email/code invites, so the whole surface was removed; collaboration now
+      runs through task assignment requests (see _PartnersTab task requests).
 - [~] _ReviewSheet KEPT — still wired to the live "Review Progress" popup menu
       item via _onMenu (not dead)
 - [x] Run dart format on all changed files

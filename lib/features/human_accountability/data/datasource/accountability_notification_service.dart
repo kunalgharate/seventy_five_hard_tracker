@@ -4,9 +4,6 @@ import 'package:flutter/foundation.dart';
 
 /// Notification types used by the accountability partner system.
 enum AccountabilityNotificationType {
-  invitationReceived,
-  invitationAccepted,
-  invitationDeclined,
   taskNeedsReview,
   taskAssigned,
   reviewApproved,
@@ -14,6 +11,8 @@ enum AccountabilityNotificationType {
   reviewReminder20h,
   reviewExpired,
   partnerMessage,
+  reviewRequestAccepted,
+  reviewRequestDeclined,
 }
 
 /// Canonical snake_case spelling of each [AccountabilityNotificationType]
@@ -21,9 +20,6 @@ enum AccountabilityNotificationType {
 /// Single source of truth for both the Firestore doc `type` field and the
 /// push payload `data.type`.
 const Map<String, String> _canonicalTypeByName = {
-  'invitationReceived': 'invitation_received',
-  'invitationAccepted': 'invitation_accepted',
-  'invitationDeclined': 'invitation_declined',
   'taskNeedsReview': 'task_needs_review',
   'taskAssigned': 'task_assigned',
   'reviewApproved': 'review_approved',
@@ -31,6 +27,8 @@ const Map<String, String> _canonicalTypeByName = {
   'reviewReminder20h': 'review_reminder_20h',
   'reviewExpired': 'review_expired',
   'partnerMessage': 'partner_message',
+  'reviewRequestAccepted': 'review_request_accepted',
+  'reviewRequestDeclined': 'review_request_declined',
 };
 
 /// Names used by the older in-app accountability notification enum.
@@ -55,10 +53,9 @@ extension AccountabilityNotificationTypeX on AccountabilityNotificationType {
 /// 3. On receiving, the client shows a local notification and marks delivered=true
 ///
 /// Every doc carries a `channel` — `task_<taskId>` for task/proof/review
-/// events, `partner_<partnershipId>` for chat messages, `invite_<id>` for
-/// invitations. The channel doubles as the FCM topic name and as the local
-/// notification id key, so repeated events for the same task replace one
-/// notification instead of stacking.
+/// events, `partner_<partnershipId>` for chat messages. The channel doubles
+/// as the FCM topic name and as the local notification id key, so repeated
+/// events for the same task replace one notification instead of stacking.
 class AccountabilityNotificationService {
   static final AccountabilityNotificationService _instance =
       AccountabilityNotificationService._();
@@ -129,68 +126,6 @@ class AccountabilityNotificationService {
   }
 
   // ── Convenience methods for each notification type ──────────────────────
-
-  /// Notify partner they have been invited.
-  Future<void> notifyInvitationReceived({
-    required String recipientUid,
-    required String senderName,
-    String? taskName,
-    String? taskId,
-    required String partnershipId,
-  }) =>
-      sendNotification(
-        recipientUid: recipientUid,
-        type: AccountabilityNotificationType.invitationReceived,
-        title: 'Partner Invitation',
-        body: taskName != null
-            ? '$senderName invited you to review \'$taskName\''
-            : '$senderName invited you to be their accountability partner',
-        data: {
-          'type':
-              AccountabilityNotificationType.invitationReceived.canonicalType,
-          if (taskId != null) 'taskId': taskId,
-          'partnershipId': partnershipId,
-        },
-        channel: 'invite_$partnershipId',
-      );
-
-  /// Notify task owner that their invitation was accepted.
-  Future<void> notifyInvitationAccepted({
-    required String recipientUid,
-    required String partnerName,
-    required String partnershipId,
-  }) =>
-      sendNotification(
-        recipientUid: recipientUid,
-        type: AccountabilityNotificationType.invitationAccepted,
-        title: 'Invitation Accepted',
-        body: '$partnerName accepted your invitation',
-        data: {
-          'type':
-              AccountabilityNotificationType.invitationAccepted.canonicalType,
-          'partnershipId': partnershipId,
-        },
-        channel: 'invite_$partnershipId',
-      );
-
-  /// Notify task owner that their invitation was declined.
-  Future<void> notifyInvitationDeclined({
-    required String recipientUid,
-    required String partnerName,
-    required String partnershipId,
-  }) =>
-      sendNotification(
-        recipientUid: recipientUid,
-        type: AccountabilityNotificationType.invitationDeclined,
-        title: 'Invitation Declined',
-        body: '$partnerName declined your invitation',
-        data: {
-          'type':
-              AccountabilityNotificationType.invitationDeclined.canonicalType,
-          'partnershipId': partnershipId,
-        },
-        channel: 'invite_$partnershipId',
-      );
 
   /// Notify the assigned user that a task was created for them.
   Future<void> notifyTaskAssigned({
@@ -338,12 +273,12 @@ class AccountabilityNotificationService {
   }) =>
       sendNotification(
         recipientUid: recipientUid,
-        type: AccountabilityNotificationType.invitationAccepted,
+        type: AccountabilityNotificationType.reviewRequestAccepted,
         title: 'Request Accepted',
         body: '$reviewerName accepted your review request for \'$taskName\'',
         data: {
           'type':
-              AccountabilityNotificationType.invitationAccepted.canonicalType,
+              AccountabilityNotificationType.reviewRequestAccepted.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -358,12 +293,12 @@ class AccountabilityNotificationService {
   }) =>
       sendNotification(
         recipientUid: recipientUid,
-        type: AccountabilityNotificationType.invitationDeclined,
+        type: AccountabilityNotificationType.reviewRequestDeclined,
         title: 'Request Declined',
         body: '$reviewerName declined your review request for \'$taskName\'',
         data: {
           'type':
-              AccountabilityNotificationType.invitationDeclined.canonicalType,
+              AccountabilityNotificationType.reviewRequestDeclined.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',

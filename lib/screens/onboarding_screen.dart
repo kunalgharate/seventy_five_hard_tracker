@@ -1690,7 +1690,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ? '👤 ${selected.partnerName} (${selected.role.label})'
                     : hasPartners
                         ? 'Assign accountability partner (optional)'
-                        : 'No partners yet — invite one first',
+                        : 'No partners yet — assign one when creating a task',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
