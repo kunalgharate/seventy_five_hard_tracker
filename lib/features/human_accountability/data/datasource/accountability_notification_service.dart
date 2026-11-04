@@ -277,8 +277,8 @@ class AccountabilityNotificationService {
         title: 'Request Accepted',
         body: '$reviewerName accepted your review request for \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewRequestAccepted.canonicalType,
+          'type': AccountabilityNotificationType
+              .reviewRequestAccepted.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',
@@ -297,8 +297,8 @@ class AccountabilityNotificationService {
         title: 'Request Declined',
         body: '$reviewerName declined your review request for \'$taskName\'',
         data: {
-          'type':
-              AccountabilityNotificationType.reviewRequestDeclined.canonicalType,
+          'type': AccountabilityNotificationType
+              .reviewRequestDeclined.canonicalType,
           'taskId': taskId,
         },
         channel: 'task_$taskId',

@@ -346,7 +346,6 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
       ),
     );
   }
-
 }
 
 // ── Dashboard Tab ────────────────────────────────────────────────────────────
