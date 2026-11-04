@@ -768,8 +768,8 @@ class _SquadBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
-      ('$partners', 'Partners', false),
-      ('$taskRequests', 'Shared', false),
+      ('$partners', 'Partners'),
+      ('$taskRequests', 'Shared'),
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
@@ -792,9 +792,7 @@ class _SquadBanner extends StatelessWidget {
                 children: [
                   Text(items[i].$1,
                       style: FigmaTokens.heading(16,
-                          color: items[i].$3
-                              ? FigmaTokens.orange
-                              : (isDark ? Colors.white : FigmaTokens.ink))),
+                          color: isDark ? Colors.white : FigmaTokens.ink)),
                   const SizedBox(height: 2),
                   Text(items[i].$2,
                       style: FigmaTokens.body(9, color: FigmaTokens.muted)),
