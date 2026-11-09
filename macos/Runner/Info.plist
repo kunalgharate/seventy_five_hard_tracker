@@ -28,6 +28,8 @@
 	<string>Dictate journal entries with your voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Transcribe your dictation into journal text.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
